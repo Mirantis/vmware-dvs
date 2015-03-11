@@ -13,14 +13,12 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
-
 from neutron.i18n import _LI
 from neutron.openstack.common import log
+from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api
 from neutron.plugins.ml2.drivers.mech_vmware_dvs import config
 from neutron.plugins.ml2.drivers.mech_vmware_dvs import exceptions
-
 from neutron.plugins.ml2.drivers.mech_vmware_dvs import util
 
 
@@ -35,17 +33,36 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)
 
     def create_network_precommit(self, context):
-        network = context.current
+        try:
+            dvs = self._lookup_dvs_for_context(context)
+        except exceptions.NoDVSForPhysicalNetworkException as e:
+            LOG.info(_LI('Network %(id)s not created. Reason: %(reason)s') % {
+                'id': context.current['id'],
+                'reason': e.message})
+        else:
+            dvs.create_network(context.current, context.network_segments[0])
+
+    def delete_network_postcommit(self, context):
+        try:
+            dvs = self._lookup_dvs_for_context(context)
+        except exceptions.NoDVSForPhysicalNetworkException as e:
+            LOG.info(_LI('Network %(id)s not deleted. Reason: %(reason)s') % {
+                'id': context.current['id'],
+                'reason': e.message})
+        else:
+            dvs.delete_network(context.current)
+
+    def _lookup_dvs_for_context(self, context):
         segment = context.network_segments[0]
-        if segment['network_type'] == 'vlan':
+        if segment['network_type'] == constants.TYPE_VLAN:
             physical_network = segment['physical_network']
             try:
-                dvs = self.network_map[physical_network]
+                return self.network_map[physical_network]
             except KeyError:
-                LOG.info(_LI("Didn't created DPG, because no dvs mapped for "
-                             "physical network: %s") % physical_network)
-            else:
-                dvs.create_network(network, segment)
+                LOG.debug('No dvs mapped for physical '
+                          'network: %s' % physical_network)
+                raise exceptions.NoDVSForPhysicalNetworkException(
+                    physical_network=physical_network)
         else:
             raise exceptions.NotSupportedNetworkTypeException(
                 network_type=segment['network_type'])

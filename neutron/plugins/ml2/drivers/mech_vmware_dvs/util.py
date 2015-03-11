@@ -44,16 +44,31 @@ class DVSController(object):
             pg_spec = self._build_pg_spec(name, vlan_id)
             pg_create_task = self.connection.invoke_api(
                 self.connection.vim,
-                "CreateDVPortgroup_Task",
+                'CreateDVPortgroup_Task',
                 dvs_ref, spec=pg_spec)
 
             result = self.connection.wait_for_task(pg_create_task)
         except vmware_exceptions.VimException as e:
             raise exceptions.create_from_original_exc(e)
         else:
-            dvpg = result.result
-            LOG.info(_LI("Network %(name)s created! \n%(pg_ref)s"),
-                     {"name": name, "pg_ref": dvpg})
+            pg = result.result
+            LOG.info(_LI('Network %(name)s created \n%(pg_ref)s'),
+                     {'name': name, 'pg_ref': pg})
+
+    def delete_network(self, network):
+        name = self._get_net_name(network)
+        try:
+            pg_ref = self._get_pg_by_name(name)
+            pg_delete_task = self.connection.invoke_api(
+                self.connection.vim,
+                'Destroy_Task',
+                pg_ref)
+            self.connection.wait_for_task(pg_delete_task)
+            LOG.info(_LI('Network %(name)s deleted.') % {'name': name})
+        except exceptions.PortGroupNotFoundException:
+            LOG.debug('Network %s not present in vcenter.' % name)
+        except vmware_exceptions.VimException as e:
+            raise exceptions.create_from_original_exc(e)
 
     def _build_pg_spec(self, name, vlan_tag):
         client_factory = self.connection.vim.client.factory
@@ -61,8 +76,7 @@ class DVSController(object):
         pg_spec.name = name
         pg_spec.numPorts = DVS_PORTS_NUMBER
         pg_spec.type = 'ephemeral'
-        DESCRIPTION = "Managed By Neutron"
-        pg_spec.description = DESCRIPTION
+        pg_spec.description = 'Managed By Neutron'
         config = client_factory.create('ns0:VMwareDVSPortSetting')
         # Create the spec for the vlan tag
         spec_ns = 'ns0:VmwareDistributedVirtualSwitchVlanIdSpec'
@@ -77,7 +91,7 @@ class DVSController(object):
         """Get the datacenter reference."""
         results = self.connection.invoke_api(
             vim_util, 'get_objects', self.connection.vim,
-            "Datacenter", 100, ["name"])
+            'Datacenter', 100, ['name'])
         return results.objects[0].obj
 
     def _get_network_folder(self):
@@ -85,7 +99,7 @@ class DVSController(object):
         dc_ref = self._get_datacenter()
         results = self.connection.invoke_api(
             vim_util, 'get_object_property', self.connection.vim,
-            dc_ref, "networkFolder")
+            dc_ref, 'networkFolder')
         return results
 
     def _get_dvs(self):
@@ -93,23 +107,36 @@ class DVSController(object):
         net_folder = self._get_network_folder()
         results = self.connection.invoke_api(
             vim_util, 'get_object_property', self.connection.vim,
-            net_folder, "childEntity")
+            net_folder, 'childEntity')
         networks = results.ManagedObjectReference
         dvswitches = self._get_object_by_type(networks,
-                                         "VmwareDistributedVirtualSwitch")
+                                              'VmwareDistributedVirtualSwitch')
         for dvs in dvswitches:
             name = self.connection.invoke_api(
                 vim_util, 'get_object_property',
-                self.connection.vim, dvs,
-                "name")
+                self.connection.vim, dvs, 'name')
             if name == self.dvs_name:
-                dvs_ref = dvs
-                break
+                return dvs
         else:
-            raise exceptions.ResourceNotFoundException(
+            raise exceptions.DVSNotFoundException(
                 dvs_name=self.dvs_name)
 
-        return dvs_ref
+    def _get_pg_by_name(self, pg_name):
+        """Get the dpg ref by name"""
+        dc_ref = self._get_datacenter()
+        net_list = self.connection.invoke_api(
+            vim_util, 'get_object_property', self.connection.vim,
+            dc_ref, 'network').ManagedObjectReference
+        type_value = 'DistributedVirtualPortgroup'
+        pg_list = self._get_object_by_type(net_list, type_value)
+        for pg in pg_list:
+            name = self.connection.invoke_api(
+                vim_util, 'get_object_property',
+                self.connection.vim, pg, 'name')
+            if pg_name == name:
+                return pg
+        else:
+            raise exceptions.PortGroupNotFoundException(pg_name=pg_name)
 
     @staticmethod
     def _get_net_name(network):

@@ -19,16 +19,27 @@ from neutron.common import exceptions
 
 class VMWareDVSException(exceptions.NeutronException):
     """Base of all exceptions throwed by mech_vmware_dvs driver"""
-    message = _("VMWare DVS exception occurred.")
+    message = _('VMWare DVS exception occurred.')
 
 
 class NotSupportedNetworkTypeException(exceptions.NeutronException):
     message = _("VMWare DVS driver don't support %s(network_type) network")
 
 
-class ResourceNotFoundException(VMWareDVSException):
-    """Thrown when a resource can not be found."""
-    message = _("Distributed Virtual Switch %(dvs_name)s not found!")
+class ResourceNotFondException(VMWareDVSException):
+    message = _('Resource not found')
+
+
+class DVSNotFoundException(ResourceNotFondException):
+    message = _('Distributed Virtual Switch %(dvs_name)s not found')
+
+
+class PortGroupNotFoundException(ResourceNotFondException):
+    message = _('Port Group %(pg_name)s not found')
+
+
+class NoDVSForPhysicalNetworkException(VMWareDVSException):
+    message = _('No dvs mapped for physical network: %(physical_network)s')
 
 
 def create_from_original_exc(original_exception):

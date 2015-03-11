@@ -17,17 +17,30 @@
 
 import mock
 
-from neutron.plugins.ml2.drivers.mech_vmware_dvs import config
+from neutron.plugins.common import constants
 
+from neutron.plugins.ml2.drivers.mech_vmware_dvs import config
 from neutron.plugins.ml2.drivers.mech_vmware_dvs import driver
 from neutron.plugins.ml2.drivers.mech_vmware_dvs import exceptions
 from neutron.tests import base
 
 
-class VMwareDVSMechanismBaseTestCase(base.BaseTestCase):
+NOT_SUPPORTED_TYPES = [
+    constants.TYPE_FLAT,
+    constants.TYPE_GRE,
+    constants.TYPE_LOCAL,
+    constants.TYPE_VXLAN,
+    constants.TYPE_NONE
+]
+
+
+class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
+
     def setUp(self):
-        super(VMwareDVSMechanismBaseTestCase, self).setUp()
+        super(VMwareDVSMechanismDriverTestCase, self).setUp()
         self.driver = driver.VMwareDVSMechanismDriver()
+        self.dvs = mock.Mock()
+        self.driver.network_map = {'physnet1': self.dvs}
 
     @mock.patch('neutron.plugins.ml2.drivers.mech_vmware_dvs.util'
                 '.create_network_map_from_config', return_value='network_map')
@@ -37,17 +50,16 @@ class VMwareDVSMechanismBaseTestCase(base.BaseTestCase):
         self.assertEqual('network_map', self.driver.network_map)
 
     def test_create_network_precommit(self):
-        dvs = mock.Mock()
-        context = self.create_network()
-        self.driver.network_map = {'physnet1': dvs}
+        context = self._create_context()
         self.driver.create_network_precommit(context)
-        dvs.create_network.assert_called_once_with('current',
-                                                   context.network_segments[0])
+        self.dvs.create_network.assert_called_once_with(
+            context.current,
+            context.network_segments[0])
 
     def test_create_network_precommit_dont_support_other_network_type(self):
-        for type_ in ('gre', 'vxlan'):
+        for type_ in NOT_SUPPORTED_TYPES:
             dvs = mock.Mock()
-            context = self.create_network(type_)
+            context = self._create_context(type_)
             self.assertRaises(exceptions.NotSupportedNetworkTypeException,
                               self.driver.create_network_precommit, context)
             self.assertEqual(0, dvs.create_network.call_count,
@@ -55,13 +67,34 @@ class VMwareDVSMechanismBaseTestCase(base.BaseTestCase):
 
     def test_create_network_precommit_when_not_network_not_mapped(self):
         dvs = mock.Mock()
-        context = self.create_network()
+        context = self._create_context()
         self.driver.network_map = {}
         self.driver.create_network_precommit(context)
         self.assertEqual(0, dvs.create_network.call_count)
 
-    def create_network(self, network_type='vlan'):
-        return mock.Mock(current='current',
+    def test_delete_network_postcommit(self):
+        context = self._create_context()
+        self.driver.delete_network_postcommit(context)
+        self.dvs.delete_network.assert_called_once_with(context.current)
+
+    def test_delete_network_postcommit_dont_support_other_network_type(self):
+        for type_ in NOT_SUPPORTED_TYPES:
+            dvs = mock.Mock()
+            context = self._create_context(type_)
+            self.assertRaises(exceptions.NotSupportedNetworkTypeException,
+                              self.driver.delete_network_postcommit, context)
+            self.assertEqual(0, dvs.create_network.call_count,
+                             "Should not support %s" % type_)
+
+    def test_delete_network_postcommit_when_network_is_not_mapped(self):
+        dvs = mock.Mock()
+        context = self._create_context()
+        self.driver.network_map = {}
+        self.driver.delete_network_postcommit(context)
+        self.assertEqual(0, dvs.create_network.call_count)
+
+    def _create_context(self, network_type='vlan'):
+        return mock.Mock(current={'id': 'id'},
                          network_segments=[
                              {'network_type': network_type,
                               'physical_network': 'physnet1'}])
