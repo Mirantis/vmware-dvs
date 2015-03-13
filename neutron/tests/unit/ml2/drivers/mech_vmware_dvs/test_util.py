@@ -79,7 +79,7 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
                 return org_side_effect(module, method, *args, **kwargs)
 
         self.connection.invoke_api.side_effect = side_effect
-        self.assertRaises(exceptions.DVSNotFoundException,
+        self.assertRaises(exceptions.DVSNotFound,
                           self.controller.create_network,
                           fake_network,
                           fake_segment)
@@ -219,7 +219,7 @@ class DVSControllerNetworkDeletionTestCase(DVSControllerBaseTestCase):
         self.connection.invoke_api.side_effect = side_effect
         try:
             self.controller.delete_network(fake_network)
-        except exceptions.PortGroupNotFoundException:
+        except exceptions.PortGroupNotFound:
             self.fail('Deletion of non existing network should pass silent')
 
     def _get_connection_mock(self, dvs_name):

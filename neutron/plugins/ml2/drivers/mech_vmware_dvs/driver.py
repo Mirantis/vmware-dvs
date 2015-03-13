@@ -35,7 +35,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
     def create_network_precommit(self, context):
         try:
             dvs = self._lookup_dvs_for_context(context)
-        except exceptions.NoDVSForPhysicalNetworkException as e:
+        except exceptions.NoDVSForPhysicalNetwork as e:
             LOG.info(_LI('Network %(id)s not created. Reason: %(reason)s') % {
                 'id': context.current['id'],
                 'reason': e.message})
@@ -45,7 +45,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
     def delete_network_postcommit(self, context):
         try:
             dvs = self._lookup_dvs_for_context(context)
-        except exceptions.NoDVSForPhysicalNetworkException as e:
+        except exceptions.NoDVSForPhysicalNetwork as e:
             LOG.info(_LI('Network %(id)s not deleted. Reason: %(reason)s') % {
                 'id': context.current['id'],
                 'reason': e.message})
@@ -61,8 +61,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             except KeyError:
                 LOG.debug('No dvs mapped for physical '
                           'network: %s' % physical_network)
-                raise exceptions.NoDVSForPhysicalNetworkException(
+                raise exceptions.NoDVSForPhysicalNetwork(
                     physical_network=physical_network)
         else:
-            raise exceptions.NotSupportedNetworkTypeException(
+            raise exceptions.NotSupportedNetworkType(
                 network_type=segment['network_type'])

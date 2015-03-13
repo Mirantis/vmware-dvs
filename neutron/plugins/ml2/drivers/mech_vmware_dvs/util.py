@@ -65,7 +65,7 @@ class DVSController(object):
                 pg_ref)
             self.connection.wait_for_task(pg_delete_task)
             LOG.info(_LI('Network %(name)s deleted.') % {'name': name})
-        except exceptions.PortGroupNotFoundException:
+        except exceptions.PortGroupNotFound:
             LOG.debug('Network %s not present in vcenter.' % name)
         except vmware_exceptions.VimException as e:
             raise exceptions.create_from_original_exc(e)
@@ -118,7 +118,7 @@ class DVSController(object):
             if name == self.dvs_name:
                 return dvs
         else:
-            raise exceptions.DVSNotFoundException(
+            raise exceptions.DVSNotFound(
                 dvs_name=self.dvs_name)
 
     def _get_pg_by_name(self, pg_name):
@@ -136,7 +136,7 @@ class DVSController(object):
             if pg_name == name:
                 return pg
         else:
-            raise exceptions.PortGroupNotFoundException(pg_name=pg_name)
+            raise exceptions.PortGroupNotFound(pg_name=pg_name)
 
     @staticmethod
     def _get_net_name(network):

@@ -60,7 +60,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         for type_ in NOT_SUPPORTED_TYPES:
             dvs = mock.Mock()
             context = self._create_context(type_)
-            self.assertRaises(exceptions.NotSupportedNetworkTypeException,
+            self.assertRaises(exceptions.NotSupportedNetworkType,
                               self.driver.create_network_precommit, context)
             self.assertEqual(0, dvs.create_network.call_count,
                              "Should not support %s" % type_)
@@ -81,7 +81,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         for type_ in NOT_SUPPORTED_TYPES:
             dvs = mock.Mock()
             context = self._create_context(type_)
-            self.assertRaises(exceptions.NotSupportedNetworkTypeException,
+            self.assertRaises(exceptions.NotSupportedNetworkType,
                               self.driver.delete_network_postcommit, context)
             self.assertEqual(0, dvs.create_network.call_count,
                              "Should not support %s" % type_)

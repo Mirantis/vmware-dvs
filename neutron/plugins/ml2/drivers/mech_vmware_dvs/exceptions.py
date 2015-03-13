@@ -22,23 +22,23 @@ class VMWareDVSException(exceptions.NeutronException):
     message = _('VMWare DVS exception occurred.')
 
 
-class NotSupportedNetworkTypeException(exceptions.NeutronException):
+class NotSupportedNetworkType(exceptions.NeutronException):
     message = _("VMWare DVS driver don't support %s(network_type) network")
 
 
-class ResourceNotFondException(VMWareDVSException):
+class ResourceNotFond(VMWareDVSException):
     message = _('Resource not found')
 
 
-class DVSNotFoundException(ResourceNotFondException):
+class DVSNotFound(ResourceNotFond):
     message = _('Distributed Virtual Switch %(dvs_name)s not found')
 
 
-class PortGroupNotFoundException(ResourceNotFondException):
+class PortGroupNotFound(ResourceNotFond):
     message = _('Port Group %(pg_name)s not found')
 
 
-class NoDVSForPhysicalNetworkException(VMWareDVSException):
+class NoDVSForPhysicalNetwork(VMWareDVSException):
     message = _('No dvs mapped for physical network: %(physical_network)s')
 
 
