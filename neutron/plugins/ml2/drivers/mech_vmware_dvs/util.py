@@ -38,10 +38,14 @@ class DVSController(object):
 
     def create_network(self, network, segment):
         name = self._get_net_name(network)
-        vlan_id = segment['segmentation_id']
+        blocked = not network['admin_state_up']
+
         try:
             dvs_ref = self._get_dvs()
-            pg_spec = self._build_pg_spec(name, vlan_id)
+            pg_spec = self._build_pg_create_spec(
+                name,
+                segment['segmentation_id'],
+                blocked)
             pg_create_task = self.connection.invoke_api(
                 self.connection.vim,
                 'CreateDVPortgroup_Task',
@@ -49,11 +53,31 @@ class DVSController(object):
 
             result = self.connection.wait_for_task(pg_create_task)
         except vmware_exceptions.VimException as e:
-            raise exceptions.create_from_original_exc(e)
+            raise exceptions.wrap_wmvare_vim_exception(e)
         else:
             pg = result.result
             LOG.info(_LI('Network %(name)s created \n%(pg_ref)s'),
                      {'name': name, 'pg_ref': pg})
+
+    def update_network(self, network):
+        name = self._get_net_name(network)
+        blocked = not network['admin_state_up']
+        try:
+            pg_ref = self._get_pg_by_name(name)
+            pg_config_info = self._get_pg_config_info(pg_ref)
+            if not pg_config_info.defaultPortConfig.blocked.value == blocked:
+                pg_spec = self._build_pg_update_spec(
+                    pg_config_info.configVersion,
+                    blocked)
+                pg_update_task = self.connection.invoke_api(
+                    self.connection.vim,
+                    'ReconfigureDVPortgroup_Task',
+                    pg_ref, spec=pg_spec)
+
+                self.connection.wait_for_task(pg_update_task)
+                LOG.info(_LI('Network %(name)s updated'), {'name': name})
+        except vmware_exceptions.VimException as e:
+            raise exceptions.wrap_wmvare_vim_exception(e)
 
     def delete_network(self, network):
         name = self._get_net_name(network)
@@ -68,24 +92,27 @@ class DVSController(object):
         except exceptions.PortGroupNotFound:
             LOG.debug('Network %s not present in vcenter.' % name)
         except vmware_exceptions.VimException as e:
-            raise exceptions.create_from_original_exc(e)
+            raise exceptions.wrap_wmvare_vim_exception(e)
 
-    def _build_pg_spec(self, name, vlan_tag):
-        client_factory = self.connection.vim.client.factory
-        pg_spec = client_factory.create('ns0:DVPortgroupConfigSpec')
-        pg_spec.name = name
-        pg_spec.numPorts = DVS_PORTS_NUMBER
-        pg_spec.type = 'ephemeral'
-        pg_spec.description = 'Managed By Neutron'
-        config = client_factory.create('ns0:VMwareDVSPortSetting')
-        # Create the spec for the vlan tag
-        spec_ns = 'ns0:VmwareDistributedVirtualSwitchVlanIdSpec'
-        vlan_spec = client_factory.create(spec_ns)
-        vlan_spec.vlanId = vlan_tag
-        vlan_spec.inherited = '0'
-        config.vlan = vlan_spec
-        pg_spec.defaultPortConfig = config
-        return pg_spec
+    def _build_pg_create_spec(self, name, vlan_tag, blocked):
+        builder = SpecBuilder(self.connection)
+        port = builder.port_config()
+        port.vlan = builder.vlan(vlan_tag)
+        port.blocked = builder.blocked(blocked)
+        pg = builder.pg_config(port)
+        pg.name = name
+        pg.numPorts = DVS_PORTS_NUMBER
+        pg.type = 'ephemeral'
+        pg.description = 'Managed By Neutron'
+        return pg
+
+    def _build_pg_update_spec(self, config_version, blocked):
+        builder = SpecBuilder(self.connection)
+        port = builder.port_config()
+        port.blocked = builder.blocked(blocked)
+        pg = builder.pg_config(port)
+        pg.configVersion = config_version
+        return pg
 
     def _get_datacenter(self):
         """Get the datacenter reference."""
@@ -138,6 +165,12 @@ class DVSController(object):
         else:
             raise exceptions.PortGroupNotFound(pg_name=pg_name)
 
+    def _get_pg_config_info(self, pg):
+        """pg - ManagedObjectReference of Port Group"""
+        return self.connection.invoke_api(
+            vim_util, 'get_object_property',
+            self.connection.vim, pg, 'config')
+
     @staticmethod
     def _get_net_name(network):
         return 'os-' + uuid.UUID('{%s}' % network['id']).get_hex()
@@ -151,6 +184,39 @@ class DVSController(object):
         """
         return [obj for obj in results
                 if obj._type == type_value]
+
+
+class SpecBuilder(object):
+    """Builds specs for vSphere API calls"""
+
+    def __init__(self, connection):
+        self.factory = connection.vim.client.factory
+
+    def pg_config(self, default_port_config):
+        spec = self.factory.create('ns0:DVPortgroupConfigSpec')
+        spec.defaultPortConfig = default_port_config
+        return spec
+
+    def port_config(self):
+        return self.factory.create('ns0:VMwareDVSPortSetting')
+
+    def vlan(self, vlan_tag):
+        spec_ns = 'ns0:VmwareDistributedVirtualSwitchVlanIdSpec'
+        spec = self.factory.create(spec_ns)
+        spec.inherited = '0'
+        spec.vlanId = vlan_tag
+        return spec
+
+    def blocked(self, value):
+        """Value should be True or False"""
+        spec = self.factory.create('ns0:BoolPolicy')
+        if value:
+            spec.inherited = '0'
+            spec.value = 'true'
+        else:
+            spec.inherited = '1'
+            spec.value = 'false'
+        return spec
 
 
 def create_network_map_from_config(config):

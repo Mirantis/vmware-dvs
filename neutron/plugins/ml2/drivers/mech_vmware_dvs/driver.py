@@ -42,6 +42,16 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         else:
             dvs.create_network(context.current, context.network_segments[0])
 
+    def update_network_precommit(self, context):
+        try:
+            dvs = self._lookup_dvs_for_context(context)
+        except exceptions.NoDVSForPhysicalNetwork as e:
+            LOG.info(_LI('Network %(id)s not updated. Reason: %(reason)s') % {
+                'id': context.current['id'],
+                'reason': e.message})
+        else:
+            dvs.update_network(context.current)
+
     def delete_network_postcommit(self, context):
         try:
             dvs = self._lookup_dvs_for_context(context)

@@ -58,19 +58,40 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
 
     def test_create_network_precommit_dont_support_other_network_type(self):
         for type_ in NOT_SUPPORTED_TYPES:
-            dvs = mock.Mock()
             context = self._create_context(type_)
             self.assertRaises(exceptions.NotSupportedNetworkType,
                               self.driver.create_network_precommit, context)
-            self.assertEqual(0, dvs.create_network.call_count,
+            self.assertEqual(0, self.dvs.create_network.call_count,
                              "Should not support %s" % type_)
 
-    def test_create_network_precommit_when_not_network_not_mapped(self):
-        dvs = mock.Mock()
+    def test_create_network_precommit_when_network_not_mapped(self):
         context = self._create_context()
         self.driver.network_map = {}
-        self.driver.create_network_precommit(context)
-        self.assertEqual(0, dvs.create_network.call_count)
+        try:
+            self.driver.create_network_precommit(context)
+        except Exception:
+            self.fail('Should not throw any exceptions')
+
+    def test_update_network_precommit(self):
+        context = self._create_context()
+        self.driver.update_network_precommit(context)
+        self.dvs.update_network.assert_called_once_with(context.current)
+
+    def test_update_network_precommit_when_network_not_mapped(self):
+        context = self._create_context()
+        self.driver.network_map = {}
+        try:
+            self.driver.update_network_precommit(context)
+        except Exception:
+            self.fail('Should not throw any exceptions')
+
+    def test_update_network_precommit_dont_support_other_network_type(self):
+        for type_ in NOT_SUPPORTED_TYPES:
+            context = self._create_context(type_)
+            self.assertRaises(exceptions.NotSupportedNetworkType,
+                              self.driver.update_network_precommit, context)
+            self.assertEqual(0, self.dvs.update_network.call_count,
+                             "Should not support %s" % type_)
 
     def test_delete_network_postcommit(self):
         context = self._create_context()
@@ -79,19 +100,19 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
 
     def test_delete_network_postcommit_dont_support_other_network_type(self):
         for type_ in NOT_SUPPORTED_TYPES:
-            dvs = mock.Mock()
             context = self._create_context(type_)
             self.assertRaises(exceptions.NotSupportedNetworkType,
                               self.driver.delete_network_postcommit, context)
-            self.assertEqual(0, dvs.create_network.call_count,
+            self.assertEqual(0, self.dvs.delete_network.call_count,
                              "Should not support %s" % type_)
 
     def test_delete_network_postcommit_when_network_is_not_mapped(self):
-        dvs = mock.Mock()
         context = self._create_context()
         self.driver.network_map = {}
-        self.driver.delete_network_postcommit(context)
-        self.assertEqual(0, dvs.create_network.call_count)
+        try:
+            self.driver.delete_network_postcommit(context)
+        except Exception:
+            self.fail('Should not throw any exceptions')
 
     def _create_context(self, network_type='vlan'):
         return mock.Mock(current={'id': 'id'},

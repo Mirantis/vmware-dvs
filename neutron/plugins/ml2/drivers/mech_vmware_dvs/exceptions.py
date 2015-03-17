@@ -19,11 +19,12 @@ from neutron.common import exceptions
 
 class VMWareDVSException(exceptions.NeutronException):
     """Base of all exceptions throwed by mech_vmware_dvs driver"""
-    message = _('VMWare DVS exception occurred.')
+    message = _('VMWare DVS exception occurred. Original Exception: '
+                '"%(type)s: %(message)s". Cause: "%(cause)s."')
 
 
 class NotSupportedNetworkType(exceptions.NeutronException):
-    message = _("VMWare DVS driver don't support %s(network_type) network")
+    message = _("VMWare DVS driver don't support %(network_type)s network")
 
 
 class ResourceNotFond(VMWareDVSException):
@@ -42,10 +43,7 @@ class NoDVSForPhysicalNetwork(VMWareDVSException):
     message = _('No dvs mapped for physical network: %(physical_network)s')
 
 
-def create_from_original_exc(original_exception):
-    exc_type = type(original_exception)
-    exc_msg = original_exception.message
-    message = _('Original Exception: <%(type)s: %(message)s>') % {
-        'type': exc_type,
-        'message': exc_msg}
-    return VMWareDVSException(message=message)
+def wrap_wmvare_vim_exception(original_exception):
+    return VMWareDVSException(type=type(original_exception),
+                              message=original_exception.msg,
+                              cause=original_exception.cause)

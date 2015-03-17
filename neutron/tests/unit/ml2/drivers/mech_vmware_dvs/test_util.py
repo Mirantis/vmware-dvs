@@ -26,7 +26,8 @@ from neutron.tests import base
 
 CONF = config.CONF
 
-fake_network = {'id': '34e33a31-516a-439f-a186-96ac85155a8c'}
+fake_network = {'id': '34e33a31-516a-439f-a186-96ac85155a8c',
+                'admin_state_up': True}
 fake_segment = {'segmentation_id': '102'}
 
 
@@ -67,6 +68,23 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
         else:
             self.assertEqual(6, self.connection.invoke_api.call_count)
             self.assertEqual(1, self.connection.wait_for_task.call_count)
+
+    def test_create_network_which_is_blocked(self):
+        org_side_effect = self.connection.invoke_api.side_effect
+
+        def side_effect(module, method, *args, **kwargs):
+            if method == 'CreateDVPortgroup_Task':
+                blocked_spec = kwargs['spec'].defaultPortConfig.blocked
+                self.assertEqual('0', blocked_spec.inherited)
+                self.assertEqual('true', blocked_spec.value)
+                return kwargs['spec']
+            else:
+                return org_side_effect(module, method, *args, **kwargs)
+
+        self.connection.invoke_api.side_effect = side_effect
+        network = dict(fake_network)
+        network['admin_state_up'] = False
+        self.controller.create_network(network, fake_segment)
 
     def test_create_network_raises_DVSNotFoundException(self):
         org_side_effect = self.connection.invoke_api.side_effect
@@ -112,7 +130,8 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
         def create_side_effect(namespace):
             if namespace in ('ns0:DVPortgroupConfigSpec',
                              'ns0:VMwareDVSPortSetting',
-                             'ns0:VmwareDistributedVirtualSwitchVlanIdSpec'):
+                             'ns0:VmwareDistributedVirtualSwitchVlanIdSpec',
+                             'ns0:BoolPolicy'):
                 return mock.Mock(name=namespace)
             else:
                 self.fail('Unexpected call. Namespace: %s' % namespace)
@@ -164,11 +183,129 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
         self.assertEqual('os-34e33a31516a439fa18696ac85155a8c', spec.name)
         self.assertEqual(util.DVS_PORTS_NUMBER, spec.numPorts)
         self.assertEqual('ephemeral', spec.type)
-        self.assertEqual("Managed By Neutron", spec.description)
+        self.assertEqual('Managed By Neutron', spec.description)
         vlan_spec = spec.defaultPortConfig.vlan
         self.assertEqual(fake_segment['segmentation_id'],
                          vlan_spec.vlanId)
         self.assertEqual('0', vlan_spec.inherited)
+        blocked_spec = spec.defaultPortConfig.blocked
+        self.assertEqual('1', blocked_spec.inherited)
+        self.assertEqual('false', blocked_spec.value)
+
+
+class DVSControllerNetworkUpdateTestCase(DVSControllerBaseTestCase):
+    def test_update_network(self):
+        try:
+            self.controller.update_network(fake_network)
+        except AssertionError:
+            raise
+        except Exception as e:
+            self.fail("Didn't update network. Reason: %s" % e)
+        else:
+            self.assertEqual(6, self.connection.invoke_api.call_count)
+            self.assertEqual(1, self.connection.wait_for_task.call_count)
+
+    def test_update_network_change_admin_state_to_down(self):
+        org_side_effect = self.connection.invoke_api.side_effect
+
+        def side_effect(module, method, *args, **kwargs):
+            if 'config' in args:
+                config = mock.Mock()
+                config.defaultPortConfig.blocked.value = False
+                return config
+            elif method == 'ReconfigureDVPortgroup_Task':
+                blocked_spec = kwargs['spec'].defaultPortConfig.blocked
+                self.assertEqual('0', blocked_spec.inherited)
+                self.assertEqual('true', blocked_spec.value)
+                return kwargs['spec']
+            else:
+                return org_side_effect(module, method, *args, **kwargs)
+
+        self.connection.invoke_api.side_effect = side_effect
+        network = dict(fake_network)
+        network['admin_state_up'] = False
+        self.controller.update_network(network)
+
+    def test_update_network_when_there_is_no_admin_state_transition(self):
+        org_side_effect = self.connection.invoke_api.side_effect
+        for state in (True, False):
+            def side_effect(module, method, *args, **kwargs):
+                if 'config' in args:
+                    config = mock.Mock()
+                    config.defaultPortConfig.blocked.value = state
+                    return config
+                elif method == 'ReconfigureDVPortgroup_Task':
+                    self.fail('Request is not required, because there is no '
+                              'transition of admin state')
+                else:
+                    return org_side_effect(module, method, *args, **kwargs)
+
+            self.connection.invoke_api.side_effect = side_effect
+            network = dict(fake_network)
+            network['admin_state_up'] = not state
+            self.controller.update_network(network)
+
+    def assert_update_specification(self, spec):
+        self.assertEqual('config_version', spec.configVersion)
+        blocked_spec = spec.defaultPortConfig.blocked
+        self.assertEqual('1', blocked_spec.inherited)
+        self.assertEqual('false', blocked_spec.value)
+
+    def _get_connection_mock(self, dvs_name):
+        def create_side_effect(namespace):
+            if namespace in ('ns0:BoolPolicy',
+                             'ns0:VMwareDVSPortSetting',
+                             'ns0:DVPortgroupConfigSpec'):
+                return mock.Mock(name=namespace)
+            else:
+                self.fail('Unexpected call. Namespace: %s' % namespace)
+
+        vim = self.vim
+        vim.client.factory.create.side_effect = create_side_effect
+
+        wrong_pg = mock.Mock(_type='DistributedVirtualPortgroup',
+                             name='wrong_pg')
+        pg_to_update = mock.Mock(_type='DistributedVirtualPortgroup',
+                                 name='pg_to_update')
+        not_pg = mock.Mock(_type='not_pg', name='not_pg')
+        objects = [wrong_pg, pg_to_update, not_pg]
+
+        def invoke_api_side_effect(module, method, *args, **kwargs):
+            if module is vim_util:
+                if method == 'get_objects':
+                    if args == (vim, 'Datacenter', 100, ['name']):
+                        return mock.Mock(objects=[
+                            mock.Mock(obj='datacenter1')])
+                elif method == 'get_object_property':
+                    if args == (vim, 'datacenter1', 'network'):
+                        return mock.Mock(ManagedObjectReference=objects)
+                    elif args == (vim, wrong_pg, 'name'):
+                        return 'wrong_pg'
+                    elif args == (vim, pg_to_update, 'name'):
+                        return util.DVSController._get_net_name(fake_network)
+                    elif args == (vim, not_pg, 'name'):
+                        self.fail('Called with not pg')
+                    elif args == (vim, pg_to_update, 'config'):
+                        config = mock.Mock()
+                        config.defaultPortConfig.blocked.value = True
+                        config.configVersion = 'config_version'
+                        return config
+            elif module == vim:
+                if method == 'ReconfigureDVPortgroup_Task':
+                    self.assertEqual((pg_to_update, ), args)
+                    self.assert_update_specification(kwargs['spec'])
+                    return kwargs['spec']
+
+            self.fail('Unexpected call. Module: %(module)s; '
+                      'method: %(method)s; args: %(args)s, '
+                      'kwargs: %(kwargs)s' % {'module': module,
+                                              'method': method,
+                                              'args': args,
+                                              'kwargs': kwargs})
+
+        invoke_api = mock.Mock(side_effect=invoke_api_side_effect)
+        connection = mock.Mock(invoke_api=invoke_api, vim=vim)
+        return connection
 
 
 class DVSControllerNetworkDeletionTestCase(DVSControllerBaseTestCase):
