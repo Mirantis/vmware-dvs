@@ -66,6 +66,9 @@ class DVSController(object):
             pg_ref = self._get_pg_by_name(name)
             pg_config_info = self._get_pg_config_info(pg_ref)
             if not pg_config_info.defaultPortConfig.blocked.value == blocked:
+                # we upgrade only defaultPortConfig, because it is inherited
+                # by all ports in PortGroup, unless they are explicite
+                # overwritten on specific port.
                 pg_spec = self._build_pg_update_spec(
                     pg_config_info.configVersion,
                     blocked)
