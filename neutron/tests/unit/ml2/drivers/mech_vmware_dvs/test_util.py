@@ -224,7 +224,7 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
         self.assertEqual(
             self.controller._get_net_name(fake_network), spec.name)
         self.assertEqual(util.DVS_PORTS_NUMBER, spec.numPorts)
-        self.assertEqual('ephemeral', spec.type)
+        self.assertEqual('earlyBinding', spec.type)
         self.assertEqual('Managed By Neutron', spec.description)
         vlan_spec = spec.defaultPortConfig.vlan
         self.assertEqual(fake_segment['segmentation_id'],

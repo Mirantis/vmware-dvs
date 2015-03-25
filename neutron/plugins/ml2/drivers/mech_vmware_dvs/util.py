@@ -114,7 +114,9 @@ class DVSController(object):
         pg = builder.pg_config(port)
         pg.name = name
         pg.numPorts = DVS_PORTS_NUMBER
-        pg.type = 'ephemeral'
+
+        # Equivalent of vCenter static binding type.
+        pg.type = 'earlyBinding'
         pg.description = 'Managed By Neutron'
         return pg
 
