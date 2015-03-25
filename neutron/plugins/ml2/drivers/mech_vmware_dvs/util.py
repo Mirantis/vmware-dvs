@@ -14,7 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import uuid
+import re
 
 from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions
@@ -26,6 +26,7 @@ from neutron.plugins.ml2.drivers.mech_vmware_dvs import exceptions
 
 # max ports number that can be created on single DVS
 DVS_PORTS_NUMBER = 128
+DVS_PORTGROUP_NAME_MAXLEN = 80
 LOG = log.getLogger(__name__)
 
 
@@ -96,6 +97,14 @@ class DVSController(object):
             LOG.debug('Network %s not present in vcenter.' % name)
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
+
+    def is_dvs_network(self, network):
+        name = self._get_net_name(network)
+        try:
+            self._get_pg_by_name(name)
+        except exceptions.PortGroupNotFound:
+            return False
+        return True
 
     def _build_pg_create_spec(self, name, vlan_tag, blocked):
         builder = SpecBuilder(self.connection)
@@ -176,7 +185,30 @@ class DVSController(object):
 
     @staticmethod
     def _get_net_name(network):
-        return 'os-' + uuid.UUID('{%s}' % network['id']).get_hex()
+        # TODO(dbogun): check network['bridge'] generation algorithm our
+        # must match it
+        suffix = network['id']
+
+        name = network.get('name')
+        if not name:
+            return suffix
+
+        suffix = '-' + suffix
+        if DVS_PORTGROUP_NAME_MAXLEN < len(name) + len(suffix):
+            raise exceptions.InvalidNetworkName(
+                name=name,
+                reason=_('name length %(length)s, while allowed length is '
+                         '%(max_length)d') % {
+                    'length': len(name),
+                    'max_length': DVS_PORTGROUP_NAME_MAXLEN - len(suffix)})
+
+        if not re.match('^[\w-]+$', name):
+            raise exceptions.InvalidNetworkName(
+                name=name,
+                reason=_('name contains illegal symbols. Only alphanumeric, '
+                         'underscore and hyphen are allowed.'))
+
+        return name + suffix
 
     @staticmethod
     def _get_object_by_type(results, type_value):

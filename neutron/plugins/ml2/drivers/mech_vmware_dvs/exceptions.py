@@ -23,8 +23,12 @@ class VMWareDVSException(exceptions.NeutronException):
                 '"%(type)s: %(message)s". Cause: "%(cause)s."')
 
 
-class NotSupportedNetworkType(exceptions.NeutronException):
+class NotSupportedNetworkType(VMWareDVSException):
     message = _("VMWare DVS driver don't support %(network_type)s network")
+
+
+class InvalidNetworkName(VMWareDVSException):
+    message = _('Illegal network name %(name)s: %(reason)s')
 
 
 class ResourceNotFond(VMWareDVSException):
@@ -37,6 +41,10 @@ class DVSNotFound(ResourceNotFond):
 
 class PortGroupNotFound(ResourceNotFond):
     message = _('Port Group %(pg_name)s not found')
+
+
+class HypervisorNotFound(ResourceNotFond):
+    message = _('Hypervisor not found')
 
 
 class NoDVSForPhysicalNetwork(VMWareDVSException):

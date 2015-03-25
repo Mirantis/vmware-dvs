@@ -14,6 +14,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import string
+
 import mock
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
@@ -27,6 +29,7 @@ from neutron.tests import base
 CONF = config.CONF
 
 fake_network = {'id': '34e33a31-516a-439f-a186-96ac85155a8c',
+                'name': '_fake_network_',
                 'admin_state_up': True}
 fake_segment = {'segmentation_id': '102'}
 
@@ -52,6 +55,44 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
     def test_creation(self):
         self.assertEqual(self.dvs_name, self.controller.dvs_name)
         self.assertIs(self.connection, self.controller.connection)
+
+    def test__get_net_name(self):
+        expect = fake_network['name'] + '-' + fake_network['id']
+        self.assertEqual(expect, self.controller._get_net_name(fake_network))
+
+    def test__get_net_name_without_name(self):
+        net = fake_network.copy()
+        net.pop('name')
+        self.assertEqual(net['id'], self.controller._get_net_name(net))
+
+    def test__get_net_name_illegal_characters(self):
+        illegal_chars = {chr(code) for code in range(128)}
+        illegal_chars -= set(string.letters)
+        illegal_chars -= set(string.digits)
+        illegal_chars.discard('-')
+        illegal_chars.discard('_')
+
+        for char in illegal_chars:
+            net = fake_network.copy()
+            net['name'] = char
+            self.assertRaises(
+                exceptions.InvalidNetworkName,
+                self.controller._get_net_name, net)
+
+    def test__get_net_name_too_long(self):
+        net = fake_network.copy()
+        max_len = max(0, 80 - len(net['id']) - 1)
+        net['name'] = 'x' * max_len
+        try:
+            self.controller._get_net_name(net)
+        except exceptions.InvalidNetworkName:
+            self.fail((
+                'Invalid maximum name limit. %d chars should still be '
+                'allowed') % max_len)
+
+        net['name'] += 'A'
+        self.assertRaises(
+            exceptions.InvalidNetworkName, self.controller._get_net_name, net)
 
     def _get_connection_mock(self, dvs_name):
         return mock.sentinel.connection
@@ -180,7 +221,8 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
         return connection
 
     def assert_create_specification(self, spec):
-        self.assertEqual('os-34e33a31516a439fa18696ac85155a8c', spec.name)
+        self.assertEqual(
+            self.controller._get_net_name(fake_network), spec.name)
         self.assertEqual(util.DVS_PORTS_NUMBER, spec.numPorts)
         self.assertEqual('ephemeral', spec.type)
         self.assertEqual('Managed By Neutron', spec.description)
