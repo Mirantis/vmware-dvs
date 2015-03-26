@@ -47,6 +47,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             LOG.info(_LI('Network %(id)s not created. Reason: %(reason)s') % {
                 'id': context.current['id'],
                 'reason': e.message})
+        except exceptions.InvalidNetwork:
+            pass
         else:
             dvs.create_network(context.current, context.network_segments[0])
 
@@ -57,6 +59,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             LOG.info(_LI('Network %(id)s not updated. Reason: %(reason)s') % {
                 'id': context.current['id'],
                 'reason': e.message})
+        except exceptions.InvalidNetwork:
+            pass
         else:
             dvs.update_network(context.current)
 
@@ -67,6 +71,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             LOG.info(_LI('Network %(id)s not deleted. Reason: %(reason)s') % {
                 'id': context.current['id'],
                 'reason': e.message})
+        except exceptions.InvalidNetwork:
+            pass
         else:
             dvs.delete_network(context.current)
 

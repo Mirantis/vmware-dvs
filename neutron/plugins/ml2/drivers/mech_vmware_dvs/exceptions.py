@@ -23,11 +23,15 @@ class VMWareDVSException(exceptions.NeutronException):
                 '"%(type)s: %(message)s". Cause: "%(cause)s."')
 
 
-class NotSupportedNetworkType(VMWareDVSException):
+class InvalidNetwork(VMWareDVSException):
+    message = _('Not supported or incorrectly configured network %(name)s')
+
+
+class NotSupportedNetworkType(InvalidNetwork):
     message = _("VMWare DVS driver don't support %(network_type)s network")
 
 
-class InvalidNetworkName(VMWareDVSException):
+class InvalidNetworkName(InvalidNetwork):
     message = _('Illegal network name %(name)s: %(reason)s')
 
 
