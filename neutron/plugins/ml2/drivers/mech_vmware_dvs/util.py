@@ -24,10 +24,16 @@ from neutron.i18n import _LI
 from neutron.openstack.common import log
 from neutron.plugins.ml2.drivers.mech_vmware_dvs import exceptions
 
+
+LOG = log.getLogger(__name__)
+
 # max ports number that can be created on single DVS
+# TODO(dbogun): switch to portgroup with autoExpand set to True
 DVS_PORTS_NUMBER = 128
 DVS_PORTGROUP_NAME_MAXLEN = 80
-LOG = log.getLogger(__name__)
+VM_NETWORK_DEVICE_TYPES = [
+    'VirtualE1000', 'VirtualE1000e', 'VirtualPCNet32',
+    'VirtualSriovEthernetCard', 'VirtualVmxnet']
 
 
 class DVSController(object):
@@ -65,7 +71,7 @@ class DVSController(object):
         blocked = not network['admin_state_up']
         try:
             pg_ref = self._get_pg_by_name(name)
-            pg_config_info = self._get_pg_config_info(pg_ref)
+            pg_config_info = self._get_config_by_ref(pg_ref)
             if not pg_config_info.defaultPortConfig.blocked.value == blocked:
                 # we upgrade only defaultPortConfig, because it is inherited
                 # by all ports in PortGroup, unless they are explicite
@@ -98,13 +104,37 @@ class DVSController(object):
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
-    def is_dvs_network(self, network):
-        name = self._get_net_name(network)
+    def switch_port_blocked_state(self, port, state=None):
+        if state is None:
+            state = not port['admin_state_up']
+
         try:
-            self._get_pg_by_name(name)
-        except exceptions.PortGroupNotFound:
-            return False
-        return True
+            vm_uuid = port['device_id']
+        except KeyError:
+            raise exceptions.VMNotFound
+
+        dvs_ref = self._get_dvs()
+        vm_ref = self._get_vm_by_uuid(vm_uuid)
+        port = self._get_port_by_neutron_uuid(dvs_ref, vm_ref, port['id'])
+        port_settings = port.config.setting
+
+        if port_settings.blocked.value != state:
+            builder = SpecBuilder(self.connection)
+
+            port_settings = builder.port_config()
+            port_settings.blocked = builder.blocked(state)
+
+            update_spec = builder.port_config_spec(
+                port.config.configVersion, port_settings)
+            update_spec.operation = 'edit'
+            update_spec.key = port.key
+            update_spec = [update_spec]
+
+            update_task = self.connection.invoke_api(
+                self.connection.vim, 'ReconfigureDVPort_Task',
+                dvs_ref, port=update_spec)
+
+            self.connection.wait_for_task(update_task)
 
     def _build_pg_create_spec(self, name, vlan_tag, blocked):
         builder = SpecBuilder(self.connection)
@@ -130,6 +160,7 @@ class DVSController(object):
 
     def _get_datacenter(self):
         """Get the datacenter reference."""
+        # FIXME(dobgun): lookup datacenter by name(add it into config)
         results = self.connection.invoke_api(
             vim_util, 'get_objects', self.connection.vim,
             'Datacenter', 100, ['name'])
@@ -179,11 +210,70 @@ class DVSController(object):
         else:
             raise exceptions.PortGroupNotFound(pg_name=pg_name)
 
-    def _get_pg_config_info(self, pg):
+    def _get_port_by_neutron_uuid(self, dvs_ref, vm_ref, port_uuid):
+        port_not_found = exceptions.PortNotFound(
+            id='neutron-port-uuid:' + port_uuid)
+
+        vm_config = self._get_config_by_ref(vm_ref)
+
+        iface_option_mask = '^nvp\.iface-id\.(\d+)$'
+        for opt in vm_config.extraConfig:
+            match = re.match(iface_option_mask, opt.key)
+            if not match:
+                continue
+            if opt.value != port_uuid:
+                continue
+            port_idx = match.group(1)
+            port_idx = int(port_idx)
+            break
+        else:
+            raise port_not_found
+
+        iface_idx = -1
+        for device in vm_config.hardware.device:
+            if device.__class__.__name__ not in VM_NETWORK_DEVICE_TYPES:
+                continue
+            iface_idx += 1
+            if port_idx != iface_idx:
+                continue
+            break
+        else:
+            raise port_not_found
+
+        port_connection = device.backing.port
+        if port_connection.switchUuid != self.connection.invoke_api(
+                vim_util, 'get_object_property', self.connection.vim,
+                dvs_ref, 'uuid'):
+            raise port_not_found
+
+        builder = SpecBuilder(self.connection)
+        lookup_criteria = builder.port_lookup_criteria()
+        lookup_criteria.portKey = port_connection.portKey
+        lookup_criteria.uplinkPort = False
+
+        port = self.connection.invoke_api(
+            self.connection.vim, 'FetchDVPorts', dvs_ref,
+            criteria=lookup_criteria)
+
+        if len(port) != 1:
+            raise port_not_found
+        return port[0]
+
+    def _get_vm_by_uuid(self, uuid):
+        vm_refs = self.connection.invoke_api(
+            self.connection.vim, 'FindAllByUuid',
+            self.connection.vim.service_content.searchIndex,
+            uuid=uuid, vmSearch=True, instanceUuid=True)
+
+        if len(vm_refs) != 1:
+            raise exceptions.VMNotFound
+        return vm_refs[0]
+
+    def _get_config_by_ref(self, ref):
         """pg - ManagedObjectReference of Port Group"""
         return self.connection.invoke_api(
             vim_util, 'get_object_property',
-            self.connection.vim, pg, 'config')
+            self.connection.vim, ref, 'config')
 
     @staticmethod
     def _get_net_name(network):
@@ -236,6 +326,15 @@ class SpecBuilder(object):
 
     def port_config(self):
         return self.factory.create('ns0:VMwareDVSPortSetting')
+
+    def port_config_spec(self, version, config):
+        spec = self.factory.create('ns0:DVPortConfigSpec')
+        spec.configVersion = version
+        spec.setting = config
+        return spec
+
+    def port_lookup_criteria(self):
+        return self.factory.create('ns0:DistributedVirtualSwitchPortCriteria')
 
     def vlan(self, vlan_tag):
         spec_ns = 'ns0:VmwareDistributedVirtualSwitchVlanIdSpec'

@@ -113,6 +113,45 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
     @mock.patch(
         'neutron.plugins.ml2.drivers.mech_vmware_dvs.compute_util'
         '.get_hypervisors_by_host')
+    def test_update_port_postcommit(self, hypervisor_by_host):
+        hypervisor_by_host.return_value = mock.Mock(
+            hypervisor_type=VALID_HYPERVISOR_TYPE)
+        port_context = self._create_port_context()
+
+        self.driver.update_port_postcommit(port_context)
+        self.assertEqual(
+            self.dvs.switch_port_blocked_state.call_args_list,
+            [mock.call(port_context.current)])
+
+    @mock.patch('neutron.plugins.ml2.drivers.mech_vmware_dvs.driver'
+                '.VMwareDVSMechanismDriver._is_port_belong_to_vmware')
+    def test_update_port_postcommit_invalid_port(self, is_valid_port):
+        is_valid_port.return_value = False
+
+        self.driver.update_port_postcommit(self._create_port_context())
+
+        self.assertTrue(is_valid_port.called)
+        self.assertFalse(self.dvs.switch_port_blocked_state.called)
+
+    @mock.patch('neutron.plugins.ml2.drivers.mech_vmware_dvs.driver'
+                '.VMwareDVSMechanismDriver._is_port_belong_to_vmware')
+    @mock.patch('neutron.plugins.ml2.drivers.mech_vmware_dvs.driver'
+                '.VMwareDVSMechanismDriver._lookup_dvs_for_context')
+    def test_update_port_postcommit_uncontrolled_dvs(
+            self, is_valid_dvs, is_valid_port):
+        is_valid_dvs.side_effect = exceptions.NoDVSForPhysicalNetwork(
+            physical_network='_dummy_physical_net_')
+        is_valid_port.return_value = True
+
+        self.assertRaises(
+            exceptions.InvalidSystemState, self.driver.update_port_postcommit,
+            self._create_port_context())
+        self.assertTrue(is_valid_dvs.called)
+        self.assertFalse(self.dvs.switch_port_blocked_state.called)
+
+    @mock.patch(
+        'neutron.plugins.ml2.drivers.mech_vmware_dvs.compute_util'
+        '.get_hypervisors_by_host')
     def test_bind_port(self, get_hypervisor):
         context = self._create_port_context()
         get_hypervisor.return_value = mock.Mock(
@@ -134,31 +173,47 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
     @mock.patch(
         'neutron.plugins.ml2.drivers.mech_vmware_dvs.compute_util'
         '.get_hypervisors_by_host')
-    def test_bind_port_other_hypervisor(self, get_hypervisor):
+    def test__is_port_belong_to_vmware__unbinded_port(self, get_hypervisor):
+        context = self._create_port_context()
+        port = context.current
+        port.pop('binding:host_id')
+
+        result = self.driver._is_port_belong_to_vmware(context.current)
+        self.assertFalse(result)
+
+
+    @mock.patch(
+        'neutron.plugins.ml2.drivers.mech_vmware_dvs.compute_util'
+        '.get_hypervisors_by_host')
+    def test__is_port_belong_to_vmware__invalid_hypervisor(
+            self, get_hypervisor):
         context = self._create_port_context()
         get_hypervisor.return_value = mock.Mock(
             hypervisor_type=INVALID_HYPERVISOR_TYPE)
 
-        self.driver.bind_port(context)
-        self.assertFalse(context.set_binding.called)
+        result = self.driver._is_port_belong_to_vmware(context.current)
+        self.assertFalse(result)
 
     @mock.patch(
         'neutron.plugins.ml2.drivers.mech_vmware_dvs.compute_util'
-        '.get_hypervisors_by_host', side_effect=exceptions.HypervisorNotFound)
-    def test_bind_port_hypervisor_not_found(self, get_hypervisor):
+        '.get_hypervisors_by_host')
+    def test__is_port_belong_to_vmware__not_found(self, get_hypervisor):
+        get_hypervisor.side_effect = exceptions.HypervisorNotFound
         context = self._create_port_context()
 
-        self.driver.bind_port(context)
-        self.assertFalse(context.set_binding.called)
+        result = self.driver._is_port_belong_to_vmware(context.current)
+        self.assertTrue(get_hypervisor.called)
+        self.assertFalse(result)
 
     def _create_port_context(self):
         return mock.Mock(
             current={
+                'id': '_dummy_port_id_',
                 'binding:host_id': '_id_server_'},
             network=self._create_network_context())
 
     def _create_network_context(self, network_type='vlan'):
-        return mock.Mock(current={'id': 'id'},
+        return mock.Mock(current={'id': '_dummy_net_id_'},
                          network_segments=[
                              {'id': '_id_segment_',
                               'network_type': network_type,

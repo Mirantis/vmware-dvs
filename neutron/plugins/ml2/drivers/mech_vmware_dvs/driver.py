@@ -16,7 +16,7 @@
 
 from neutron.common import constants as n_const
 from neutron.extensions import portbindings
-from neutron.i18n import _LI
+from neutron.i18n import _LI, _
 from neutron.openstack.common import log
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api
@@ -76,21 +76,27 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         else:
             dvs.delete_network(context.current)
 
-    def bind_port(self, context):
+    def update_port_postcommit(self, context):
+        if not self._is_port_belong_to_vmware(context.current):
+            return
+
         try:
-            try:
-                host = context.current['binding:host_id']
-            except KeyError:
-                raise exceptions.HypervisorNotFound
+            dvs = self._lookup_dvs_for_context(context.network)
+        except exceptions.NoDVSForPhysicalNetwork:
+            raise exceptions.InvalidSystemState(details=_(
+                'Port %(port_id)s belong to VMWare VM, but there is no '
+                'mapping from network %(net_id)s to DVS.') % {
+                    'port_id': context.current['id'],
+                    'net_id': context.network.current['id']})
+        try:
+            dvs.switch_port_blocked_state(context.current)
+        except (exceptions.VMNotFound, exceptions.PortNotFound):
+            # until port are not bind to any VM it doesn't exist
+            # so we can ignore status change
+            pass
 
-            hypervisor = compute_util.get_hypervisors_by_host(
-                CONF, host)
-
-            # value for field hypervisor_type collected from VMWare side,
-            # need to make research, about all possible and suitable values
-            if hypervisor.hypervisor_type != 'VMware vCenter Server':
-                raise exceptions.HypervisorNotFound
-        except exceptions.ResourceNotFond:
+    def bind_port(self, context):
+        if not self._is_port_belong_to_vmware(context.current):
             return
 
         for segment in context.network.network_segments:
@@ -99,8 +105,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                 self.vif_type, self.vif_details,
                 status=n_const.PORT_STATUS_ACTIVE)
 
-    def _lookup_dvs_for_context(self, context):
-        segment = context.network_segments[0]
+    def _lookup_dvs_for_context(self, network_context):
+        segment = network_context.network_segments[0]
         if segment['network_type'] == constants.TYPE_VLAN:
             physical_network = segment['physical_network']
             try:
@@ -113,3 +119,23 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         else:
             raise exceptions.NotSupportedNetworkType(
                 network_type=segment['network_type'])
+
+    @staticmethod
+    def _is_port_belong_to_vmware(port):
+        try:
+            try:
+                host = port['binding:host_id']
+            except KeyError:
+                raise exceptions.HypervisorNotFound
+
+            hypervisor = compute_util.get_hypervisors_by_host(
+                CONF, host)
+
+            # value for field hypervisor_type collected from VMWare itself,
+            # need to make research, about all possible and suitable values
+            if hypervisor.hypervisor_type != 'VMware vCenter Server':
+                raise exceptions.HypervisorNotFound
+        except exceptions.ResourceNotFond:
+            return False
+
+        return True

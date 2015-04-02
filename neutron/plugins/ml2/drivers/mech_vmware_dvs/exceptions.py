@@ -15,12 +15,18 @@
 #    under the License.
 
 from neutron.common import exceptions
+from neutron.i18n import _
 
 
 class VMWareDVSException(exceptions.NeutronException):
     """Base of all exceptions throwed by mech_vmware_dvs driver"""
     message = _('VMWare DVS exception occurred. Original Exception: '
                 '"%(type)s: %(message)s". Cause: "%(cause)s."')
+
+
+class InvalidSystemState(VMWareDVSException):
+    message = _('OpenStack environment or one of it component is in invalid '
+                'state: %(details)s')
 
 
 class InvalidNetwork(VMWareDVSException):
@@ -47,8 +53,16 @@ class PortGroupNotFound(ResourceNotFond):
     message = _('Port Group %(pg_name)s not found')
 
 
+class PortNotFound(ResourceNotFond):
+    message = _('Port %(id)s not found')
+
+
 class HypervisorNotFound(ResourceNotFond):
     message = _('Hypervisor not found')
+
+
+class VMNotFound(ResourceNotFond):
+    message = _('Virtual machine not found')
 
 
 class NoDVSForPhysicalNetwork(VMWareDVSException):
