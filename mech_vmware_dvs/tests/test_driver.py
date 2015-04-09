@@ -18,11 +18,11 @@
 import mock
 
 from neutron.plugins.common import constants
-
-from neutron.plugins.ml2.drivers.mech_vmware_dvs import config
-from neutron.plugins.ml2.drivers.mech_vmware_dvs import driver
-from neutron.plugins.ml2.drivers.mech_vmware_dvs import exceptions
 from neutron.tests import base
+
+from mech_vmware_dvs import config
+from mech_vmware_dvs import driver
+from mech_vmware_dvs import exceptions
 
 
 NOT_SUPPORTED_TYPES = [

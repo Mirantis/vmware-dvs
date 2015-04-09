@@ -17,7 +17,7 @@
 
 from novaclient import client as nova_client
 
-from neutron.plugins.ml2.drivers.mech_vmware_dvs import exceptions
+from mech_vmware_dvs import exceptions
 
 
 NOVA_API_VERSION = '2'

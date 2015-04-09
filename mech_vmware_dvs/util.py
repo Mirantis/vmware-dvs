@@ -19,10 +19,10 @@ import re
 from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
-
 from neutron.i18n import _LI
 from neutron.openstack.common import log
-from neutron.plugins.ml2.drivers.mech_vmware_dvs import exceptions
+
+from mech_vmware_dvs import exceptions
 
 
 LOG = log.getLogger(__name__)

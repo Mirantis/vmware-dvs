@@ -15,11 +15,10 @@
 #    under the License.
 
 import mock
-
 from neutron.tests import base
 
-from neutron.plugins.ml2.drivers.mech_vmware_dvs import compute_util
-from neutron.plugins.ml2.drivers.mech_vmware_dvs import exceptions
+from mech_vmware_dvs import compute_util
+from mech_vmware_dvs import exceptions
 
 
 class ComputeUtilTestCase(base.BaseTestCase):

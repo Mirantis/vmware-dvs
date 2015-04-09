@@ -20,10 +20,11 @@ from neutron.i18n import _LI, _
 from neutron.openstack.common import log
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api
-from neutron.plugins.ml2.drivers.mech_vmware_dvs import compute_util
-from neutron.plugins.ml2.drivers.mech_vmware_dvs import config
-from neutron.plugins.ml2.drivers.mech_vmware_dvs import exceptions
-from neutron.plugins.ml2.drivers.mech_vmware_dvs import util
+
+from mech_vmware_dvs import compute_util
+from mech_vmware_dvs import config
+from mech_vmware_dvs import exceptions
+from mech_vmware_dvs import util
 
 
 CONF = config.CONF
