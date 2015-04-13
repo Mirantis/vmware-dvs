@@ -28,8 +28,7 @@ class ComputeUtilTestCase(base.BaseTestCase):
         super(ComputeUtilTestCase, self).setUp()
         self.config = mock.Mock()
 
-    @mock.patch('neutron.plugins.ml2.drivers.mech_vmware_dvs.compute_util'
-                '._make_nova_client')
+    @mock.patch('mech_vmware_dvs.compute_util._make_nova_client')
     def test_get_hypervisor_by_host(self, make_client):
         expected_hostname = 'expected-host'
         hosts = [
@@ -44,8 +43,7 @@ class ComputeUtilTestCase(base.BaseTestCase):
 
         self.assertEqual(hosts[0], actual)
 
-    @mock.patch('neutron.plugins.ml2.drivers.mech_vmware_dvs.compute_util'
-                '._make_nova_client')
+    @mock.patch('mech_vmware_dvs.compute_util._make_nova_client')
     def test_get_hypervisor_by_host_not_found(self, make_client):
         expected_hostname = 'expected-host'
         hosts = [

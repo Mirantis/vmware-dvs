@@ -21,9 +21,9 @@ import mock
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
 
-from neutron.plugins.ml2.drivers.mech_vmware_dvs import config
-from neutron.plugins.ml2.drivers.mech_vmware_dvs import exceptions
-from neutron.plugins.ml2.drivers.mech_vmware_dvs import util
+from mech_vmware_dvs import config
+from mech_vmware_dvs import exceptions
+from mech_vmware_dvs import util
 from neutron.tests import base
 
 
@@ -591,13 +591,13 @@ class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
 
         self._dvs_ref = mock.Mock()
         self.useFixture(fixtures.MonkeyPatch(
-            'neutron.plugins.ml2.drivers.mech_vmware_dvs.util.DVSController'
-            '._get_dvs', mock.Mock(return_value=self._dvs_ref)))
+            'mech_vmware_dvs.util.DVSController._get_dvs',
+            mock.Mock(return_value=self._dvs_ref)))
 
         self._lookup_vm_by_uuid = mock.Mock()
         self.useFixture(fixtures.MonkeyPatch(
-            'neutron.plugins.ml2.drivers.mech_vmware_dvs.util.DVSController'
-            '._get_vm_by_uuid', self._lookup_vm_by_uuid))
+            'mech_vmware_dvs.util.DVSController._get_vm_by_uuid',
+            self._lookup_vm_by_uuid))
 
     def test_switch_port_blocked_state(self):
         neutron_port = fake_port.copy()

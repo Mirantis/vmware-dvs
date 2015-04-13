@@ -16,11 +16,11 @@
 
 import re
 
+from oslo_log import log
 from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
 from neutron.i18n import _LI
-from neutron.openstack.common import log
 
 from mech_vmware_dvs import exceptions
 
@@ -189,9 +189,7 @@ class DVSController(object):
                 self.connection.vim, dvs, 'name')
             if name == self.dvs_name:
                 return dvs
-        else:
-            raise exceptions.DVSNotFound(
-                dvs_name=self.dvs_name)
+        raise exceptions.DVSNotFound(dvs_name=self.dvs_name)
 
     def _get_pg_by_name(self, pg_name):
         """Get the dpg ref by name"""
@@ -207,8 +205,7 @@ class DVSController(object):
                 self.connection.vim, pg, 'name')
             if pg_name == name:
                 return pg
-        else:
-            raise exceptions.PortGroupNotFound(pg_name=pg_name)
+        raise exceptions.PortGroupNotFound(pg_name=pg_name)
 
     def _get_port_by_neutron_uuid(self, dvs_ref, vm_ref, port_uuid):
         port_not_found = exceptions.PortNotFound(
@@ -216,7 +213,7 @@ class DVSController(object):
 
         vm_config = self._get_config_by_ref(vm_ref)
 
-        iface_option_mask = '^nvp\.iface-id\.(\d+)$'
+        iface_option_mask = r'^nvp\.iface-id\.(\d+)$'
         for opt in vm_config.extraConfig:
             match = re.match(iface_option_mask, opt.key)
             if not match:
@@ -229,6 +226,7 @@ class DVSController(object):
         else:
             raise port_not_found
 
+        founded_device = None
         iface_idx = -1
         for device in vm_config.hardware.device:
             if device.__class__.__name__ not in VM_NETWORK_DEVICE_TYPES:
@@ -236,11 +234,13 @@ class DVSController(object):
             iface_idx += 1
             if port_idx != iface_idx:
                 continue
+            founded_device = device
             break
-        else:
+
+        if not founded_device:
             raise port_not_found
 
-        port_connection = device.backing.port
+        port_connection = founded_device.backing.port
         if port_connection.switchUuid != self.connection.invoke_api(
                 vim_util, 'get_object_property', self.connection.vim,
                 dvs_ref, 'uuid'):
@@ -294,7 +294,7 @@ class DVSController(object):
                     'length': len(name),
                     'max_length': DVS_PORTGROUP_NAME_MAXLEN - len(suffix)})
 
-        if not re.match('^[\w-]+$', name):
+        if not re.match(r'^[\w-]+$', name):
             raise exceptions.InvalidNetworkName(
                 name=name,
                 reason=_('name contains illegal symbols. Only alphanumeric, '

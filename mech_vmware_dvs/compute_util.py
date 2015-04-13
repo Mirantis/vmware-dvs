@@ -27,13 +27,9 @@ def get_hypervisors_by_host(cfg, host):
     client = _make_nova_client(cfg)
 
     for hypervisor in client.hypervisors.list():
-        if hypervisor.service['host'] != host:
-            continue
-        break
-    else:
-        raise exceptions.HypervisorNotFound
-
-    return hypervisor
+        if hypervisor.service['host'] == host:
+            return hypervisor
+    raise exceptions.HypervisorNotFound
 
 
 def _make_nova_client(cfg):

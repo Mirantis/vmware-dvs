@@ -13,11 +13,10 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
+from oslo_log import log
 from neutron.common import constants as n_const
 from neutron.extensions import portbindings
 from neutron.i18n import _LI, _
-from neutron.openstack.common import log
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api
 

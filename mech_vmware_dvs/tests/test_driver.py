@@ -44,8 +44,8 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         self.dvs = mock.Mock()
         self.driver.network_map = {'physnet1': self.dvs}
 
-    @mock.patch('neutron.plugins.ml2.drivers.mech_vmware_dvs.util'
-                '.create_network_map_from_config', return_value='network_map')
+    @mock.patch('mech_vmware_dvs.util.create_network_map_from_config',
+                return_value='network_map')
     def test_initialize(self, m):
         self.driver.initialize()
         m.assert_called_once_with(config.CONF.ml2_vmware)
@@ -110,9 +110,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         except Exception:
             self.fail('Should not throw any exceptions')
 
-    @mock.patch(
-        'neutron.plugins.ml2.drivers.mech_vmware_dvs.compute_util'
-        '.get_hypervisors_by_host')
+    @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
     def test_update_port_postcommit(self, hypervisor_by_host):
         hypervisor_by_host.return_value = mock.Mock(
             hypervisor_type=VALID_HYPERVISOR_TYPE)
@@ -123,8 +121,8 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
             self.dvs.switch_port_blocked_state.call_args_list,
             [mock.call(port_context.current)])
 
-    @mock.patch('neutron.plugins.ml2.drivers.mech_vmware_dvs.driver'
-                '.VMwareDVSMechanismDriver._is_port_belong_to_vmware')
+    @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
+                '._is_port_belong_to_vmware')
     def test_update_port_postcommit_invalid_port(self, is_valid_port):
         is_valid_port.return_value = False
 
@@ -133,10 +131,10 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         self.assertTrue(is_valid_port.called)
         self.assertFalse(self.dvs.switch_port_blocked_state.called)
 
-    @mock.patch('neutron.plugins.ml2.drivers.mech_vmware_dvs.driver'
-                '.VMwareDVSMechanismDriver._is_port_belong_to_vmware')
-    @mock.patch('neutron.plugins.ml2.drivers.mech_vmware_dvs.driver'
-                '.VMwareDVSMechanismDriver._lookup_dvs_for_context')
+    @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
+                '._is_port_belong_to_vmware')
+    @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
+                '._lookup_dvs_for_context')
     def test_update_port_postcommit_uncontrolled_dvs(
             self, is_valid_dvs, is_valid_port):
         is_valid_dvs.side_effect = exceptions.NoDVSForPhysicalNetwork(
@@ -149,9 +147,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         self.assertTrue(is_valid_dvs.called)
         self.assertFalse(self.dvs.switch_port_blocked_state.called)
 
-    @mock.patch(
-        'neutron.plugins.ml2.drivers.mech_vmware_dvs.compute_util'
-        '.get_hypervisors_by_host')
+    @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
     def test_bind_port(self, get_hypervisor):
         context = self._create_port_context()
         get_hypervisor.return_value = mock.Mock(
@@ -170,9 +166,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
                     self.driver.vif_type, self.driver.vif_details,
                     status='ACTIVE'))
 
-    @mock.patch(
-        'neutron.plugins.ml2.drivers.mech_vmware_dvs.compute_util'
-        '.get_hypervisors_by_host')
+    @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
     def test__is_port_belong_to_vmware__unbinded_port(self, get_hypervisor):
         context = self._create_port_context()
         port = context.current
@@ -181,10 +175,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         result = self.driver._is_port_belong_to_vmware(context.current)
         self.assertFalse(result)
 
-
-    @mock.patch(
-        'neutron.plugins.ml2.drivers.mech_vmware_dvs.compute_util'
-        '.get_hypervisors_by_host')
+    @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
     def test__is_port_belong_to_vmware__invalid_hypervisor(
             self, get_hypervisor):
         context = self._create_port_context()
@@ -194,9 +185,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         result = self.driver._is_port_belong_to_vmware(context.current)
         self.assertFalse(result)
 
-    @mock.patch(
-        'neutron.plugins.ml2.drivers.mech_vmware_dvs.compute_util'
-        '.get_hypervisors_by_host')
+    @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
     def test__is_port_belong_to_vmware__not_found(self, get_hypervisor):
         get_hypervisor.side_effect = exceptions.HypervisorNotFound
         context = self._create_port_context()
