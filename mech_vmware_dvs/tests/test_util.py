@@ -1,5 +1,4 @@
-# Copyright 2010-2011 OpenStack Foundation
-# Copyright 2012-2013 IBM Corp.
+# Copyright 2015 Mirantis, Inc.
 # All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
