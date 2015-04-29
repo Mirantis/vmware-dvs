@@ -15,7 +15,7 @@
 from oslo_log import log
 from neutron.common import constants as n_const
 from neutron.extensions import portbindings
-from neutron.i18n import _LI, _
+from neutron.openstack.common.gettextutils import _LI, _
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api
 

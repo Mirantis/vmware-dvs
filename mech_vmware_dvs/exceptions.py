@@ -14,7 +14,7 @@
 #    under the License.
 
 from neutron.common import exceptions
-from neutron.i18n import _
+from neutron.openstack.common.gettextutils import _
 
 
 class VMWareDVSException(exceptions.NeutronException):
