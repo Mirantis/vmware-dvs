@@ -14,6 +14,8 @@
 #    under the License.
 
 import re
+import six
+import abc
 
 from oslo_log import log
 from oslo_vmware import api
@@ -120,7 +122,7 @@ class DVSController(object):
         if port_settings.blocked.value != state:
             builder = SpecBuilder(self.connection)
 
-            port_settings = builder.port_config()
+            port_settings = builder.port_setting()
             port_settings.blocked = builder.blocked(state)
 
             update_spec = builder.port_config_spec(
@@ -136,8 +138,8 @@ class DVSController(object):
             self.connection.wait_for_task(update_task)
 
     def _build_pg_create_spec(self, name, vlan_tag, blocked):
-        builder = SpecBuilder(self.connection)
-        port = builder.port_config()
+        builder = SpecBuilder(self.connection.vim.client.factory)
+        port = builder.port_setting()
         port.vlan = builder.vlan(vlan_tag)
         port.blocked = builder.blocked(blocked)
         pg = builder.pg_config(port)
@@ -151,7 +153,7 @@ class DVSController(object):
 
     def _build_pg_update_spec(self, config_version, blocked):
         builder = SpecBuilder(self.connection)
-        port = builder.port_config()
+        port = builder.port_setting()
         port.blocked = builder.blocked(blocked)
         pg = builder.pg_config(port)
         pg.configVersion = config_version
@@ -311,20 +313,46 @@ class DVSController(object):
         return [obj for obj in results
                 if obj._type == type_value]
 
+    def _get_ports_for_pg(self, pg_name):
+        pg = self._get_pg_by_name(pg_name)
+        return self.connection.invoke_api(
+            vim_util, 'get_object_property',
+            self.connection.vim, pg, 'portKeys')[0]
+
+    def set_port_rules(self, port_key, rules):
+        builder = SpecBuilder(self.connection.vim.client.factory)
+        port_info = self._get_port_info(port_key)
+        port_config = builder.port_config(port_key, rules)
+        port_config.configVersion = port_info['config']['configVersion']
+        dvs = self._get_dvs()
+        task = self.connection.invoke_api(
+            self.connection.vim,
+            'ReconfigureDVPort_Task',
+            dvs, port=[port_config]
+        )
+        result = self.connection.wait_for_task(task)
+
+    def _get_port_info(self, port_key):
+        """pg - ManagedObjectReference of Port Group"""
+        builder = SpecBuilder(self.connection.vim.client.factory)
+        criteria = builder.port_criteria(port_key)
+        dvs = self._get_dvs()
+        return self.connection.invoke_api(
+            self.connection.vim,
+            'FetchDVPorts',
+            dvs, criteria=criteria)[0]
+
 
 class SpecBuilder(object):
     """Builds specs for vSphere API calls"""
 
-    def __init__(self, connection):
-        self.factory = connection.vim.client.factory
+    def __init__(self, spec_factory):
+        self.factory = spec_factory
 
     def pg_config(self, default_port_config):
-        spec = self.factory.create('ns0:DVPortgroupConfigSpec')
+        spec = self.factory.create('ns0:DVPortgroupConfig')
         spec.defaultPortConfig = default_port_config
         return spec
-
-    def port_config(self):
-        return self.factory.create('ns0:VMwareDVSPortSetting')
 
     def port_config_spec(self, version, config):
         spec = self.factory.create('ns0:DVPortConfigSpec')
@@ -334,6 +362,71 @@ class SpecBuilder(object):
 
     def port_lookup_criteria(self):
         return self.factory.create('ns0:DistributedVirtualSwitchPortCriteria')
+
+    def port_setting(self):
+        return self.factory.create('ns0:VMwareDVSPortSetting')
+
+    def port_config(self, port_key, sg_rules):
+        rules = []
+        for sgr in sg_rules:
+            if sgr['direction'] == 'ingress':
+                rule = IngressRule(self.factory,
+                                   sgr['ethertype'],
+                                   sgr['protocol'])
+            else:
+                rule = EgressRule(self.factory,
+                                  sgr['ethertype'],
+                                  sgr['protocol'])
+            # rule.port_range(sgr['port_range_min'], sgr['port_range_max'])
+            rule.cidr(sgr['remote_ip_prefix'])
+            rules.append(rule.build())
+        traffic_ruleset = self.factory.create('ns0:DvsTrafficRuleset')
+        traffic_ruleset.enabled = '1'
+        traffic_ruleset.rules = rules
+        rule = IngressRule(self.factory, None, 'tcp')
+        r = rule.build()
+        r.description = 'description'
+        r.sequence = '1'
+        traffic_ruleset.rules = [r]
+        filter_config = self.factory.create('ns0:DvsTrafficFilterConfig')
+        filter_config.inherited = '0'
+        filter_config.trafficRuleset = traffic_ruleset
+        filter_policy = self.factory.create('ns0:DvsFilterPolicy')
+        filter_policy.filterConfig = [filter_config]
+        filter_policy.inherited = '0'
+        setting = self.factory.create('ns0:VMwareDVSPortSetting')
+        setting.filterPolicy = filter_policy
+
+        spec = self.factory.create('ns0:DVPortConfigSpec')
+        spec.operation = 'edit'
+        spec.setting = setting
+        spec.key = port_key
+        return spec
+
+    def port_range(self, start, end):
+        if start == end:
+            result = self.factory.create('ns0:DvsSingleIpPort')
+            result.portNumber = start
+        else:
+            result = self.factory.create('ns0:DvsIpPortRange')
+            result.startPortNumber = start
+            result.endPortNumber = end
+        return result
+
+    def mac_rule(self):
+        qualifier = self.factory.create('ns0:DvsMacNetworkRuleQualifier')
+        return qualifier
+
+    def traffic_rule(self):
+        qualifier = self.factory.create(
+            'ns0:DvsSystemTrafficNetworkRuleQualifier')
+        return qualifier
+
+    def port_criteria(self, port_key):
+        criteria = self.factory.create(
+            'ns0:DistributedVirtualSwitchPortCriteria')
+        criteria.portKey = port_key
+        return criteria
 
     def vlan(self, vlan_tag):
         spec_ns = 'ns0:VmwareDistributedVirtualSwitchVlanIdSpec'
@@ -352,6 +445,91 @@ class SpecBuilder(object):
             spec.inherited = '1'
             spec.value = 'false'
         return spec
+
+
+@six.add_metaclass(abc.ABCMeta)
+class TrafficRuleBuilder(object):
+    # protocol number according to RFC 1700
+    PROTOCOL = {'icmp': 1,
+                'tcp': 6,
+                'udp': 17}
+    direction = None
+
+    def __init__(self, spec_factory, ethertype, protocol):
+        self.factory = spec_factory
+        self.ethertype = ethertype
+
+        self.rule = self.factory.create('ns0:DvsTrafficRule')
+        self.rule.action = self.factory.create(
+            'ns0:DvsDropNetworkRuleAction')
+        self.rule.action = ''
+        self.rule.direction = self.direction
+
+        self.ip_qualifier = self.factory.create(
+            'ns0:DvsIpNetworkRuleQualifier'
+        )
+        self.ip_qualifier.sourceAddress = self._cidr_spec('255.255.255.255/0')
+        self.ip_qualifier.destinationAddress = self._cidr_spec('255.255.255.255/0')
+
+        int_exp = self.factory.create('ns0:IntExpression')
+        int_exp.value = self.PROTOCOL.get(protocol, None)
+        int_exp.negate = 'false'
+        self.ip_qualifier.protocol = int_exp
+
+    def build(self):
+        self.rule.qualifier = [self.ip_qualifier]
+        return self.rule
+
+    @abc.abstractmethod
+    def port_range(self, start, end):
+        pass
+
+    @abc.abstractmethod
+    def cidr(self, cidr):
+        pass
+
+    def _port_range_spec(self, start, end):
+        if start == end:
+            result = self.factory.create('ns0:DvsSingleIpPort')
+            result.portNumber = start
+        else:
+            result = self.factory.create('ns0:DvsIpPortRange')
+            result.startPortNumber = start
+            result.endPortNumber = end
+        return result
+
+    def _cidr_spec(self, cidr):
+        ip, mask = cidr.split('/')
+        result = self.factory.create('ns0:IpRange')
+        result.addressPrefix = ip
+        result.prefixLength = mask
+        return result
+
+
+class IngressRule(TrafficRuleBuilder):
+    direction = 'incomingPackets'
+
+    def port_range(self, start, end):
+        if start:
+            self.ip_qualifier.destinationIpPort = self._port_range_spec(start,
+                                                                        end)
+
+    def cidr(self, cidr):
+        if cidr:
+            self.ip_qualifier.destinationAddress = self._cidr_spec(cidr)
+
+
+class EgressRule(TrafficRuleBuilder):
+
+    direction = 'outgoingPackets'
+
+    def port_range(self, start, end):
+        if start:
+            self.ip_qualifier.sourceIpPort = self._port_range_spec(start, end)
+
+    def cidr(self, cidr):
+        if cidr:
+            self.ip_qualifier.sourceAddress - self._cidr_spec(cidr)
 
 
 def create_network_map_from_config(config):

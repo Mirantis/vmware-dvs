@@ -37,6 +37,72 @@ fake_port = {
     'admin_state_up': True,
     'device_id': '_dummy_server_id_'}
 
+fake_security_group = {'description': u'Default security group',
+                       'id': u'9961d207-c96c-4907-be9e-d979d5353885',
+                       'name': u'default',
+                       'security_group_rules': [
+                           {'direction': u'ingress',
+                            'ethertype': u'IPv4',
+                            'id': u'0e78cacc-ef5c-45ac-8a11-f9ce9138dce5',
+                            'port_range_max': None,
+                            'port_range_min': None,
+                            'protocol': None,
+                            'remote_group_id': u'9961d207-c96c-4907-be9e-d979d5353885',
+                            'remote_ip_prefix': None,
+                            'security_group_id': u'9961d207-c96c-4907-be9e-d979d5353885',
+                            'tenant_id': u'9d2c4b37b9474bcbbddacc5f03fb89c4'},
+                           {'direction': u'ingress',
+                            'ethertype': u'IPv6',
+                            'id': u'35e8a8e2-8410-4fae-ad21-26dd3f403b92',
+                            'port_range_max': None,
+                            'port_range_min': None,
+                            'protocol': None,
+                            'remote_group_id': u'9961d207-c96c-4907-be9e-d979d5353885',
+                            'remote_ip_prefix': None,
+                            'security_group_id': u'9961d207-c96c-4907-be9e-d979d5353885',
+                            'tenant_id': u'9d2c4b37b9474bcbbddacc5f03fb89c4'},
+                           {'direction': u'egress',
+                            'ethertype': u'IPv6',
+                            'id': u'52a93b8c-25aa-4829-9a6b-0b7ec3f7f89c',
+                            'port_range_max': None,
+                            'port_range_min': None,
+                            'protocol': None,
+                            'remote_group_id': None,
+                            'remote_ip_prefix': None,
+                            'security_group_id': u'9961d207-c96c-4907-be9e-d979d5353885',
+                            'tenant_id': u'9d2c4b37b9474bcbbddacc5f03fb89c4'},
+                           {'direction': u'ingress',
+                            'ethertype': u'IPv4',
+                            'id': u'625b0755-30e0-4ff6-b3e4-d0f21c5c09e2',
+                            'port_range_max': 22L,
+                            'port_range_min': 22L,
+                            'protocol': u'tcp',
+                            'remote_group_id': None,
+                            'remote_ip_prefix': u'0.0.0.0/0',
+                            'security_group_id': u'9961d207-c96c-4907-be9e-d979d5353885',
+                            'tenant_id': u'9d2c4b37b9474bcbbddacc5f03fb89c4'},
+                           {'direction': u'egress',
+                            'ethertype': u'IPv4',
+                            'id': u'bd00ea5d-91ea-4a39-80ca-45ce73a3bc6f',
+                            'port_range_max': None,
+                            'port_range_min': None,
+                            'protocol': None,
+                            'remote_group_id': None,
+                            'remote_ip_prefix': None,
+                            'security_group_id': u'9961d207-c96c-4907-be9e-d979d5353885',
+                            'tenant_id': u'9d2c4b37b9474bcbbddacc5f03fb89c4'},
+                           {'direction': u'ingress',
+                            'ethertype': u'IPv4',
+                            'id': u'c7c11328-a8ae-42a3-b30e-9cd2ac1cbef5',
+                            'port_range_max': None,
+                            'port_range_min': None,
+                            'protocol': u'icmp',
+                            'remote_group_id': None,
+                            'remote_ip_prefix': u'0.0.0.0/0',
+                            'security_group_id': u'9961d207-c96c-4907-be9e-d979d5353885',
+                            'tenant_id': u'9d2c4b37b9474bcbbddacc5f03fb89c4'}],
+                       'tenant_id': u'9d2c4b37b9474bcbbddacc5f03fb89c4'}
+
 
 class DVSControllerBaseTestCase(base.BaseTestCase):
     """Base of all DVSController tests"""
@@ -314,7 +380,8 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
             if namespace in ('ns0:DVPortgroupConfigSpec',
                              'ns0:VMwareDVSPortSetting',
                              'ns0:VmwareDistributedVirtualSwitchVlanIdSpec',
-                             'ns0:BoolPolicy'):
+                             'ns0:BoolPolicy',
+                             'ns0:DVPortgroupConfig'):
                 return mock.Mock(name=namespace)
             else:
                 self.fail('Unexpected call. Namespace: %s' % namespace)
@@ -439,7 +506,8 @@ class DVSControllerNetworkUpdateTestCase(DVSControllerBaseTestCase):
         def create_side_effect(namespace):
             if namespace in ('ns0:BoolPolicy',
                              'ns0:VMwareDVSPortSetting',
-                             'ns0:DVPortgroupConfigSpec'):
+                             'ns0:DVPortgroupConfigSpec',
+                             ):
                 return mock.Mock(name=namespace)
             else:
                 self.fail('Unexpected call. Namespace: %s' % namespace)
@@ -491,6 +559,26 @@ class DVSControllerNetworkUpdateTestCase(DVSControllerBaseTestCase):
         connection = mock.Mock(invoke_api=invoke_api, vim=vim)
         return connection
 
+class DVPortTestCase(base.BaseTestCase):
+    def setUp(self):
+        super(DVPortTestCase, self).setUp()
+        CONF.set_override('vsphere_hostname', '69.50.224.75', 'ml2_vmware')
+        CONF.set_override('vsphere_login', 'root', 'ml2_vmware')
+        CONF.set_override('vsphere_password', 'Rohdee6w', 'ml2_vmware')
+        CONF.set_override('network_maps', ['physnet1:dvSwitch'],
+                          'ml2_vmware')
+        CONF.set_override('task_poll_interval', '5.0', 'ml2_vmware')
+        CONF.set_override('api_retry_count', '10', 'ml2_vmware')
+        network_map = util.create_network_map_from_config(CONF.ml2_vmware)
+        self.controller = network_map['physnet1']
+
+    def test_add_simple_traffic_rule_to_port(self):
+        # pg_name = 'andrew-04584d94-d708-4ff9-94fb-a50df9db3b5f'
+        # result = self.controller._get_ports_for_pg(pg_name)
+        rules = fake_security_group['security_group_rules']
+        # port_key = result[0]
+        port_key = '1024'
+        self.controller.set_port_rules(port_key, rules)
 
 class DVSControllerNetworkDeletionTestCase(DVSControllerBaseTestCase):
     def test_delete_network(self):
