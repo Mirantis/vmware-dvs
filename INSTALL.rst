@@ -5,14 +5,14 @@ Installation
 Installation of vmware-dvs driver
 =================================
 vmware-dvs driver is installed as a plugin for neutron.
-You cen just install it via pip. For example:
+You can just install it via pip:
 
 .. code:: bash
 
   $ pip install git+git://github.com/Mirantis/vmware-dvs.git
 
 If you want version compatible with mos v.6.1 (neutron v2014.2.2).
-You have to install vmware-dvs from branch "mos-6.1". Example:
+You have to install vmware-dvs from branch "mos-6.1":
 
 .. code:: bash
 
