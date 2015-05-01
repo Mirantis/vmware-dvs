@@ -1,22 +1,41 @@
-..
-
-================================
+============
 Installation
-================================
+============
 
-Usage of the driver is determined by manual creation of DVS switches on VMware vSphere infrastructure first.
+Installation of vmware-dvs driver
+=================================
+vmware-dvs driver is installed as a plugin for neutron.
+You cen just install it via pip. For example:
+
+.. code:: bash
+
+  $ pip install git+git://github.com/Mirantis/vmware-dvs.git
+
+If you want version compatible with mos v.6.1 (neutron v2014.2.).
+You have to install vmware-dvs from branch "mos-6.1". Example:
+
+.. code:: bash
+
+  $ pip install git+git://github.com/Mirantis/vmware-dvs.git@mos-6.1
+
+VSphere configuration
+=====================
+
+Usage of the driver is determined by manual creation of DVS switches on
+VMware vSphere infrastructure first.
 
 Neutron configuration
 =====================
 
-[ml2_type_vlan]
-network_vlan_ranges = physnet1:<VLAN_RANGE>
+To enable vmware-dvs driver you have to update neutron configuration like this:
 
-[ml2_vmware]
-vsphere_hostname=<vCenter_ip_address>
-vsphere_login=<vCenter_admin_user>
-vsphere_password=<vCenter_admin_password>
+.. code:: ini
 
-# The mappings between physical networks and dvs, i.e.
-network_maps = physnet1:dvSwitch1,physnet2:dvSwitch2,...
+  # /etc/neutron/plugins/ml2/ml2_conf.ini
 
+  [ml2]
+  mechanism_drivers = openvswitch,vmware_dvs
+
+For further configuration options that needs to be set in
+/etc/neutron/plugins/ml2/ml2_conf.ini please read etc/ml2_conf_vmware_dvs.ini
+in this repository.
