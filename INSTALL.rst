@@ -11,7 +11,7 @@ You cen just install it via pip. For example:
 
   $ pip install git+git://github.com/Mirantis/vmware-dvs.git
 
-If you want version compatible with mos v.6.1 (neutron v2014.2.).
+If you want version compatible with mos v.6.1 (neutron v2014.2.2).
 You have to install vmware-dvs from branch "mos-6.1". Example:
 
 .. code:: bash
