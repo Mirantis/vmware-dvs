@@ -381,7 +381,8 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
                              'ns0:VMwareDVSPortSetting',
                              'ns0:VmwareDistributedVirtualSwitchVlanIdSpec',
                              'ns0:BoolPolicy',
-                             'ns0:DVPortgroupConfig'):
+                             'ns0:DVPortgroupConfig',
+                             'ns0:DVPortgroupPolicy'):
                 return mock.Mock(name=namespace)
             else:
                 self.fail('Unexpected call. Namespace: %s' % namespace)
@@ -559,26 +560,6 @@ class DVSControllerNetworkUpdateTestCase(DVSControllerBaseTestCase):
         connection = mock.Mock(invoke_api=invoke_api, vim=vim)
         return connection
 
-class DVPortTestCase(base.BaseTestCase):
-    def setUp(self):
-        super(DVPortTestCase, self).setUp()
-        CONF.set_override('vsphere_hostname', '69.50.224.75', 'ml2_vmware')
-        CONF.set_override('vsphere_login', 'root', 'ml2_vmware')
-        CONF.set_override('vsphere_password', 'Rohdee6w', 'ml2_vmware')
-        CONF.set_override('network_maps', ['physnet1:dvSwitch'],
-                          'ml2_vmware')
-        CONF.set_override('task_poll_interval', '5.0', 'ml2_vmware')
-        CONF.set_override('api_retry_count', '10', 'ml2_vmware')
-        network_map = util.create_network_map_from_config(CONF.ml2_vmware)
-        self.controller = network_map['physnet1']
-
-    def test_add_simple_traffic_rule_to_port(self):
-        # pg_name = 'andrew-04584d94-d708-4ff9-94fb-a50df9db3b5f'
-        # result = self.controller._get_ports_for_pg(pg_name)
-        rules = fake_security_group['security_group_rules']
-        # port_key = result[0]
-        port_key = '1024'
-        self.controller.set_port_rules(port_key, rules)
 
 class DVSControllerNetworkDeletionTestCase(DVSControllerBaseTestCase):
     def test_delete_network(self):
