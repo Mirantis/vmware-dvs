@@ -25,6 +25,8 @@ from mech_vmware_dvs import config
 from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util
 
+from eventlet.semaphore import Semaphore
+
 CONF = config.CONF
 LOG = log.getLogger(__name__)
 
@@ -37,6 +39,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         portbindings.CAP_PORT_FILTER: False}
 
     def initialize(self):
+        self.bind_semaphore = Semaphore()
         self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)
         self._bound_ports = set()
 
@@ -99,6 +102,14 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
 
         self._update_security_groups(dvs, context, force=force)
 
+    def delete_port_postcommit(self, context):
+        import pdb; pdb.set_trace()
+        try:
+            self._bound_ports.remove(
+                context.current['binding:vif_details']['dvs_port_key'])
+        except KeyError:
+            pass
+
     def _update_admin_state_up(self, dvs, context, force):
         current_admin_state_up = context.current['admin_state_up']
         if force:
@@ -114,6 +125,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         current_sec_groups = context.current['security_groups']
         if force:
             perform = True
+            original_sec_groups = []
         else:
             original_sec_groups = context.original['security_groups']
             perform = current_sec_groups != original_sec_groups
@@ -124,6 +136,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             )
             for p in ports:
                 p['security_group_rules'] = []
+                if p['id'] == context.current['id']:
+                    p['security_groups'] = current_sec_groups
             port_dict = {p['id']: p for p in ports}
             sg_info = context._plugin.security_group_info_for_ports(
                 context._plugin_context,
@@ -137,6 +151,11 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                         # no remote_group_id so pass
                         pass
 
+            for sg in original_sec_groups:
+                if sg not in current_sec_groups:
+                    #TODO(askupien): check if sg has remote_group_id
+                    sg_to_update.add(sg)
+
             devices = sg_info['devices']
             security_groups=sg_info['security_groups']
             sg_member_ips = sg_info['sg_member_ips']
@@ -147,42 +166,49 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                                 sg_to_update & set(port['security_groups'])):
                     ports_to_update.add(id)
 
-            for sec_group_id in current_sec_groups:
-                for rule in security_groups[sec_group_id]:
-                    if 'remote_group_id' in rule:
-                        ip_set = sg_member_ips[rule['remote_group_id']][
-                                rule['ethertype']]
-                        rule['ip_set'] = ip_set
+            for sec_group_id in sg_to_update:
+                try:
+                    rules = security_groups[sec_group_id]
+                except KeyError:
+                    # security group do not have VMs
+                    pass
+                else:
+                    for rule in rules:
+                        if 'remote_group_id' in rule:
+                            ip_set = sg_member_ips[rule['remote_group_id']][
+                                    rule['ethertype']]
+                            rule['ip_set'] = ip_set
 
             ports = []
             for port_id in ports_to_update:
                 port = devices[port_id]
                 for sec_group_id in port['security_groups']:
                     port['security_group_rules'].extend(
-                        security_groups[sec_group_id])
-                    ports.append(port)
+                            security_groups[sec_group_id])
+                ports.append(port)
 
             dvs.update_port_rules(ports)
 
     def bind_port(self, context):
         if not self._is_port_belong_to_vmware(context.current):
             return
-        bound_ports = self._get_bound_ports(context)
+        with self.bind_semaphore:
+            bound_ports = self._get_bound_ports(context)
 
-        for segment in context.network.network_segments:
-            dvs = self._lookup_dvs_for_context(context.network)
-            port_key = dvs.get_unbound_port_key(
-                context.network.current,
-                bound_ports
-            )
-            vif_details = dict(self.vif_details)
-            vif_details['dvs_port_key'] = port_key
-            context.set_binding(
-                segment[driver_api.ID],
-                self.vif_type, vif_details,
-                status=n_const.PORT_STATUS_ACTIVE)
-            bound_ports.add(port_key)
-            self._bound_ports = bound_ports
+            for segment in context.network.network_segments:
+                dvs = self._lookup_dvs_for_context(context.network)
+                port_key = dvs.get_unbound_port_key(
+                    context.network.current,
+                    bound_ports
+                )
+                vif_details = dict(self.vif_details)
+                vif_details['dvs_port_key'] = port_key
+                context.set_binding(
+                    segment[driver_api.ID],
+                    self.vif_type, vif_details,
+                    status=n_const.PORT_STATUS_ACTIVE)
+                bound_ports.add(port_key)
+                self._bound_ports = bound_ports
 
     def _lookup_dvs_for_context(self, network_context):
         segment = network_context.network_segments[0]
