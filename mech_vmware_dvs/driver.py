@@ -103,7 +103,6 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         self._update_security_groups(dvs, context, force=force)
 
     def delete_port_postcommit(self, context):
-        import pdb; pdb.set_trace()
         try:
             self._bound_ports.remove(
                 context.current['binding:vif_details']['dvs_port_key'])
