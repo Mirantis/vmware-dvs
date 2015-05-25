@@ -29,9 +29,6 @@ from mech_vmware_dvs import exceptions
 
 LOG = log.getLogger(__name__)
 
-# max ports number that can be created on single DVS
-# TODO(dbogun): switch to portgroup with autoExpand set to True
-DVS_PORTS_NUMBER = 128
 DVS_PORTGROUP_NAME_MAXLEN = 80
 VM_NETWORK_DEVICE_TYPES = [
     'VirtualE1000', 'VirtualE1000e', 'VirtualPCNet32',
@@ -82,7 +79,7 @@ class DVSController(object):
                 # overwritten on specific port.
                 pg_spec = self._build_pg_update_spec(
                     pg_config_info.configVersion,
-                    blocked)
+                    blocked=blocked)
                 pg_update_task = self.connection.invoke_api(
                     self.connection.vim,
                     'ReconfigureDVPortgroup_Task',
@@ -149,18 +146,23 @@ class DVSController(object):
         port.blocked = builder.blocked(blocked)
         pg = builder.pg_config(port)
         pg.name = name
-        pg.numPorts = DVS_PORTS_NUMBER
+        pg.numPorts = 0
 
         # Equivalent of vCenter static binding type.
         pg.type = 'earlyBinding'
         pg.description = 'Managed By Neutron'
         return pg
 
-    def _build_pg_update_spec(self, config_version, blocked):
-        builder = SpecBuilder(self.connection)
+    def _build_pg_update_spec(self, config_version,
+                              blocked=None,
+                              ports_number=None):
+        builder = SpecBuilder(self.connection.vim.client.factory)
         port = builder.port_setting()
-        port.blocked = builder.blocked(blocked)
+        if blocked is not None:
+            port.blocked = builder.blocked(blocked)
         pg = builder.pg_config(port)
+        if ports_number:
+            pg.numPorts = ports_number
         pg.configVersion = config_version
         return pg
 
@@ -351,13 +353,19 @@ class DVSController(object):
     def get_unbound_port_key(self, network, bound_ports):
         """
         returns first empty port in portgroup
-        If there is now empty port, than we increase ports number in portgroup
+        If there is now empty port, than we double ports number in portgroup
         """
-        builder = SpecBuilder(self.connection.vim.client.factory)
         net_name = self._get_net_name(network)
-
         pg = self._get_pg_by_name(net_name)
-        criteria = builder.port_criteria(port_group_key=pg.value)
+        try:
+            return self._lookup_unbound_port(pg, bound_ports)
+        except exceptions.UnboundPortNotFound:
+            self._increase_ports_on_portgroup(pg)
+            return self._lookup_unbound_port(pg, bound_ports)
+
+    def _lookup_unbound_port(self, port_group, bound_ports):
+        builder = SpecBuilder(self.connection.vim.client.factory)
+        criteria = builder.port_criteria(port_group_key=port_group.value)
         dvs = self._get_dvs()
 
         ports = self.connection.invoke_api(
@@ -367,6 +375,18 @@ class DVSController(object):
         for port in ports:
             if port.key not in bound_ports:
                 return port.key
+        raise exceptions.UnboundPortNotFound()
+
+    def _increase_ports_on_portgroup(self, port_group):
+        pg_info = self._get_config_by_ref(port_group)
+        ports_number = pg_info.numPorts * 2 if pg_info.numPorts else 1
+        pg_spec = self._build_pg_update_spec(
+            pg_info.configVersion, ports_number=ports_number)
+        pg_update_task = self.connection.invoke_api(
+            self.connection.vim,
+            'ReconfigureDVPortgroup_Task',
+            port_group, spec=pg_spec)
+        self.connection.wait_for_task(pg_update_task)
 
     def _get_port_info(self, port_key):
         """pg - ManagedObjectReference of Port Group"""
