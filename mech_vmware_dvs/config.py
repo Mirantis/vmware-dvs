@@ -14,7 +14,7 @@
 #    under the License.
 
 
-from oslo_config import cfg
+from oslo.config import cfg
 
 vmware_opts = [
     cfg.StrOpt(
