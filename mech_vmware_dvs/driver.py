@@ -147,7 +147,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                     try:
                         sg_to_update.add(rule['remote_group_id'])
                     except KeyError:
-                        # no remote_group_id so pass
+                        # no remote_group_id
                         pass
 
             for sg in original_sec_groups:
@@ -185,7 +185,6 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                     port['security_group_rules'].extend(
                             security_groups[sec_group_id])
                 ports.append(port)
-
             dvs.update_port_rules(ports)
 
     def bind_port(self, context):

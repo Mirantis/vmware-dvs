@@ -15,17 +15,16 @@
 
 import re
 import abc
-from eventlet.semaphore import Semaphore
 
+from eventlet.semaphore import Semaphore
 import six
 from oslo_log import log
 from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
-
 from neutron.i18n import _LI
-from mech_vmware_dvs import exceptions
 
+from mech_vmware_dvs import exceptions
 
 LOG = log.getLogger(__name__)
 
@@ -332,6 +331,7 @@ class DVSController(object):
     def update_port_rules(self, ports):
         builder = SpecBuilder(self.connection.vim.client.factory)
         port_config_list = []
+        # import pdb; pdb.set_trace()
         with self.modify_port_semaphore:
             for port in ports:
                 port_key = port['binding:vif_details']['dvs_port_key']
@@ -435,9 +435,12 @@ class SpecBuilder(object):
         for i, rule_info in enumerate(sg_rules):
             if 'ip_set' in rule_info:
                 for ip in rule_info['ip_set']:
-                    rules.append(self._create_rule(rule_info, i*10, ip))
+                    rule_info['direction'] = 'ingress'
+                    rules.append(self._create_rule(rule_info, i * 10, ip))
+                    rule_info['direction'] = 'egress'
+                    rules.append(self._create_rule(rule_info, i * 10 + 5, ip))
             else:
-                rules.append(self._create_rule(rule_info, i*10))
+                rules.append(self._create_rule(rule_info, i * 10))
 
         traffic_ruleset = self.factory.create('ns0:DvsTrafficRuleset')
         traffic_ruleset.enabled = '1'
@@ -458,20 +461,26 @@ class SpecBuilder(object):
         spec.key = port_key
         return spec
 
-    def _create_rule(self, rule_info, sequence,  ip=None):
+    def _create_rule(self, rule_info, sequence, ip=None):
+        rule_params = {
+            'spec_factory': self.factory,
+            'ethertype': rule_info['ethertype'],
+            'protocol': rule_info.get('protocol'),
+            'sequence': sequence
+        }
         if rule_info['direction'] == 'ingress':
-                rule = IngressRule(self.factory,
-                                   rule_info['ethertype'],
-                                   rule_info.get('protocol'),
-                                   sequence)
+            rule = IngressRule(**rule_params)
+            rule.source_port_range(
+                rule_info.get('source_port_range_min'),
+                rule_info.get('source_port_range_max')
+            )
+            rule.cidr(rule_info.get('source_ip_prefix'))
+
         else:
-            rule = EgressRule(self.factory,
-                              rule_info['ethertype'],
-                              rule_info.get('protocol'),
-                              sequence)
+            rule = EgressRule(**rule_params)
+            rule.cidr(rule_info.get('dest_ip_prefix'))
         rule.port_range(rule_info.get('port_range_min'),
                         rule_info.get('port_range_max'))
-        rule.cidr(rule_info.get('source_ip_prefix'))
         rule.cidr(ip)
         return rule.build()
 
@@ -527,9 +536,10 @@ class TrafficRuleBuilder(object):
         any_ip = '0.0.0.0/0' if ethertype == 'IPv4' else '::/0'
         self.ip_qualifier.sourceAddress = self._cidr_spec(any_ip)
         self.ip_qualifier.destinationAddress = self._cidr_spec(any_ip)
+        self.protocol = protocol
         if protocol:
             int_exp = self.factory.create('ns0:IntExpression')
-            int_exp.value = self.PROTOCOL.get(protocol, None)
+            int_exp.value = self.PROTOCOL.get(protocol, protocol)
             int_exp.negate = 'false'
             self.ip_qualifier.protocol = int_exp
 
@@ -567,19 +577,33 @@ class TrafficRuleBuilder(object):
             result.prefixLength = mask
         return result
 
+    def _has_port(self, min_port):
+        if min_port:
+            if self.protocol == 'icmp':
+                LOG.info(_LI('Vmware dvs driver does not support '
+                             '"type" and "code" for ICMP protocol.'))
+                return False
+            else:
+                return True
+        else:
+            return False
 
 class IngressRule(TrafficRuleBuilder):
 
     direction = 'incomingPackets'
 
     def port_range(self, start, end):
-        if start:
+        if self._has_port(start):
             self.ip_qualifier.destinationIpPort = self._port_range_spec(start,
                                                                         end)
 
+    def source_port_range(self, start, end):
+        if start:
+            self.ip_qualifier.sourceIpPort = self._port_range_spec(start, end)
+
     def cidr(self, cidr):
         if cidr:
-            self.ip_qualifier.destinationAddress = self._cidr_spec(cidr)
+            self.ip_qualifier.sourceAddress = self._cidr_spec(cidr)
 
 
 class EgressRule(TrafficRuleBuilder):
@@ -587,12 +611,16 @@ class EgressRule(TrafficRuleBuilder):
     direction = 'outgoingPackets'
 
     def port_range(self, start, end):
+        if self._has_port(start):
+            self.ip_qualifier.sourceIpPort = self._port_range_spec(start, end)
+
+    def dest_port_range(self, start, end):
         if start:
             self.ip_qualifier.sourceIpPort = self._port_range_spec(start, end)
 
     def cidr(self, cidr):
         if cidr:
-            self.ip_qualifier.sourceAddress - self._cidr_spec(cidr)
+            self.ip_qualifier.destinationAddress = self._cidr_spec(cidr)
 
 
 def create_network_map_from_config(config):
