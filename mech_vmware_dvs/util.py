@@ -331,7 +331,6 @@ class DVSController(object):
     def update_port_rules(self, ports):
         builder = SpecBuilder(self.connection.vim.client.factory)
         port_config_list = []
-        # import pdb; pdb.set_trace()
         with self.modify_port_semaphore:
             for port in ports:
                 port_key = port['binding:vif_details']['dvs_port_key']

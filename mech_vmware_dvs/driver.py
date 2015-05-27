@@ -14,11 +14,15 @@
 #    under the License.
 
 from oslo_log import log
+from neutron.callbacks import events
+from neutron.callbacks import registry
+from neutron.callbacks import resources
 from neutron.common import constants as n_const
 from neutron.extensions import portbindings
 from neutron.i18n import _LI, _
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api
+
 
 from mech_vmware_dvs import compute_util
 from mech_vmware_dvs import config
@@ -29,6 +33,12 @@ from eventlet.semaphore import Semaphore
 
 CONF = config.CONF
 LOG = log.getLogger(__name__)
+
+def test_sg_update(*args, **kwargs):
+    import pdb; pdb.set_trace()
+
+def test_sgrule_create(*args, **kwargs):
+    import pdb; pdb.set_trace()
 
 
 class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
@@ -42,6 +52,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         self.bind_semaphore = Semaphore()
         self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)
         self._bound_ports = set()
+        registry.subscribe(test_sg_update, resources.SECURITY_GROUP, events.AFTER_UPDATE)
+        registry.subscribe(test_sgrule_create, resources.SECURITY_GROUP_RULE, events.AFTER_CREATE)
 
     def create_network_precommit(self, context):
         try:
