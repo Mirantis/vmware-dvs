@@ -37,11 +37,11 @@ VM_NETWORK_DEVICE_TYPES = [
 class DVSController(object):
     """Controls one DVS."""
 
+    modify_port_semaphore = Semaphore()
     def __init__(self, dvs, connection):
         self.connection = connection
         self.dvs_name = dvs
         self.dvs_ref = None
-        self.modify_port_semaphore = Semaphore()
 
     def create_network(self, network, segment):
         name = self._get_net_name(network)

@@ -14,10 +14,8 @@
 #    under the License.
 
 from oslo_log import log
-from neutron.callbacks import events
-from neutron.callbacks import registry
-from neutron.callbacks import resources
 from neutron.common import constants as n_const
+from neutron.common import rpc as n_rpc
 from neutron.extensions import portbindings
 from neutron.i18n import _LI, _
 from neutron.plugins.common import constants
@@ -34,12 +32,6 @@ from eventlet.semaphore import Semaphore
 CONF = config.CONF
 LOG = log.getLogger(__name__)
 
-def test_sg_update(*args, **kwargs):
-    import pdb; pdb.set_trace()
-
-def test_sgrule_create(*args, **kwargs):
-    import pdb; pdb.set_trace()
-
 
 class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
     """Ml2 Mechanism driver for vmware dvs."""
@@ -48,12 +40,13 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
     vif_details = {
         portbindings.CAP_PORT_FILTER: False}
 
+    bind_semaphore = Semaphore()
+    sg_semaphore = Semaphore()
+
     def initialize(self):
-        self.bind_semaphore = Semaphore()
         self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)
         self._bound_ports = set()
-        registry.subscribe(test_sg_update, resources.SECURITY_GROUP, events.AFTER_UPDATE)
-        registry.subscribe(test_sgrule_create, resources.SECURITY_GROUP_RULE, events.AFTER_CREATE)
+        self._notifier = n_rpc.get_notifier('network')
 
     def create_network_precommit(self, context):
         try:
@@ -111,8 +104,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             # until port are not bind to any VM it doesn't exist
             # so we can ignore status change
             pass
-
-        self._update_security_groups(dvs, context, force=force)
+        with self.sg_semaphore:
+            self._update_security_groups(dvs, context, force=force)
 
     def delete_port_postcommit(self, context):
         try:
