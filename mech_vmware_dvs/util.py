@@ -16,8 +16,8 @@
 import re
 import abc
 
-from eventlet.semaphore import Semaphore
 import six
+from oslo_concurrency import lockutils
 from oslo_log import log
 from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions
@@ -37,7 +37,6 @@ VM_NETWORK_DEVICE_TYPES = [
 class DVSController(object):
     """Controls one DVS."""
 
-    modify_port_semaphore = Semaphore()
     def __init__(self, dvs, connection):
         self.connection = connection
         self.dvs_name = dvs
@@ -104,28 +103,28 @@ class DVSController(object):
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
+    @lockutils.synchronized('vmware_dvs_bind_port', external=True)
     def switch_port_blocked_state(self, port, state=None):
         if state is None:
             state = not port['admin_state_up']
-        with self.modify_port_semaphore:
-            dvport = self._get_dvport(port)
-            port_settings = dvport.config.setting
+        dvport = self._get_dvport(port)
+        port_settings = dvport.config.setting
 
-            if port_settings.blocked.value != state:
-                builder = SpecBuilder(self.connection.vim.client.factory)
+        if port_settings.blocked.value != state:
+            builder = SpecBuilder(self.connection.vim.client.factory)
 
-                port_settings = builder.port_setting()
-                port_settings.blocked = builder.blocked(state)
+            port_settings = builder.port_setting()
+            port_settings.blocked = builder.blocked(state)
 
-                update_spec = builder.port_config_spec(
-                    dvport.config.configVersion, port_settings)
-                update_spec.operation = 'edit'
-                update_spec.key = dvport.key
-                update_spec = [update_spec]
-                update_task = self.connection.invoke_api(
-                    self.connection.vim, 'ReconfigureDVPort_Task',
-                    self._get_dvs(), port=update_spec)
-                self.connection.wait_for_task(update_task)
+            update_spec = builder.port_config_spec(
+                dvport.config.configVersion, port_settings)
+            update_spec.operation = 'edit'
+            update_spec.key = dvport.key
+            update_spec = [update_spec]
+            update_task = self.connection.invoke_api(
+                self.connection.vim, 'ReconfigureDVPort_Task',
+                self._get_dvs(), port=update_spec)
+            self.connection.wait_for_task(update_task)
 
     def _get_dvport(self, port):
         try:
@@ -328,26 +327,26 @@ class DVSController(object):
             vim_util, 'get_object_property',
             self.connection.vim, pg, 'portKeys')[0]
 
+    @lockutils.synchronized('vmware_dvs_bind_port', external=True)
     def update_port_rules(self, ports):
         builder = SpecBuilder(self.connection.vim.client.factory)
         port_config_list = []
-        with self.modify_port_semaphore:
-            for port in ports:
-                port_key = port['binding:vif_details']['dvs_port_key']
-                port_info = self._get_port_info(port_key)
-                port_config = builder.port_config(
-                    str(port_key),
-                    port['security_group_rules']
-                )
-                port_config.configVersion = port_info['config']['configVersion']
-                port_config_list.append(port_config)
-            dvs = self._get_dvs()
-            task = self.connection.invoke_api(
-                self.connection.vim,
-                'ReconfigureDVPort_Task',
-                dvs, port=port_config_list
+        for port in ports:
+            port_key = port['binding:vif_details']['dvs_port_key']
+            port_info = self._get_port_info(port_key)
+            port_config = builder.port_config(
+                str(port_key),
+                port['security_group_rules']
             )
-            return self.connection.wait_for_task(task)
+            port_config.configVersion = port_info['config']['configVersion']
+            port_config_list.append(port_config)
+        dvs = self._get_dvs()
+        task = self.connection.invoke_api(
+            self.connection.vim,
+            'ReconfigureDVPort_Task',
+            dvs, port=port_config_list
+        )
+        return self.connection.wait_for_task(task)
 
     def get_unbound_port_key(self, network, bound_ports):
         """

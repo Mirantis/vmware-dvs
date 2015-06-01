@@ -14,6 +14,7 @@
 #    under the License.
 
 from oslo_log import log
+from oslo_concurrency import lockutils
 from neutron.common import constants as n_const
 from neutron.common import rpc as n_rpc
 from neutron.extensions import portbindings
@@ -27,8 +28,6 @@ from mech_vmware_dvs import config
 from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util
 
-from eventlet.semaphore import Semaphore
-
 CONF = config.CONF
 LOG = log.getLogger(__name__)
 
@@ -39,9 +38,6 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
     vif_type = portbindings.VIF_TYPE_DVS
     vif_details = {
         portbindings.CAP_PORT_FILTER: False}
-
-    bind_semaphore = Semaphore()
-    sg_semaphore = Semaphore()
 
     def initialize(self):
         self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)
@@ -104,8 +100,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             # until port are not bind to any VM it doesn't exist
             # so we can ignore status change
             pass
-        with self.sg_semaphore:
-            self._update_security_groups(dvs, context, force=force)
+        self._update_security_groups(dvs, context, force=force)
 
     def delete_port_postcommit(self, context):
         try:
@@ -125,6 +120,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         if perform:
             dvs.switch_port_blocked_state(context.current)
 
+    @lockutils.synchronized('vmware_dvs_update_sg', external=True)
     def _update_security_groups(self, dvs, context, force):
         current_sec_groups = context.current['security_groups']
         if force:
@@ -192,26 +188,26 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                 ports.append(port)
             dvs.update_port_rules(ports)
 
+    @lockutils.synchronized('vmware_dvs_bind_port', external=True)
     def bind_port(self, context):
         if not self._is_port_belong_to_vmware(context.current):
             return
-        with self.bind_semaphore:
-            bound_ports = self._get_bound_ports(context)
+        bound_ports = self._get_bound_ports(context)
 
-            for segment in context.network.network_segments:
-                dvs = self._lookup_dvs_for_context(context.network)
-                port_key = dvs.get_unbound_port_key(
-                    context.network.current,
-                    bound_ports
-                )
-                vif_details = dict(self.vif_details)
-                vif_details['dvs_port_key'] = port_key
-                context.set_binding(
-                    segment[driver_api.ID],
-                    self.vif_type, vif_details,
-                    status=n_const.PORT_STATUS_ACTIVE)
-                bound_ports.add(port_key)
-                self._bound_ports = bound_ports
+        for segment in context.network.network_segments:
+            dvs = self._lookup_dvs_for_context(context.network)
+            port_key = dvs.get_unbound_port_key(
+                context.network.current,
+                bound_ports
+            )
+            vif_details = dict(self.vif_details)
+            vif_details['dvs_port_key'] = port_key
+            context.set_binding(
+                segment[driver_api.ID],
+                self.vif_type, vif_details,
+                status=n_const.PORT_STATUS_ACTIVE)
+            bound_ports.add(port_key)
+            self._bound_ports = bound_ports
 
     def _lookup_dvs_for_context(self, network_context):
         segment = network_context.network_segments[0]
