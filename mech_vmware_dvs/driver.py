@@ -13,15 +13,22 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import abc
+
+import six
 from oslo_log import log
 from oslo_concurrency import lockutils
 from neutron.common import constants as n_const
 from neutron.common import rpc as n_rpc
+from neutron import manager
 from neutron.extensions import portbindings
 from neutron.i18n import _LI, _
 from neutron.plugins.common import constants
-from neutron.plugins.ml2 import driver_api
+from neutron.plugins.ml2 import driver_api, driver_context
+from neutron.context import Context
 
+from oslo_messaging import get_notification_listener, NotificationFilter, \
+    Target
 
 from mech_vmware_dvs import compute_util
 from mech_vmware_dvs import config
@@ -30,6 +37,68 @@ from mech_vmware_dvs import util
 
 CONF = config.CONF
 LOG = log.getLogger(__name__)
+
+FAKE_PORT_ID = 'fake_id'
+
+@six.add_metaclass(abc.ABCMeta)
+class EndPointBase(object):
+    def __init__(self, driver):
+        self.driver = driver
+
+    @abc.abstractmethod
+    def info(self, ctxt, publisher_id, event_type, payload, metadata):
+        pass
+
+    def update_security_group(self, ctxt, security_group_id):
+        plugin_context = Context.from_dict(ctxt)
+        plugin = manager.NeutronManager.get_plugin()
+        fake_network = {
+            'id': 'fake'
+        }
+        fake_port = {
+            'id': FAKE_PORT_ID,
+            'security_groups': [security_group_id]
+        }
+        context = driver_context.PortContext(
+            plugin, plugin_context, fake_port, fake_network, None, None
+        )
+        for dvs in self.driver.network_map.values():
+            self.driver._update_security_groups(dvs, context, force=True)
+
+
+class SecurityGroupRuleCreateEndPoint(EndPointBase):
+    filter_rule = NotificationFilter(
+        publisher_id='network.manager',
+        event_type=r'security_group_rule\.create\.end')
+
+    def info(self, ctxt, publisher_id, event_type, payload, metadata):
+        security_group_id = payload['security_group_rule']['security_group_id']
+        self.update_security_group(ctxt, security_group_id)
+
+class SecurityGroupRuleDeleteEndPoint(EndPointBase):
+    filter_rule = NotificationFilter(
+        publisher_id='network.manager',
+        event_type=r'security_group_rule\.delete\.(start|end)')
+
+    sgr_to_sg = {}
+
+    def info(self, ctxt, publisher_id, event_type, payload, metadata):
+        security_group_rule_id = payload['security_group_rule_id']
+        if event_type.endswith('start'):
+            security_group_id = self.get_security_group_for(
+                ctxt,
+                security_group_rule_id)
+            self.sgr_to_sg[security_group_rule_id] = security_group_id
+        else:
+            security_group_id = self.sgr_to_sg.pop(security_group_rule_id)
+            self.update_security_group(ctxt, security_group_id)
+
+    def get_security_group_for(self, ctxt, security_group_rule_id):
+        plugin_context = Context.from_dict(ctxt)
+        plugin = manager.NeutronManager.get_plugin()
+        rule = plugin.get_security_group_rule(plugin_context,
+                                              security_group_rule_id)
+        return rule['security_group_id']
 
 
 class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
@@ -42,7 +111,13 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
     def initialize(self):
         self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)
         self._bound_ports = set()
-        self._notifier = n_rpc.get_notifier('network')
+        listener = get_notification_listener(
+            n_rpc.TRANSPORT,
+            targets=[Target(topic='vmware_dvs')],
+            endpoints=[SecurityGroupRuleCreateEndPoint(self),
+                       SecurityGroupRuleDeleteEndPoint(self)],
+            executor='eventlet')
+        listener.start()
 
     def create_network_precommit(self, context):
         try:
@@ -142,25 +217,30 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             sg_info = context._plugin.security_group_info_for_ports(
                 context._plugin_context,
                 port_dict)
+
+            devices = sg_info['devices']
+            security_groups = sg_info['security_groups']
+            sg_member_ips = sg_info['sg_member_ips']
             sg_to_update = set()
             for sg in current_sec_groups:
-                for rule in sg_info['security_groups'][sg]:
-                    try:
-                        sg_to_update.add(rule['remote_group_id'])
-                    except KeyError:
-                        # no remote_group_id
-                        pass
+                if sg in security_groups:
+                    for rule in security_groups[sg]:
+                        try:
+                            sg_to_update.add(rule['remote_group_id'])
+                        except KeyError:
+                            # no remote_group_id
+                            pass
 
             for sg in original_sec_groups:
                 if sg not in current_sec_groups:
-                    #TODO(askupien): check if sg has remote_group_id
                     sg_to_update.add(sg)
 
-            devices = sg_info['devices']
-            security_groups=sg_info['security_groups']
-            sg_member_ips = sg_info['sg_member_ips']
+            ports_to_update = set()
+            if context.current['id'] == FAKE_PORT_ID:
+                sg_to_update.add(current_sec_groups[0])
+            else:
+                ports_to_update.add(context.current['id'])
 
-            ports_to_update = {context.current['id']}
             for id, port in devices.iteritems():
                 if (port['binding:vif_type'] == self.vif_type and
                                 sg_to_update & set(port['security_groups'])):
@@ -170,7 +250,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                 try:
                     rules = security_groups[sec_group_id]
                 except KeyError:
-                    # security group do not have VMs
+                    # security group does not have VMs
                     pass
                 else:
                     for rule in rules:
@@ -183,10 +263,17 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             for port_id in ports_to_update:
                 port = devices[port_id]
                 for sec_group_id in port['security_groups']:
-                    port['security_group_rules'].extend(
-                            security_groups[sec_group_id])
+                    try:
+                        rules = security_groups[sec_group_id]
+                    except KeyError:
+                        # security_group doesn't has rules
+                        pass
+                    else:
+                        port['security_group_rules'].extend(rules)
+
                 ports.append(port)
-            dvs.update_port_rules(ports)
+            if ports:
+                dvs.update_port_rules(ports)
 
     @lockutils.synchronized('vmware_dvs_bind_port', external=True)
     def bind_port(self, context):
@@ -221,6 +308,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                 raise exceptions.NoDVSForPhysicalNetwork(
                     physical_network=physical_network)
         else:
+            return
             raise exceptions.NotSupportedNetworkType(
                 network_type=segment['network_type'])
 
