@@ -40,6 +40,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
     def setUp(self):
         super(VMwareDVSMechanismDriverTestCase, self).setUp()
         self.driver = driver.VMwareDVSMechanismDriver()
+        self.driver._bound_ports = set()
         self.dvs = mock.Mock()
         self.driver.network_map = {'physnet1': self.dvs}
 
@@ -109,8 +110,10 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         except Exception:
             self.fail('Should not throw any exceptions')
 
+    @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
+                '._update_security_groups')
     @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
-    def test_update_port_postcommit(self, hypervisor_by_host):
+    def test_update_port_postcommit(self, hypervisor_by_host, _update_security_groups):
         hypervisor_by_host.return_value = mock.Mock(
             hypervisor_type=VALID_HYPERVISOR_TYPE)
         port_context = self._create_port_context()
@@ -146,11 +149,15 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         self.assertTrue(is_valid_dvs.called)
         self.assertFalse(self.dvs.switch_port_blocked_state.called)
 
+    @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
+                '._get_bound_ports', return_value=set())
     @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
-    def test_bind_port(self, get_hypervisor):
+    def test_bind_port(self, get_hypervisor, _getbound_ports):
         context = self._create_port_context()
         get_hypervisor.return_value = mock.Mock(
             hypervisor_type=VALID_HYPERVISOR_TYPE)
+
+        self.dvs.get_unbound_port_key.return_value = '_unbound_key_'
 
         self.driver.bind_port(context)
 
@@ -158,11 +165,13 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
             context.set_binding.call_count,
             len(context.network.network_segments))
         for idx, segment in enumerate(context.network.network_segments):
+            vif_details = dict(self.driver.vif_details)
+            vif_details['dvs_port_key'] = '_unbound_key_'
             self.assertEqual(
                 context.set_binding.call_args_list[idx],
                 mock.call(
                     segment['id'],
-                    self.driver.vif_type, self.driver.vif_details,
+                    self.driver.vif_type, vif_details,
                     status='ACTIVE'))
 
     @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
@@ -197,7 +206,12 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         return mock.Mock(
             current={
                 'id': '_dummy_port_id_',
+                'admin_state_up': True,
+                'security_groups':[],
                 'binding:host_id': '_id_server_'},
+            original={
+                'status': 'DOWN'
+            },
             network=self._create_network_context())
 
     def _create_network_context(self, network_type='vlan'):

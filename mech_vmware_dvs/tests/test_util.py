@@ -441,7 +441,6 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
     def assert_create_specification(self, spec):
         self.assertEqual(
             self.controller._get_net_name(fake_network), spec.name)
-        self.assertEqual(util.DVS_PORTS_NUMBER, spec.numPorts)
         self.assertEqual('earlyBinding', spec.type)
         self.assertEqual('Managed By Neutron', spec.description)
         vlan_spec = spec.defaultPortConfig.vlan
@@ -516,6 +515,7 @@ class DVSControllerNetworkUpdateTestCase(DVSControllerBaseTestCase):
             if namespace in ('ns0:BoolPolicy',
                              'ns0:VMwareDVSPortSetting',
                              'ns0:DVPortgroupConfigSpec',
+                             'ns0:DVPortgroupPolicy'
                              ):
                 return mock.Mock(name=namespace)
             else:
