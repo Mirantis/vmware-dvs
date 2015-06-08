@@ -586,8 +586,8 @@ class TrafficRuleBuilder(object):
         else:
             return False
 
-class IngressRule(TrafficRuleBuilder):
 
+class IngressRule(TrafficRuleBuilder):
     direction = 'incomingPackets'
 
     def port_range(self, start, end):

@@ -18,6 +18,7 @@ import abc
 import six
 from oslo_log import log
 from oslo_concurrency import lockutils
+import oslo_messaging
 from neutron.common import constants as n_const
 from neutron.common import rpc as n_rpc
 from neutron import manager
@@ -26,9 +27,6 @@ from neutron.i18n import _LI, _
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api, driver_context
 from neutron.context import Context
-
-from oslo_messaging import get_notification_listener, NotificationFilter, \
-    Target
 
 from mech_vmware_dvs import compute_util
 from mech_vmware_dvs import config
@@ -39,6 +37,7 @@ CONF = config.CONF
 LOG = log.getLogger(__name__)
 
 FAKE_PORT_ID = 'fake_id'
+
 
 @six.add_metaclass(abc.ABCMeta)
 class EndPointBase(object):
@@ -67,7 +66,7 @@ class EndPointBase(object):
 
 
 class SecurityGroupRuleCreateEndPoint(EndPointBase):
-    filter_rule = NotificationFilter(
+    filter_rule = oslo_messaging.NotificationFilter(
         publisher_id='network.manager',
         event_type=r'security_group_rule\.create\.end')
 
@@ -75,8 +74,9 @@ class SecurityGroupRuleCreateEndPoint(EndPointBase):
         security_group_id = payload['security_group_rule']['security_group_id']
         self.update_security_group(ctxt, security_group_id)
 
+
 class SecurityGroupRuleDeleteEndPoint(EndPointBase):
-    filter_rule = NotificationFilter(
+    filter_rule = oslo_messaging.NotificationFilter(
         publisher_id='network.manager',
         event_type=r'security_group_rule\.delete\.(start|end)')
 
@@ -111,9 +111,9 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
     def initialize(self):
         self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)
         self._bound_ports = set()
-        listener = get_notification_listener(
+        listener = oslo_messaging.get_notification_listener(
             n_rpc.TRANSPORT,
-            targets=[Target(topic='vmware_dvs')],
+            targets=[oslo_messaging.Target(topic='vmware_dvs')],
             endpoints=[SecurityGroupRuleCreateEndPoint(self),
                        SecurityGroupRuleDeleteEndPoint(self)],
             executor='eventlet')
@@ -243,7 +243,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
 
             for id, port in devices.iteritems():
                 if (port['binding:vif_type'] == self.vif_type and
-                                sg_to_update & set(port['security_groups'])):
+                        sg_to_update & set(port['security_groups'])):
                     ports_to_update.add(id)
 
             for sec_group_id in sg_to_update:
@@ -308,7 +308,6 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                 raise exceptions.NoDVSForPhysicalNetwork(
                     physical_network=physical_network)
         else:
-            return
             raise exceptions.NotSupportedNetworkType(
                 network_type=segment['network_type'])
 
