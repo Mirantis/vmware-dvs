@@ -433,10 +433,7 @@ class SpecBuilder(object):
         for i, rule_info in enumerate(sg_rules):
             if 'ip_set' in rule_info:
                 for ip in rule_info['ip_set']:
-                    rule_info['direction'] = 'ingress'
                     rules.append(self._create_rule(rule_info, i * 10, ip))
-                    rule_info['direction'] = 'egress'
-                    rules.append(self._create_rule(rule_info, i * 10 + 5, ip))
             else:
                 rules.append(self._create_rule(rule_info, i * 10))
 

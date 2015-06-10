@@ -718,6 +718,9 @@ class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
         return mock.Mock(vim=self.vim)
 
 
+# class EgressRule(base.BaseTestCase)
+
+
 class UtilTestCase(base.BaseTestCase):
     """TestCase for functions in util module"""
 

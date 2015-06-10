@@ -41,6 +41,7 @@ FAKE_PORT_ID = 'fake_id'
 
 @six.add_metaclass(abc.ABCMeta)
 class EndPointBase(object):
+
     def __init__(self, driver):
         self.driver = driver
 
@@ -197,83 +198,74 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
 
     @lockutils.synchronized('vmware_dvs_update_sg', external=True)
     def _update_security_groups(self, dvs, context, force):
-        current_sec_groups = context.current['security_groups']
+        current_sg = set(context.current['security_groups'])
         if force:
-            perform = True
-            original_sec_groups = []
+            changed_sg = current_sg
         else:
-            original_sec_groups = context.original['security_groups']
-            perform = current_sec_groups != original_sec_groups
+            original_sg = set(context.original['security_groups'])
+            changed_sg = current_sg.symmetric_difference(original_sg)
 
-        if perform:
-            ports = context._plugin.get_ports(
-                context._plugin_context,
-            )
-            for p in ports:
-                p['security_group_rules'] = []
-                if p['id'] == context.current['id']:
-                    p['security_groups'] = current_sec_groups
-            port_dict = {p['id']: p for p in ports}
-            sg_info = context._plugin.security_group_info_for_ports(
-                context._plugin_context,
-                port_dict)
+        if changed_sg or force:
+            security_group_info = self._get_security_group_info(
+                context, current_sg)
+            devices, security_groups, sg_member_ips = security_group_info
 
-            devices = sg_info['devices']
-            security_groups = sg_info['security_groups']
-            sg_member_ips = sg_info['sg_member_ips']
             sg_to_update = set()
-            for sg in current_sec_groups:
-                if sg in security_groups:
-                    for rule in security_groups[sg]:
-                        try:
-                            sg_to_update.add(rule['remote_group_id'])
-                        except KeyError:
-                            # no remote_group_id
-                            pass
-
-            for sg in original_sec_groups:
-                if sg not in current_sec_groups:
-                    sg_to_update.add(sg)
-
             ports_to_update = set()
+
             if context.current['id'] == FAKE_PORT_ID:
-                sg_to_update.add(current_sec_groups[0])
+                sg_to_update = sg_to_update.union(changed_sg)
             else:
                 ports_to_update.add(context.current['id'])
+
+            for sg_id, rules in security_groups.items():
+                for rule in rules:
+                    try:
+                        remote_group_id = rule['remote_group_id']
+                    except KeyError:
+                        pass
+                    else:
+                        if remote_group_id in changed_sg:
+                            sg_to_update.add(sg_id)
+                        if sg_id in changed_sg.union(sg_to_update):
+                            ip_set = sg_member_ips[remote_group_id][
+                                rule['ethertype']]
+                            rule['ip_set'] = ip_set
 
             for id, port in devices.iteritems():
                 if (port['binding:vif_type'] == self.vif_type and
                         sg_to_update & set(port['security_groups'])):
                     ports_to_update.add(id)
 
-            for sec_group_id in sg_to_update:
-                try:
-                    rules = security_groups[sec_group_id]
-                except KeyError:
-                    # security group does not have VMs
-                    pass
-                else:
-                    for rule in rules:
-                        if 'remote_group_id' in rule:
-                            ip_set = sg_member_ips[rule['remote_group_id']][
-                                    rule['ethertype']]
-                            rule['ip_set'] = ip_set
-
-            ports = []
-            for port_id in ports_to_update:
-                port = devices[port_id]
-                for sec_group_id in port['security_groups']:
-                    try:
-                        rules = security_groups[sec_group_id]
-                    except KeyError:
-                        # security_group doesn't has rules
-                        pass
-                    else:
-                        port['security_group_rules'].extend(rules)
-
-                ports.append(port)
-            if ports:
+            if ports_to_update:
+                ports = []
+                for port_id in ports_to_update:
+                    port = devices[port_id]
+                    for sec_group_id in port['security_groups']:
+                        try:
+                            rules = security_groups[sec_group_id]
+                        except KeyError:
+                            # security_group doesn't has rules
+                            pass
+                        else:
+                            port['security_group_rules'].extend(rules)
+                    ports.append(port)
                 dvs.update_port_rules(ports)
+
+    def _get_security_group_info(self, context, current_security_group):
+        ports = context._plugin.get_ports(context._plugin_context)
+        for p in ports:
+            if not 'security_group_rules' in p:
+                p['security_group_rules'] = []
+            if p['id'] == context.current['id']:
+                p['security_groups'] = current_security_group
+        port_dict = {p['id']: p for p in ports}
+        sg_info = context._plugin.security_group_info_for_ports(
+            context._plugin_context, port_dict)
+        devices = sg_info['devices']
+        security_groups = sg_info['security_groups']
+        sg_member_ips = sg_info['sg_member_ips']
+        return devices, security_groups, sg_member_ips
 
     @lockutils.synchronized('vmware_dvs_bind_port', external=True)
     def bind_port(self, context):
