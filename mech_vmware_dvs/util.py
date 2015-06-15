@@ -27,7 +27,6 @@ from neutron.i18n import _LI
 from mech_vmware_dvs import exceptions
 
 LOG = log.getLogger(__name__)
-
 DVS_PORTGROUP_NAME_MAXLEN = 80
 VM_NETWORK_DEVICE_TYPES = [
     'VirtualE1000', 'VirtualE1000e', 'VirtualPCNet32',
@@ -107,24 +106,23 @@ class DVSController(object):
     def switch_port_blocked_state(self, port, state=None):
         if state is None:
             state = not port['admin_state_up']
-        dvport = self._get_dvport(port)
-        port_settings = dvport.config.setting
 
-        if port_settings.blocked.value != state:
-            builder = SpecBuilder(self.connection.vim.client.factory)
+        port_info = self._get_port_info(
+            port['binding:vif_details']['dvs_port_key'])
 
-            port_settings = builder.port_setting()
-            port_settings.blocked = builder.blocked(state)
+        builder = SpecBuilder(self.connection.vim.client.factory)
+        port_settings = builder.port_setting()
+        port_settings.blocked = builder.blocked(state)
 
-            update_spec = builder.port_config_spec(
-                dvport.config.configVersion, port_settings)
-            update_spec.operation = 'edit'
-            update_spec.key = dvport.key
-            update_spec = [update_spec]
-            update_task = self.connection.invoke_api(
-                self.connection.vim, 'ReconfigureDVPort_Task',
-                self._get_dvs(), port=update_spec)
-            self.connection.wait_for_task(update_task)
+        update_spec = builder.port_config_spec(
+            port_info.config.configVersion, port_settings)
+        update_spec.operation = 'edit'
+        update_spec.key = port_info.key
+        update_spec = [update_spec]
+        update_task = self.connection.invoke_api(
+            self.connection.vim, 'ReconfigureDVPort_Task',
+            self._get_dvs(), port=update_spec)
+        self.connection.wait_for_task(update_task)
 
     @lockutils.synchronized('vmware_dvs_bind_port', external=True)
     def update_port_rules(self, ports):
@@ -166,17 +164,6 @@ class DVSController(object):
                 return self._lookup_unbound_port(pg, bound_ports)
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
-
-    def _get_dvport(self, port):
-        try:
-            vm_uuid = port['device_id']
-        except KeyError:
-            raise exceptions.VMNotFound
-
-        dvs_ref = self._get_dvs()
-        vm_ref = self._get_vm_by_uuid(vm_uuid)
-        port = self._get_port_by_neutron_uuid(dvs_ref, vm_ref, port['id'])
-        return port
 
     def _build_pg_create_spec(self, name, vlan_tag, blocked):
         builder = SpecBuilder(self.connection.vim.client.factory)
@@ -256,68 +243,6 @@ class DVSController(object):
             if pg_name == name:
                 return pg
         raise exceptions.PortGroupNotFound(pg_name=pg_name)
-
-    def _get_port_by_neutron_uuid(self, dvs_ref, vm_ref, port_uuid):
-        port_not_found = exceptions.PortNotFound(
-            id='neutron-port-uuid:' + port_uuid)
-
-        vm_config = self._get_config_by_ref(vm_ref)
-
-        iface_option_mask = r'^nvp\.iface-id\.(\d+)$'
-        for opt in vm_config.extraConfig:
-            match = re.match(iface_option_mask, opt.key)
-            if not match:
-                continue
-            if opt.value != port_uuid:
-                continue
-            port_idx = match.group(1)
-            port_idx = int(port_idx)
-            break
-        else:
-            raise port_not_found
-
-        founded_device = None
-        iface_idx = -1
-        for device in vm_config.hardware.device:
-            if device.__class__.__name__ not in VM_NETWORK_DEVICE_TYPES:
-                continue
-            iface_idx += 1
-            if port_idx != iface_idx:
-                continue
-            founded_device = device
-            break
-
-        if not founded_device:
-            raise port_not_found
-
-        port_connection = founded_device.backing.port
-        if port_connection.switchUuid != self.connection.invoke_api(
-                vim_util, 'get_object_property', self.connection.vim,
-                dvs_ref, 'uuid'):
-            raise port_not_found
-
-        builder = SpecBuilder(self.connection.vim.client.factory)
-        lookup_criteria = builder.port_lookup_criteria()
-        lookup_criteria.portKey = port_connection.portKey
-        lookup_criteria.uplinkPort = False
-
-        port = self.connection.invoke_api(
-            self.connection.vim, 'FetchDVPorts', dvs_ref,
-            criteria=lookup_criteria)
-
-        if len(port) != 1:
-            raise port_not_found
-        return port[0]
-
-    def _get_vm_by_uuid(self, uuid):
-        vm_refs = self.connection.invoke_api(
-            self.connection.vim, 'FindAllByUuid',
-            self.connection.vim.service_content.searchIndex,
-            uuid=uuid, vmSearch=True, instanceUuid=True)
-
-        if len(vm_refs) != 1:
-            raise exceptions.VMNotFound
-        return vm_refs[0]
 
     def _get_config_by_ref(self, ref):
         """pg - ManagedObjectReference of Port Group"""

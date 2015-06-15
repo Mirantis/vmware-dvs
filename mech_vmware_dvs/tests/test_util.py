@@ -150,138 +150,6 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
         self.assertEqual(self.dvs_name, self.controller.dvs_name)
         self.assertIs(self.connection, self.controller.connection)
 
-    def test__get_vm_by_uuid(self):
-        self.connection.invoke_api.return_value = [mock.sentinel.vm_by_uuid]
-        uuid = '_dummy_vm_uuid_'
-
-        vm = self.controller._get_vm_by_uuid(uuid)
-
-        self.assertEqual(mock.sentinel.vm_by_uuid, vm)
-        self.assertEqual([
-            mock.call(
-                self.vim, 'FindAllByUuid', mock.ANY,
-                uuid=uuid, vmSearch=True, instanceUuid=True)],
-            self.connection.invoke_api.call_args_list)
-
-    def test__get_vm_by_uuid__not_found(self):
-        self.connection.invoke_api.return_value = []
-        uuid = '_dummy_vm_uuid_'
-
-        self.assertRaises(
-            exceptions.VMNotFound, self.controller._get_vm_by_uuid, uuid)
-
-    def test__get_port_by_neutron_uuid__not_found1(self):
-        dvs_ref = mock.sentinel.dvs_ref
-        vm_ref = mock.sentinel.vm_ref
-        vm_uuid = '_dummy_vm_uuid_'
-        vm_config = mock.Mock()
-        vm_config.extraConfig = []
-
-        with mock.patch.object(
-                self.controller, '_get_config_by_ref', return_value=vm_config):
-            self.assertRaises(
-                exceptions.PortNotFound,
-                self.controller._get_port_by_neutron_uuid, dvs_ref, vm_ref,
-                vm_uuid)
-
-    def test__get_port_by_neutron_uuid__not_found2(self):
-        dvs_ref = mock.sentinel.dvs_ref
-        vm_ref = mock.sentinel.vm_ref
-        vm_uuid = '_dummy_vm_uuid_'
-        vm_config = mock.Mock()
-        vm_config.extraConfig = [
-            mock.Mock(key='nvp.iface-id.0', value=vm_uuid)]
-        vm_config.hardware.device = []
-
-        with mock.patch.object(
-                self.controller, '_get_config_by_ref', return_value=vm_config):
-            self.assertRaises(
-                exceptions.PortNotFound,
-                self.controller._get_port_by_neutron_uuid, dvs_ref, vm_ref,
-                vm_uuid)
-
-    def test__get_port_by_neutron_uuid__not_found3(self):
-        dvs_ref = mock.sentinel.dvs_ref
-        vm_ref = mock.sentinel.vm_ref
-        vm_uuid = '_dummy_vm_uuid_'
-        vm_config = mock.Mock()
-        vm_config.extraConfig = [
-            mock.Mock(key='nvp.iface-id.0', value=vm_uuid)]
-        vm_config.hardware.device = [
-            self.VirtualE1000('16', '_fake_switch_uuid_')]
-
-        with mock.patch.object(
-                self.controller, '_get_config_by_ref', return_value=vm_config):
-            self.assertRaises(
-                exceptions.PortNotFound,
-                self.controller._get_port_by_neutron_uuid, dvs_ref, vm_ref,
-                vm_uuid)
-
-    def test__get_port_by_neutron_uuid__not_found4(self):
-        dvs_ref = mock.sentinel.dvs_ref
-        dvs_uuid = '_dummy_dvs_uuid_'
-        vm_ref = mock.sentinel.vm_ref
-        vm_uuid = '_dummy_vm_uuid_'
-        vm_config = mock.Mock()
-        vm_config.extraConfig = [
-            mock.Mock(key='nvp.iface-id.0', value=vm_uuid)]
-        vm_config.hardware.device = [
-            self.VirtualE1000('16', dvs_uuid)]
-
-        def _invoke_api_handler(module, method, *args, **kwargs):
-            if (vim_util, 'get_object_property') == (module, method) \
-                    and args[1:] == (dvs_ref, 'uuid'):
-                return dvs_uuid
-            elif (self.vim, 'FetchDVPorts') == (module, method) \
-                    and (dvs_ref,) == args[:1]:
-                return []
-            return mock.Mock()
-
-        self.connection.invoke_api.side_effect = _invoke_api_handler
-
-        with mock.patch.object(
-                self.controller, '_get_config_by_ref', return_value=vm_config):
-            self.assertRaises(
-                exceptions.PortNotFound,
-                self.controller._get_port_by_neutron_uuid, dvs_ref, vm_ref,
-                vm_uuid)
-            return
-
-    def test__get_port_by_neutron_uuid(self):
-        dvs_ref = mock.sentinel.dvs_ref
-        dvs_uuid = '_dummy_dvs_uuid_'
-        vm_ref = mock.sentinel.vm_ref
-        vm_uuid = '_dummy_vm_uuid_'
-        vm_config = mock.Mock()
-        vm_config.extraConfig = [
-            mock.Mock(key='nvp.iface-id.0', value=vm_uuid)]
-        vm_config.hardware.device = [
-            self.VirtualE1000('16', dvs_uuid)]
-
-        dummy_dvs_port = mock.sentinel.dvs_port
-
-        def _invoke_api_handler(module, method, *args, **kwargs):
-            if (vim_util, 'get_object_property') == (module, method) \
-                    and args[1:] == (dvs_ref, 'uuid'):
-                return dvs_uuid
-            elif (self.vim, 'FetchDVPorts') == (module, method) \
-                    and (dvs_ref,) == args[:1]:
-                return [dummy_dvs_port]
-            return mock.Mock()
-
-        self.connection.invoke_api.side_effect = _invoke_api_handler
-
-        with mock.patch.object(
-                self.controller, '_get_config_by_ref', return_value=vm_config):
-            result = self.controller._get_port_by_neutron_uuid(
-                dvs_ref, vm_ref, vm_uuid)
-
-            self.assertEqual(dummy_dvs_port, result)
-            self.assertEqual(
-                mock.call(
-                    self.vim, 'FetchDVPorts', dvs_ref, criteria=mock.ANY),
-                self.connection.invoke_api.call_args_list[-1])
-
     def test__get_net_name(self):
         expect = fake_network['name'] + '-' + fake_network['id']
         self.assertEqual(expect, self.controller._get_net_name(fake_network))
@@ -676,10 +544,6 @@ class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
             'mech_vmware_dvs.util.DVSController._get_dvs',
             mock.Mock(return_value=self._dvs_ref)))
 
-        self._lookup_vm_by_uuid = mock.Mock()
-        self.useFixture(fixtures.MonkeyPatch(
-            'mech_vmware_dvs.util.DVSController._get_vm_by_uuid',
-            self._lookup_vm_by_uuid))
 
     def test_switch_port_blocked_state(self):
         neutron_port = fake_port.copy()
@@ -688,7 +552,7 @@ class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
         dvs_port.config.setting.blocked.value = True
 
         with mock.patch.object(
-                self.controller, '_get_port_by_neutron_uuid',
+                self.controller, '_get_port_info',
                 return_value=dvs_port):
 
             self.controller.switch_port_blocked_state(fake_port)
@@ -705,20 +569,6 @@ class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
             self.assertEqual('edit', update_spec.operation)
 
             self.assertEqual(1, self.connection.wait_for_task.call_count)
-
-    def test_switch_port_blocked_state__noop(self):
-        neutron_port = fake_port.copy()
-        neutron_port['admin_state_up'] = False
-        dvs_port = mock.Mock()
-        dvs_port.config.setting.blocked.value = False
-
-        with mock.patch.object(
-                self.controller, '_get_port_by_neutron_uuid',
-                return_value=dvs_port):
-
-            self.controller.switch_port_blocked_state(fake_port)
-
-            self.assertFalse(self.connection.invoke_api.called)
 
     def _get_connection_mock(self, dvs_name):
         return mock.Mock(vim=self.vim)

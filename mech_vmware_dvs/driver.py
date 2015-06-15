@@ -28,7 +28,6 @@ from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api, driver_context
 from neutron.context import Context
 
-from mech_vmware_dvs import compute_util
 from mech_vmware_dvs import config
 from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util
@@ -157,7 +156,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             dvs.delete_network(context.current)
 
     def update_port_postcommit(self, context):
-        if not self._is_port_belong_to_vmware(context.current):
+        if not self._port_belongs_to_vmware(context.current):
             return
 
         try:
@@ -269,7 +268,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
 
     @lockutils.synchronized('vmware_dvs_bind_port', external=True)
     def bind_port(self, context):
-        if not self._is_port_belong_to_vmware(context.current):
+        if not self._port_belongs_to_vmware(context.current):
             return
         bound_ports = self._get_bound_ports(context)
 
@@ -320,22 +319,5 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                 pass
         return port_keys
 
-    @staticmethod
-    def _is_port_belong_to_vmware(port):
-        try:
-            try:
-                host = port['binding:host_id']
-            except KeyError:
-                raise exceptions.HypervisorNotFound
-
-            hypervisor = compute_util.get_hypervisors_by_host(
-                CONF, host)
-
-            # value for field hypervisor_type collected from VMWare itself,
-            # need to make research, about all possible and suitable values
-            if hypervisor.hypervisor_type != 'VMware vCenter Server':
-                raise exceptions.HypervisorNotFound
-        except exceptions.ResourceNotFond:
-            return False
-
-        return True
+    def _port_belongs_to_vmware(self, port):
+        return port['binding:vif_type'] == self.vif_type
