@@ -126,6 +126,47 @@ class DVSController(object):
                 self._get_dvs(), port=update_spec)
             self.connection.wait_for_task(update_task)
 
+    @lockutils.synchronized('vmware_dvs_bind_port', external=True)
+    def update_port_rules(self, ports):
+        try:
+            builder = SpecBuilder(self.connection.vim.client.factory)
+            port_config_list = []
+            for port in ports:
+                port_key = port['binding:vif_details']['dvs_port_key']
+                port_info = self._get_port_info(port_key)
+                port_config = builder.port_config(
+                    str(port_key),
+                    port['security_group_rules']
+                )
+                port_config.configVersion = port_info['config'][
+                    'configVersion']
+                port_config_list.append(port_config)
+            dvs = self._get_dvs()
+            task = self.connection.invoke_api(
+                self.connection.vim,
+                'ReconfigureDVPort_Task',
+                dvs, port=port_config_list
+            )
+            return self.connection.wait_for_task(task)
+        except vmware_exceptions.VimException as e:
+            raise exceptions.wrap_wmvare_vim_exception(e)
+
+    def get_unbound_port_key(self, network, bound_ports):
+        """
+        returns first empty port in portgroup
+        If there is now empty port, than we double ports number in portgroup
+        """
+        try:
+            net_name = self._get_net_name(network)
+            pg = self._get_pg_by_name(net_name)
+            try:
+                return self._lookup_unbound_port(pg, bound_ports)
+            except exceptions.UnboundPortNotFound:
+                self._increase_ports_on_portgroup(pg)
+                return self._lookup_unbound_port(pg, bound_ports)
+        except vmware_exceptions.VimException as e:
+            raise exceptions.wrap_wmvare_vim_exception(e)
+
     def _get_dvport(self, port):
         try:
             vm_uuid = port['device_id']
@@ -327,40 +368,6 @@ class DVSController(object):
             vim_util, 'get_object_property',
             self.connection.vim, pg, 'portKeys')[0]
 
-    @lockutils.synchronized('vmware_dvs_bind_port', external=True)
-    def update_port_rules(self, ports):
-        builder = SpecBuilder(self.connection.vim.client.factory)
-        port_config_list = []
-        for port in ports:
-            port_key = port['binding:vif_details']['dvs_port_key']
-            port_info = self._get_port_info(port_key)
-            port_config = builder.port_config(
-                str(port_key),
-                port['security_group_rules']
-            )
-            port_config.configVersion = port_info['config']['configVersion']
-            port_config_list.append(port_config)
-        dvs = self._get_dvs()
-        task = self.connection.invoke_api(
-            self.connection.vim,
-            'ReconfigureDVPort_Task',
-            dvs, port=port_config_list
-        )
-        return self.connection.wait_for_task(task)
-
-    def get_unbound_port_key(self, network, bound_ports):
-        """
-        returns first empty port in portgroup
-        If there is now empty port, than we double ports number in portgroup
-        """
-        net_name = self._get_net_name(network)
-        pg = self._get_pg_by_name(net_name)
-        try:
-            return self._lookup_unbound_port(pg, bound_ports)
-        except exceptions.UnboundPortNotFound:
-            self._increase_ports_on_portgroup(pg)
-            return self._lookup_unbound_port(pg, bound_ports)
-
     def _lookup_unbound_port(self, port_group, bound_ports):
         builder = SpecBuilder(self.connection.vim.client.factory)
         criteria = builder.port_criteria(port_group_key=port_group.value)
@@ -469,14 +476,14 @@ class SpecBuilder(object):
                 rule_info.get('source_port_range_min'),
                 rule_info.get('source_port_range_max')
             )
-            rule.cidr(rule_info.get('source_ip_prefix'))
-
+            cidr = rule_info.get('source_ip_prefix')
         else:
             rule = EgressRule(**rule_params)
-            rule.cidr(rule_info.get('dest_ip_prefix'))
+            cidr = rule_info.get('dest_ip_prefix')
+
         rule.port_range(rule_info.get('port_range_min'),
                         rule_info.get('port_range_max'))
-        rule.cidr(ip)
+        rule.cidr(ip or cidr)
         return rule.build()
 
     def port_criteria(self, port_key=None, port_group_key=None):

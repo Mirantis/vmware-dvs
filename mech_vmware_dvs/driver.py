@@ -255,7 +255,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
     def _get_security_group_info(self, context, current_security_group):
         ports = context._plugin.get_ports(context._plugin_context)
         for p in ports:
-            if not 'security_group_rules' in p:
+            if 'security_group_rules' not in p:
                 p['security_group_rules'] = []
             if p['id'] == context.current['id']:
                 p['security_groups'] = current_security_group

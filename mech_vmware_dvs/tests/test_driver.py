@@ -69,7 +69,7 @@ CONSTANT_SG_RULE = {'constant rule': 'some_rule'}
 
 class EndPointBaseTestCase(base.BaseTestCase):
     def setUp(self):
-        class ConcreateEndPoint(driver.EndPointBase):
+        class ConcreteEndPoint(driver.EndPointBase):
             def info(self, ctxt, publisher_id, event_type, payload, metadata):
                 pass
 
@@ -82,7 +82,7 @@ class EndPointBaseTestCase(base.BaseTestCase):
         self.plugin = patch.start()
         self.addCleanup(patch.stop)
 
-        self.endpoint = ConcreateEndPoint(self.driver)
+        self.endpoint = ConcreteEndPoint(self.driver)
 
     def test_update_security_group(self):
         def PortContext(plugin, plugin_context, port, network, binding,
@@ -174,7 +174,6 @@ class SecurityGroupRuleDeleteEndPointTestCase(base.BaseTestCase):
         self.assertEqual('some_id', result)
 
 
-
 class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
 
     def setUp(self):
@@ -253,7 +252,8 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
     @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
                 '._update_security_groups')
     @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
-    def test_update_port_postcommit(self, hypervisor_by_host, _update_security_groups):
+    def test_update_port_postcommit(self, hypervisor_by_host,
+                                    _update_security_groups):
         hypervisor_by_host.return_value = mock.Mock(
             hypervisor_type=VALID_HYPERVISOR_TYPE)
         port_context = self._create_port_context()
@@ -364,8 +364,8 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
 
     def test__getbound_ports(self):
         context = self._create_port_context()
-        good_port = {'binding:vif_details':
-                         {'dvs_port_key': '_dummy_dvs_port_key_'}}
+        good_port = {'binding:vif_details': {
+            'dvs_port_key': '_dummy_dvs_port_key_'}}
         wrong_port1 = {}
         wrong_port2 = {'binding:vif_details': {}}
         context._plugin.get_ports.return_value = [good_port, wrong_port1,
@@ -579,8 +579,8 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
             'binding:vif_type': vif_type or self.driver.vif_type,
             'status': 'DOWN',
             'security_group_rules': [CONSTANT_SG_RULE],
-            'binding:vif_details': vif_details or {'dvs_port_key':
-                                                       '_dummy_dvs_port_key_'}}
+            'binding:vif_details': vif_details or {
+                'dvs_port_key': '_dummy_dvs_port_key_'}}
 
     def _create_network_context(self, network_type='vlan'):
         return mock.Mock(current={'id': '_dummy_net_id_'},
