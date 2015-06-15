@@ -15,6 +15,7 @@
 
 
 from novaclient import client as nova_client
+from oslo_config.cfg import NoSuchOptError
 
 from mech_vmware_dvs import exceptions
 
@@ -39,12 +40,27 @@ def _make_nova_client(cfg):
 
     novaclient_cls = nova_client.get_client_class(NOVA_API_VERSION)
 
-    return novaclient_cls(
+    params = dict(
         username=cfg.nova_admin_username,
         api_key=cfg.nova_admin_password,
         tenant_id=cfg.nova_admin_tenant_id,
         auth_url=cfg.nova_admin_auth_url,
-        cacert=cfg.nova_ca_certificates_file,
-        insecure=cfg.nova_api_insecure,
         bypass_url=bypass_url,
-        region_name=cfg.nova_region_name)
+    )
+
+    try:
+        params['cacert'] = cfg.nova_ca_certificates_file
+    except NoSuchOptError:
+        pass
+
+    try:
+        params['insecure'] = cfg.nova_api_insecure
+    except NoSuchOptError:
+        pass
+
+    try:
+        params['region_name'] = cfg.nova_region_name
+    except NoSuchOptError:
+        pass
+
+    return novaclient_cls(**params)
