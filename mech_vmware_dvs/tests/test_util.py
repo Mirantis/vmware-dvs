@@ -15,15 +15,14 @@
 
 import string
 
-import fixtures
 import mock
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
+from neutron.tests import base
 
 from mech_vmware_dvs import config
 from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util
-from neutron.tests import base
 
 
 CONF = config.CONF
@@ -35,10 +34,100 @@ fake_segment = {'segmentation_id': '102'}
 fake_port = {
     'id': '_dummy_port_id_',
     'admin_state_up': True,
-    'device_id': '_dummy_server_id_'}
+    'device_id': '_dummy_server_id_',
+    'security_group_rules': [{'ethertype': 'IPv4',
+                              'direction': 'ingress'}],
+    'binding:vif_details': {'dvs_port_key': '_dvs_port_key_'}}
+
+fake_security_group = {'description': u'Default security group',
+                       'id': u'9961d207-c96c-4907-be9e-d979d5353885',
+                       'name': u'default',
+                       'security_group_rules': [
+                           {'direction': u'ingress',
+                            'ethertype': u'IPv4',
+                            'id': u'0e78cacc-ef5c-45ac-8a11-f9ce9138dce5',
+                            'port_range_max': None,
+                            'port_range_min': None,
+                            'protocol': None,
+                            'remote_group_id': u'9961d207-c96c-4907-'
+                                               u'be9e-d979d5353885',
+                            'remote_ip_prefix': None,
+                            'security_group_id': u'9961d207-c96c-4907-be9e-'
+                                                 u'd979d5353885',
+                            'tenant_id': u'9d2c4b37b9474bcbbddacc5f03fb89c4'},
+                           {'direction': u'ingress',
+                            'ethertype': u'IPv6',
+                            'id': u'35e8a8e2-8410-4fae-ad21-26dd3f403b92',
+                            'port_range_max': None,
+                            'port_range_min': None,
+                            'protocol': None,
+                            'remote_group_id': u'9961d207-c96c-4907'
+                                               u'-be9e-d979d5353885',
+                            'remote_ip_prefix': None,
+                            'security_group_id': u'9961d207-c96c-'
+                                                 u'4907-be9e-d979d5353885',
+                            'tenant_id': u'9d2c4b37b9474bcbbddacc5f03fb89c4'},
+                           {'direction': u'egress',
+                            'ethertype': u'IPv6',
+                            'id': u'52a93b8c-25aa-4829-9a6b-0b7ec3f7f89c',
+                            'port_range_max': None,
+                            'port_range_min': None,
+                            'protocol': None,
+                            'remote_group_id': None,
+                            'remote_ip_prefix': None,
+                            'security_group_id': u'9961d207-c96c-4907-'
+                                                 u'be9e-d979d5353885',
+                            'tenant_id': u'9d2c4b37b9474bcbbddacc5f03fb89c4'},
+                           {'direction': u'ingress',
+                            'ethertype': u'IPv4',
+                            'id': u'625b0755-30e0-4ff6-b3e4-d0f21c5c09e2',
+                            'port_range_max': 22L,
+                            'port_range_min': 22L,
+                            'protocol': u'tcp',
+                            'remote_group_id': None,
+                            'remote_ip_prefix': u'0.0.0.0/0',
+                            'security_group_id': u'9961d207-c96c-4907-'
+                                                 u'be9e-d979d5353885',
+                            'tenant_id': u'9d2c4b37b9474bcbbddacc5f03fb89c4'},
+                           {'direction': u'egress',
+                            'ethertype': u'IPv4',
+                            'id': u'bd00ea5d-91ea-4a39-80ca-45ce73a3bc6f',
+                            'port_range_max': None,
+                            'port_range_min': None,
+                            'protocol': None,
+                            'remote_group_id': None,
+                            'remote_ip_prefix': None,
+                            'security_group_id': u'9961d207-c96c-4907-'
+                                                 u'be9e-d979d5353885',
+                            'tenant_id': u'9d2c4b37b9474bcbbddacc5f03fb89c4'},
+                           {'direction': u'ingress',
+                            'ethertype': u'IPv4',
+                            'id': u'c7c11328-a8ae-42a3-b30e-9cd2ac1cbef5',
+                            'port_range_max': None,
+                            'port_range_min': None,
+                            'protocol': u'icmp',
+                            'remote_group_id': None,
+                            'remote_ip_prefix': u'0.0.0.0/0',
+                            'security_group_id': u'9961d207-c96c-4907-'
+                                                 u'be9e-d979d5353885',
+                            'tenant_id': u'9d2c4b37b9474bcbbddacc5f03fb89c4'}],
+                       'tenant_id': u'9d2c4b37b9474bcbbddacc5f03fb89c4'}
 
 
-class DVSControllerBaseTestCase(base.BaseTestCase):
+class UtilBaseTestCase(base.BaseTestCase):
+    def _get_factory_mock(self, expected_names):
+        def create_side_effect(namespace):
+            if namespace in expected_names:
+                return mock.Mock(name=namespace)
+            else:
+                self.fail('Unexpected call. Namespace: %s' % namespace)
+
+        factory = mock.Mock()
+        factory.create.side_effect = create_side_effect
+        return factory
+
+
+class DVSControllerBaseTestCase(UtilBaseTestCase):
     """Base of all DVSController tests"""
 
     def setUp(self):
@@ -46,8 +135,21 @@ class DVSControllerBaseTestCase(base.BaseTestCase):
         self.dvs_name = 'dvs_name'
         self.vim = mock.Mock()
         self.connection = self._get_connection_mock(self.dvs_name)
+
+        self.datacenter = 'datacenter1'
+        self.use_patch('mech_vmware_dvs.util.DVSController'
+                       '._get_datacenter', return_value=self.datacenter)
+        self.dvs = mock.Mock()
+        self.use_patch('mech_vmware_dvs.util.DVSController'
+                       '._get_dvs', return_value=self.dvs)
+
         self.controller = util.DVSController(self.dvs_name,
                                              self.connection)
+
+    def use_patch(self, *args, **kwargs):
+        patch = mock.patch(*args, **kwargs)
+        self.addCleanup(patch.stop)
+        return patch.start()
 
     def _get_connection_mock(self, dvs_name):
         raise NotImplementedError
@@ -57,140 +159,9 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
     """Tests of DVSController that don't call API methods"""
 
     def test_creation(self):
-        self.assertEqual(self.dvs_name, self.controller.dvs_name)
+        self.assertEqual(self.datacenter, self.controller._datacenter)
+        self.assertEqual(self.dvs, self.controller._dvs)
         self.assertIs(self.connection, self.controller.connection)
-
-    def test__get_vm_by_uuid(self):
-        self.connection.invoke_api.return_value = [mock.sentinel.vm_by_uuid]
-        uuid = '_dummy_vm_uuid_'
-
-        vm = self.controller._get_vm_by_uuid(uuid)
-
-        self.assertEqual(mock.sentinel.vm_by_uuid, vm)
-        self.assertEqual([
-            mock.call(
-                self.vim, 'FindAllByUuid', mock.ANY,
-                uuid=uuid, vmSearch=True, instanceUuid=True)],
-            self.connection.invoke_api.call_args_list)
-
-    def test__get_vm_by_uuid__not_found(self):
-        self.connection.invoke_api.return_value = []
-        uuid = '_dummy_vm_uuid_'
-
-        self.assertRaises(
-            exceptions.VMNotFound, self.controller._get_vm_by_uuid, uuid)
-
-    def test__get_port_by_neutron_uuid__not_found1(self):
-        dvs_ref = mock.sentinel.dvs_ref
-        vm_ref = mock.sentinel.vm_ref
-        vm_uuid = '_dummy_vm_uuid_'
-        vm_config = mock.Mock()
-        vm_config.extraConfig = []
-
-        with mock.patch.object(
-                self.controller, '_get_config_by_ref', return_value=vm_config):
-            self.assertRaises(
-                exceptions.PortNotFound,
-                self.controller._get_port_by_neutron_uuid, dvs_ref, vm_ref,
-                vm_uuid)
-
-    def test__get_port_by_neutron_uuid__not_found2(self):
-        dvs_ref = mock.sentinel.dvs_ref
-        vm_ref = mock.sentinel.vm_ref
-        vm_uuid = '_dummy_vm_uuid_'
-        vm_config = mock.Mock()
-        vm_config.extraConfig = [
-            mock.Mock(key='nvp.iface-id.0', value=vm_uuid)]
-        vm_config.hardware.device = []
-
-        with mock.patch.object(
-                self.controller, '_get_config_by_ref', return_value=vm_config):
-            self.assertRaises(
-                exceptions.PortNotFound,
-                self.controller._get_port_by_neutron_uuid, dvs_ref, vm_ref,
-                vm_uuid)
-
-    def test__get_port_by_neutron_uuid__not_found3(self):
-        dvs_ref = mock.sentinel.dvs_ref
-        vm_ref = mock.sentinel.vm_ref
-        vm_uuid = '_dummy_vm_uuid_'
-        vm_config = mock.Mock()
-        vm_config.extraConfig = [
-            mock.Mock(key='nvp.iface-id.0', value=vm_uuid)]
-        vm_config.hardware.device = [
-            self.VirtualE1000('16', '_fake_switch_uuid_')]
-
-        with mock.patch.object(
-                self.controller, '_get_config_by_ref', return_value=vm_config):
-            self.assertRaises(
-                exceptions.PortNotFound,
-                self.controller._get_port_by_neutron_uuid, dvs_ref, vm_ref,
-                vm_uuid)
-
-    def test__get_port_by_neutron_uuid__not_found4(self):
-        dvs_ref = mock.sentinel.dvs_ref
-        dvs_uuid = '_dummy_dvs_uuid_'
-        vm_ref = mock.sentinel.vm_ref
-        vm_uuid = '_dummy_vm_uuid_'
-        vm_config = mock.Mock()
-        vm_config.extraConfig = [
-            mock.Mock(key='nvp.iface-id.0', value=vm_uuid)]
-        vm_config.hardware.device = [
-            self.VirtualE1000('16', dvs_uuid)]
-
-        def _invoke_api_handler(module, method, *args, **kwargs):
-            if (vim_util, 'get_object_property') == (module, method) \
-                    and args[1:] == (dvs_ref, 'uuid'):
-                return dvs_uuid
-            elif (self.vim, 'FetchDVPorts') == (module, method) \
-                    and (dvs_ref,) == args[:1]:
-                return []
-            return mock.Mock()
-
-        self.connection.invoke_api.side_effect = _invoke_api_handler
-
-        with mock.patch.object(
-                self.controller, '_get_config_by_ref', return_value=vm_config):
-            self.assertRaises(
-                exceptions.PortNotFound,
-                self.controller._get_port_by_neutron_uuid, dvs_ref, vm_ref,
-                vm_uuid)
-            return
-
-    def test__get_port_by_neutron_uuid(self):
-        dvs_ref = mock.sentinel.dvs_ref
-        dvs_uuid = '_dummy_dvs_uuid_'
-        vm_ref = mock.sentinel.vm_ref
-        vm_uuid = '_dummy_vm_uuid_'
-        vm_config = mock.Mock()
-        vm_config.extraConfig = [
-            mock.Mock(key='nvp.iface-id.0', value=vm_uuid)]
-        vm_config.hardware.device = [
-            self.VirtualE1000('16', dvs_uuid)]
-
-        dummy_dvs_port = mock.sentinel.dvs_port
-
-        def _invoke_api_handler(module, method, *args, **kwargs):
-            if (vim_util, 'get_object_property') == (module, method) \
-                    and args[1:] == (dvs_ref, 'uuid'):
-                return dvs_uuid
-            elif (self.vim, 'FetchDVPorts') == (module, method) \
-                    and (dvs_ref,) == args[:1]:
-                return [dummy_dvs_port]
-            return mock.Mock()
-
-        self.connection.invoke_api.side_effect = _invoke_api_handler
-
-        with mock.patch.object(
-                self.controller, '_get_config_by_ref', return_value=vm_config):
-            result = self.controller._get_port_by_neutron_uuid(
-                dvs_ref, vm_ref, vm_uuid)
-
-            self.assertEqual(dummy_dvs_port, result)
-            self.assertEqual(
-                mock.call(
-                    self.vim, 'FetchDVPorts', dvs_ref, criteria=mock.ANY),
-                self.connection.invoke_api.call_args_list[-1])
 
     def test__get_net_name(self):
         expect = fake_network['name'] + '-' + fake_network['id']
@@ -249,7 +220,7 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
         except Exception as e:
             self.fail("Can't create network. Reason: %s" % e)
         else:
-            self.assertEqual(6, self.connection.invoke_api.call_count)
+            self.assertEqual(1, self.connection.invoke_api.call_count)
             self.assertEqual(1, self.connection.wait_for_task.call_count)
 
     def test_create_network_which_is_blocked(self):
@@ -268,22 +239,6 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
         network = dict(fake_network)
         network['admin_state_up'] = False
         self.controller.create_network(network, fake_segment)
-
-    def test_create_network_raises_DVSNotFoundException(self):
-        org_side_effect = self.connection.invoke_api.side_effect
-        vim = self.vim
-
-        def side_effect(module, method, *args, **kwargs):
-            if args == (vim, 'network_folder1', 'childEntity'):
-                return mock.Mock(ManagedObjectReference=[])
-            else:
-                return org_side_effect(module, method, *args, **kwargs)
-
-        self.connection.invoke_api.side_effect = side_effect
-        self.assertRaises(exceptions.DVSNotFound,
-                          self.controller.create_network,
-                          fake_network,
-                          fake_segment)
 
     def test_create_network_raises_VMWareDVSException(self):
         # first we count calls
@@ -310,23 +265,14 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
                               fake_segment)
 
     def _get_connection_mock(self, dvs_name):
-        def create_side_effect(namespace):
-            if namespace in ('ns0:DVPortgroupConfigSpec',
-                             'ns0:VMwareDVSPortSetting',
-                             'ns0:VmwareDistributedVirtualSwitchVlanIdSpec',
-                             'ns0:BoolPolicy'):
-                return mock.Mock(name=namespace)
-            else:
-                self.fail('Unexpected call. Namespace: %s' % namespace)
-
         vim = self.vim
-        vim.client.factory.create.side_effect = create_side_effect
-        controlled_dvs = mock.Mock(_type='VmwareDistributedVirtualSwitch',
-                                   name='controlled_dvs')
-        wrong_dvs = mock.Mock(_type='VmwareDistributedVirtualSwitch',
-                              name='wrong_dvs')
-        not_dvs = mock.Mock(_type='not_dvs', name='not_dvs')
-        objects = [wrong_dvs, controlled_dvs, not_dvs]
+        vim.client.factory = self._get_factory_mock((
+            'ns0:DVPortgroupConfigSpec',
+            'ns0:VMwareDVSPortSetting',
+            'ns0:VmwareDistributedVirtualSwitchVlanIdSpec',
+            'ns0:BoolPolicy',
+            'ns0:DVPortgroupConfig',
+            'ns0:DVPortgroupPolicy'))
 
         def invoke_api_side_effect(module, method, *args, **kwargs):
             if module is vim_util:
@@ -335,20 +281,9 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
                         return mock.Mock(objects=[
                             mock.Mock(obj='datacenter1')
                         ])
-                elif method == 'get_object_property':
-                    if args == (vim, 'datacenter1', 'networkFolder'):
-                        return 'network_folder1'
-                    elif args == (vim, 'network_folder1', 'childEntity'):
-                        return mock.Mock(ManagedObjectReference=objects)
-                    elif args == (vim, wrong_dvs, 'name'):
-                        return 'wrong_dvs'
-                    elif args == (vim, controlled_dvs, 'name'):
-                        return dvs_name
-                    elif args == (vim, not_dvs, 'name'):
-                        self.fail('Called with not dvs')
             elif module == vim:
                 if method == 'CreateDVPortgroup_Task':
-                    self.assertEqual((controlled_dvs,), args)
+                    self.assertEqual((self.dvs,), args)
                     self.assert_create_specification(kwargs['spec'])
                     return kwargs['spec']
             self.fail('Unexpected call. Module: %(module)s; '
@@ -365,7 +300,6 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
     def assert_create_specification(self, spec):
         self.assertEqual(
             self.controller._get_net_name(fake_network), spec.name)
-        self.assertEqual(util.DVS_PORTS_NUMBER, spec.numPorts)
         self.assertEqual('earlyBinding', spec.type)
         self.assertEqual('Managed By Neutron', spec.description)
         vlan_spec = spec.defaultPortConfig.vlan
@@ -386,7 +320,7 @@ class DVSControllerNetworkUpdateTestCase(DVSControllerBaseTestCase):
         except Exception as e:
             self.fail("Didn't update network. Reason: %s" % e)
         else:
-            self.assertEqual(6, self.connection.invoke_api.call_count)
+            self.assertEqual(5, self.connection.invoke_api.call_count)
             self.assertEqual(1, self.connection.wait_for_task.call_count)
 
     def test_update_network_change_admin_state_to_down(self):
@@ -436,16 +370,13 @@ class DVSControllerNetworkUpdateTestCase(DVSControllerBaseTestCase):
         self.assertEqual('false', blocked_spec.value)
 
     def _get_connection_mock(self, dvs_name):
-        def create_side_effect(namespace):
-            if namespace in ('ns0:BoolPolicy',
-                             'ns0:VMwareDVSPortSetting',
-                             'ns0:DVPortgroupConfigSpec'):
-                return mock.Mock(name=namespace)
-            else:
-                self.fail('Unexpected call. Namespace: %s' % namespace)
-
         vim = self.vim
-        vim.client.factory.create.side_effect = create_side_effect
+        vim.client.factory = self._get_factory_mock((
+            'ns0:BoolPolicy',
+            'ns0:VMwareDVSPortSetting',
+            'ns0:DVPortgroupConfigSpec',
+            'ns0:DVPortgroupPolicy'
+        ))
 
         wrong_pg = mock.Mock(_type='DistributedVirtualPortgroup',
                              name='wrong_pg')
@@ -501,31 +432,8 @@ class DVSControllerNetworkDeletionTestCase(DVSControllerBaseTestCase):
         except Exception as e:
             self.fail("Didn't delete network. Reason: %s" % e)
         else:
-            self.assertEqual(5, self.connection.invoke_api.call_count)
+            self.assertEqual(4, self.connection.invoke_api.call_count)
             self.assertEqual(1, self.connection.wait_for_task.call_count)
-
-    def test_delete_network_raises_VMWareDVSException(self):
-        # first we count calls
-        self.controller.delete_network(fake_network)
-        api_calls = self.connection.invoke_api.call_count
-
-        # then we throw VimException for every api call
-        for i in range(api_calls):
-            connection = self._get_connection_mock(self.dvs_name)
-            org_side_effect = self.connection.invoke_api.side_effect
-
-            def side_effect(*args, **kwargs):
-                if connection.invoke_api.call_count == i + 1:
-                    msg = ('Failed test with args: %(args)s '
-                           'and kwargs: %(kwargs)s' % {'args': args,
-                                                       'kwargs': kwargs})
-                    raise vmware_exceptions.VimException(msg)
-                return org_side_effect(*args, **kwargs)
-
-            connection.invoke_api.side_effect = side_effect
-            controller = util.DVSController(self.dvs_name, connection)
-            self.assertRaises(exceptions.VMWareDVSException,
-                              controller.delete_network, fake_network)
 
     def test_delete_network_tries_to_delete_non_existing_port_group(self):
         org_side_effect = self.connection.invoke_api.side_effect
@@ -585,18 +493,6 @@ class DVSControllerNetworkDeletionTestCase(DVSControllerBaseTestCase):
 
 
 class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
-    def setUp(self):
-        super(DVSControllerPortUpdateTestCase, self).setUp()
-
-        self._dvs_ref = mock.Mock()
-        self.useFixture(fixtures.MonkeyPatch(
-            'mech_vmware_dvs.util.DVSController._get_dvs',
-            mock.Mock(return_value=self._dvs_ref)))
-
-        self._lookup_vm_by_uuid = mock.Mock()
-        self.useFixture(fixtures.MonkeyPatch(
-            'mech_vmware_dvs.util.DVSController._get_vm_by_uuid',
-            self._lookup_vm_by_uuid))
 
     def test_switch_port_blocked_state(self):
         neutron_port = fake_port.copy()
@@ -605,7 +501,7 @@ class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
         dvs_port.config.setting.blocked.value = True
 
         with mock.patch.object(
-                self.controller, '_get_port_by_neutron_uuid',
+                self.controller, '_get_port_info',
                 return_value=dvs_port):
 
             self.controller.switch_port_blocked_state(fake_port)
@@ -613,7 +509,7 @@ class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
             self.assertEqual(1, self.connection.invoke_api.call_count)
             self.assertEqual(
                 mock.call(
-                    self.vim, 'ReconfigureDVPort_Task', self._dvs_ref,
+                    self.vim, 'ReconfigureDVPort_Task', self.dvs,
                     port=mock.ANY),
                 self.connection.invoke_api.call_args)
             args, kwargs = self.connection.invoke_api.call_args
@@ -623,22 +519,343 @@ class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
 
             self.assertEqual(1, self.connection.wait_for_task.call_count)
 
-    def test_switch_port_blocked_state__noop(self):
-        neutron_port = fake_port.copy()
-        neutron_port['admin_state_up'] = False
-        dvs_port = mock.Mock()
-        dvs_port.config.setting.blocked.value = False
+    def _get_connection_mock(self, dvs_name):
+        return mock.Mock(vim=self.vim)
 
-        with mock.patch.object(
-                self.controller, '_get_port_by_neutron_uuid',
-                return_value=dvs_port):
 
-            self.controller.switch_port_blocked_state(fake_port)
+class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
+    BOUND_PORTS = (1, 7, 15)
+    UNBOUND_PORT = 123
+    PORTGROUP_KEY = 345
 
-            self.assertFalse(self.connection.invoke_api.called)
+    def setUp(self):
+        super(UpdateSecurityGroupRulesTestCase, self).setUp()
+        self.spec = mock.Mock()
+        self.vim.client.factory.create.return_value = self.spec
+
+    def test_get_unbound_port_key(self):
+        self.use_patch('mech_vmware_dvs.util.DVSController'
+                       '._get_net_name', return_value=self.dvs_name)
+        pg = mock.Mock(value=self.PORTGROUP_KEY)
+        self.use_patch('mech_vmware_dvs.util.DVSController'
+                       '._get_pg_by_name', return_value=pg)
+        with mock.patch.object(self.controller, '_lookup_unbound_port',
+                               return_value=self.UNBOUND_PORT) as m:
+            key = self.controller.get_unbound_port_key(fake_network,
+                                                       self.BOUND_PORTS)
+            m.assert_called_once_with(pg, self.BOUND_PORTS)
+            self.assertEqual(self.UNBOUND_PORT, key)
+
+    def test_get_unbound_port_key_when_no_unbound_ports_in_portgroup(self):
+        self.use_patch('mech_vmware_dvs.util.DVSController'
+                       '._get_net_name', return_value=self.dvs_name)
+        pg = mock.Mock(value=self.PORTGROUP_KEY)
+        self.use_patch('mech_vmware_dvs.util.DVSController'
+                       '._get_pg_by_name', return_value=pg)
+
+        _increase_ports_on_portgroup = self.use_patch(
+            'mech_vmware_dvs.util.DVSController._increase_ports_on_portgroup')
+        side_effect = [exceptions.UnboundPortNotFound, self.UNBOUND_PORT]
+        with mock.patch.object(self.controller, '_lookup_unbound_port',
+                               side_effect=side_effect) as m:
+            key = self.controller.get_unbound_port_key(fake_network,
+                                                       self.BOUND_PORTS)
+            m.assert_called_any_call(pg, self.BOUND_PORTS)
+            self.assertEqual(self.UNBOUND_PORT, key)
+            _increase_ports_on_portgroup.assert_called_once_with(pg)
+
+    def test_update_port_rules(self):
+        ports = [fake_port]
+        port_info = {'config': {'configVersion': '_config_version_'}}
+        self.use_patch('mech_vmware_dvs.util.DVSController'
+                       '._get_port_info', return_value=port_info)
+        self.controller.update_port_rules(ports)
+        self.assertTrue(self.connection.invoke_api.called)
+        args, kwargs = self.connection.invoke_api.call_args
+        self.assertEqual(self.vim, args[0])
+        self.assertEqual('ReconfigureDVPort_Task', args[1])
+        self.assertEqual(self.dvs, args[2])
+        call_ports = kwargs['port']
+        self.assertEqual(len(ports), len(call_ports))
+        self.assertEqual('_config_version_', self.spec.configVersion)
+        self.assertEqual('_dvs_port_key_', self.spec.key)
+
+    def test__get_ports_for_pg(self):
+        pg = mock.Mock()
+        self.use_patch('mech_vmware_dvs.util.DVSController'
+                       '._get_pg_by_name', return_value=pg)
+
+        some_ports = self.BOUND_PORTS
+        with mock.patch.object(self.controller.connection, 'invoke_api',
+                               return_value=[some_ports]) as m:
+            self.assertEqual(
+                some_ports,
+                self.controller._get_ports_for_pg('pg_name')
+            )
+        m.assert_called_once_with(mock.ANY, 'get_object_property', self.vim,
+                                  pg, 'portKeys')
+
+    def test__lookup_unbound_port(self):
+        pg = mock.Mock()
+        ports = [mock.Mock(key=k) for k in
+                 list(self.BOUND_PORTS) + [self.UNBOUND_PORT]]
+        with mock.patch.object(self.controller.connection, 'invoke_api',
+                               return_value=ports) as m:
+            key = self.controller._lookup_unbound_port(pg, self.BOUND_PORTS)
+            self.assertEqual(key, self.UNBOUND_PORT)
+            m.assert_called_once_with(self.vim, 'FetchDVPorts', self.dvs,
+                                      criteria=mock.ANY)
+
+    def test__lookup_unbound_port_raises_exception(self):
+        pg = mock.Mock()
+        ports = [mock.Mock(key=k) for k in self.BOUND_PORTS]
+        with mock.patch.object(self.controller.connection, 'invoke_api',
+                               return_value=ports):
+            self.assertRaises(exceptions.UnboundPortNotFound,
+                              self.controller._lookup_unbound_port, pg,
+                              self.BOUND_PORTS)
+
+    def test__increase_ports_on_portgroup(self):
+        ports_number = 8
+        pg_info = mock.Mock(numPorts=ports_number,
+                            configVersion='_config_version_')
+        self.use_patch('mech_vmware_dvs.util.DVSController'
+                       '._get_config_by_ref', return_value=pg_info)
+        _build_pg_update_spec = self.use_patch(
+            'mech_vmware_dvs.util.DVSController._build_pg_update_spec',
+            return_value='_update_spec_')
+        pg = mock.Mock()
+        with mock.patch.object(self.controller.connection, 'invoke_api'):
+            self.controller._increase_ports_on_portgroup(pg)
+
+        _build_pg_update_spec.assert_called_once_with(
+            '_config_version_',
+            ports_number=ports_number * 2)
+
+    def test__increase_ports_on_portgroup_when_pg_dont_have_ports(self):
+        ports_number = 0
+        pg_info = mock.Mock(numPorts=ports_number,
+                            configVersion='_config_version_')
+        self.use_patch('mech_vmware_dvs.util.DVSController'
+                       '._get_config_by_ref', return_value=pg_info)
+        _build_pg_update_spec = self.use_patch(
+            'mech_vmware_dvs.util.DVSController._build_pg_update_spec',
+            return_value='_update_spec_')
+        pg = mock.Mock()
+        with mock.patch.object(self.controller.connection, 'invoke_api'):
+            self.controller._increase_ports_on_portgroup(pg)
+
+        _build_pg_update_spec.assert_called_once_with('_config_version_',
+                                                      ports_number=1)
 
     def _get_connection_mock(self, dvs_name):
         return mock.Mock(vim=self.vim)
+
+
+class SpecBuilderTestCase(base.BaseTestCase):
+    def setUp(self):
+        super(SpecBuilderTestCase, self).setUp()
+        self.spec = mock.Mock(name='spec')
+        self.factory = mock.Mock(name='factory')
+        self.factory.create.return_value = self.spec
+        self.builder = util.SpecBuilder(self.factory)
+
+    def test_port_criteria_with_port_key(self):
+        criteria = self.builder.port_criteria(port_key='_some_port_')
+        self.factory.create.assert_called_once_with(
+            'ns0:DistributedVirtualSwitchPortCriteria'
+        )
+        self.assertEqual(criteria.portKey, '_some_port_')
+        self.assertNotIn('portgroupKey', dir(criteria))
+
+    def test_port_criteria_with_port_group_key(self):
+        criteria = self.builder.port_criteria(port_group_key='_port_group_key')
+        self.factory.create.assert_called_once_with(
+            'ns0:DistributedVirtualSwitchPortCriteria'
+        )
+        self.assertEqual(criteria.portgroupKey, '_port_group_key')
+        self.assertEqual(criteria.inside, '1')
+        self.assertNotIn('portKey', dir(criteria))
+
+    def test__create_rule_egress(self):
+        rule = self._create_rule(direction='egress')
+        self.assertEqual(rule.direction, 'outgoingPackets')
+
+    def test__create_rule_ingress(self):
+        rule = self._create_rule(direction='ingress')
+        self.assertEqual(rule.direction, 'incomingPackets')
+
+    def test__create_rule_ingress_source_port_range(self):
+        rule = self._create_rule(direction='ingress',
+                                 source_port_range_min=22,
+                                 source_port_range_max=23)
+        qualifier = rule.qualifier[0]
+        self.assertIn('sourceIpPort', dir(qualifier))
+        self.assertNotIn('destinationIpPort', dir(qualifier))
+
+    def test__create_rule_ingress_port_range(self):
+        rule = self._create_rule(direction='ingress',
+                                 port_range_min=22,
+                                 port_range_max=23)
+        qualifier = rule.qualifier[0]
+        self.assertIn('destinationIpPort', dir(qualifier))
+        self.assertNotIn('sourceIpPort', dir(qualifier))
+
+    def test__create_rule_egress_port_range(self):
+        rule = self._create_rule(direction='egress',
+                                 port_range_min=22,
+                                 port_range_max=23)
+        qualifier = rule.qualifier[0]
+        self.assertNotIn('destinationIpPort', dir(qualifier))
+        self.assertIn('sourceIpPort', dir(qualifier))
+
+    def test__create_rule_ingress_cidr(self):
+        rule = self._create_rule(direction='ingress',
+                                 source_ip_prefix='192.168.0.1/24')
+        qualifier = rule.qualifier[0]
+        self.assertEqual('192.168.0.1', qualifier.sourceAddress.addressPrefix)
+        self.assertEqual('0.0.0.0', qualifier.destinationAddress.addressPrefix)
+
+    def test__create_rule_egress_cidr(self):
+        rule = self._create_rule(direction='egress',
+                                 dest_ip_prefix='192.168.0.1/24')
+        qualifier = rule.qualifier[0]
+        self.assertEqual('192.168.0.1',
+                         qualifier.destinationAddress.addressPrefix)
+        self.assertEqual('0.0.0.0', qualifier.sourceAddress.addressPrefix)
+
+    def test__create_rule_egress_ip(self):
+        rule = self._create_rule(direction='egress',
+                                 dest_ip_prefix='192.168.0.1/24',
+                                 ip='10.20.0.2')
+        qualifier = rule.qualifier[0]
+        self.assertEqual('10.20.0.2',
+                         qualifier.destinationAddress.address)
+        self.assertEqual('0.0.0.0', qualifier.sourceAddress.addressPrefix)
+
+    def test__create_rule_ingress_ip(self):
+        rule = self._create_rule(direction='ingress',
+                                 dest_ip_prefix='192.168.0.1/24',
+                                 ip='10.20.0.2')
+        qualifier = rule.qualifier[0]
+        self.assertEqual('0.0.0.0',
+                         qualifier.destinationAddress.addressPrefix)
+        self.assertEqual('10.20.0.2', qualifier.sourceAddress.address)
+
+    def _create_rule(self, ip=None, **kwargs):
+        def side_effect(name):
+            return mock.Mock(name=name)
+
+        self.factory.create.side_effect = side_effect
+
+        rule_info = {'direction': 'egress',
+                     'ethertype': 'IPv4'}
+        rule_info.update(kwargs)
+        sequence = 25
+        rule = self.builder._create_rule(rule_info, sequence, ip)
+        self.assertEqual(rule.sequence, sequence)
+        return rule
+
+
+class TrafficRuleBuilderBaseTestCase(UtilBaseTestCase):
+    def setUp(self):
+        super(TrafficRuleBuilderBaseTestCase, self).setUp()
+        self.spec_factory = self._get_factory_mock((
+            'ns0:IntExpression',
+            'ns0:DvsTrafficRule',
+            'ns0:DvsAcceptNetworkRuleAction',
+            'ns0:DvsIpNetworkRuleQualifier',
+            'ns0:IpRange',
+            'ns0:SingleIp',
+            'ns0:DvsSingleIpPort',
+            'ns0:DvsIpPortRange'))
+
+
+class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
+    def _create_builder(self, ethertype=None, protocol=None, sequence=None):
+        class ConcreteTrafficRuleBuilder(util.TrafficRuleBuilder):
+            def port_range(self, start, end):
+                pass
+
+            def cidr(self, cidr):
+                pass
+
+        return ConcreteTrafficRuleBuilder(
+            self.spec_factory, ethertype, protocol, sequence)
+
+    def test_build_sequence(self):
+        builder = self._create_builder(sequence='_sequence_')
+        rule = builder.build()
+        self.assertEqual('_sequence_', rule.sequence)
+
+    def test_build_ethertype_IPv4(self):
+        builder = self._create_builder(ethertype='IPv4')
+        rule = builder.build()
+        qualifier = rule.qualifier[0]
+        self.assertEqual('0.0.0.0', qualifier.sourceAddress.addressPrefix)
+        self.assertEqual('0', qualifier.sourceAddress.prefixLength)
+        self.assertEqual('0.0.0.0', qualifier.destinationAddress.addressPrefix)
+        self.assertEqual('0', qualifier.destinationAddress.prefixLength)
+
+    def test_build_ethertype_IPv6(self):
+        builder = self._create_builder(ethertype='IPv6')
+        rule = builder.build()
+        qualifier = rule.qualifier[0]
+        self.assertEqual('::', qualifier.sourceAddress.addressPrefix)
+        self.assertEqual('0', qualifier.sourceAddress.prefixLength)
+        self.assertEqual('::', qualifier.destinationAddress.addressPrefix)
+        self.assertEqual('0', qualifier.destinationAddress.prefixLength)
+
+    def test_build_ethertype_protocol(self):
+        for name, rfc in util.TrafficRuleBuilder.PROTOCOL.iteritems():
+            builder = self._create_builder(protocol=name)
+            rule = builder.build()
+            qualifier = rule.qualifier[0]
+            self.assertEqual(rfc,
+                             qualifier.protocol.value,
+                             'Wrong value for %s protocol' % name)
+
+        builder = self._create_builder(protocol='not_described')
+        rule = builder.build()
+        qualifier = rule.qualifier[0]
+        self.assertEqual('not_described',
+                         qualifier.protocol.value)
+
+    def test__has_port_for_icmp(self):
+        builder = self._create_builder(protocol='icmp')
+        self.assertFalse(builder._has_port(None))
+        self.assertFalse(builder._has_port(123))
+
+    def test__has_port_for_tcp(self):
+        builder = self._create_builder(protocol='tcp')
+        self.assertFalse(builder._has_port(None))
+        self.assertTrue(builder._has_port(123))
+
+    def test__cidr_spec_for_ip_range(self):
+        builder = self._create_builder()
+        cidr_spec = builder._cidr_spec('192.168.0.2/24')
+        self.assertEqual('ns0:IpRange', cidr_spec._mock_name)
+        self.assertEqual('192.168.0.2', cidr_spec.addressPrefix)
+        self.assertEqual('24', cidr_spec.prefixLength)
+
+    def test__cidr_spec_for_single_ip(self):
+        builder = self._create_builder()
+        cidr_spec = builder._cidr_spec('192.168.0.2')
+        self.assertEqual('ns0:SingleIp', cidr_spec._mock_name)
+        self.assertEqual('192.168.0.2', cidr_spec.address)
+
+    def test__port_spec_for_single_port(self):
+        builder = self._create_builder()
+        port_spec = builder._port_range_spec(22, 22)
+        self.assertEqual('ns0:DvsSingleIpPort', port_spec._mock_name)
+        self.assertEqual(22, port_spec.portNumber)
+
+    def test__port_spec_for_port_range(self):
+        builder = self._create_builder()
+        port_spec = builder._port_range_spec(22, 121)
+        self.assertEqual('ns0:DvsIpPortRange', port_spec._mock_name)
+        self.assertEqual(22, port_spec.startPortNumber)
+        self.assertEqual(121, port_spec.endPortNumber)
 
 
 class UtilTestCase(base.BaseTestCase):
@@ -657,7 +874,9 @@ class UtilTestCase(base.BaseTestCase):
             {},
             util.create_network_map_from_config(CONF.ml2_vmware))
 
-    def test_cretes_network_map_from_conf(self):
+    @mock.patch('mech_vmware_dvs.util.DVSController._get_dvs')
+    @mock.patch('mech_vmware_dvs.util.DVSController._get_datacenter')
+    def test_creates_network_map_from_conf(self, *args):
         network_map = ['physnet1:dvSwitch', 'physnet2:dvSwitch1']
         CONF.set_override(
             'network_maps', network_map, 'ml2_vmware')
@@ -667,7 +886,6 @@ class UtilTestCase(base.BaseTestCase):
 
         for net, dvs_name in [i.split(':') for i in network_map]:
             controller = actual[net]
-            self.assertEqual(dvs_name, controller.dvs_name)
             self.assertEqual('session', controller.connection)
 
         vmware_conf = config.CONF.ml2_vmware

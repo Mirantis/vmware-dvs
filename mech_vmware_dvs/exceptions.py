@@ -56,6 +56,10 @@ class PortNotFound(ResourceNotFond):
     message = _('Port %(id)s not found')
 
 
+class UnboundPortNotFound(ResourceNotFond):
+    message = _('Unbound port not found')
+
+
 class HypervisorNotFound(ResourceNotFond):
     message = _('Hypervisor not found')
 
