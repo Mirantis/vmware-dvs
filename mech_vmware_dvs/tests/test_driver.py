@@ -251,7 +251,6 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
 
     @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
                 '._update_security_groups')
-
     @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
     def test_update_port_postcommit(self, hypervisor_by_host,
                                     _update_security_groups):

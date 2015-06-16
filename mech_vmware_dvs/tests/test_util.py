@@ -15,7 +15,6 @@
 
 import string
 
-import fixtures
 import mock
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
@@ -240,7 +239,6 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
         network = dict(fake_network)
         network['admin_state_up'] = False
         self.controller.create_network(network, fake_segment)
-
 
     def test_create_network_raises_VMWareDVSException(self):
         # first we count calls
