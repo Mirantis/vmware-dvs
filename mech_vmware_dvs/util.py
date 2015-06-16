@@ -36,17 +36,19 @@ VM_NETWORK_DEVICE_TYPES = [
 class DVSController(object):
     """Controls one DVS."""
 
-    def __init__(self, dvs, connection):
+    def __init__(self, dvs_name, connection):
         self.connection = connection
-        self.dvs_name = dvs
-        self.dvs_ref = None
+        try:
+            self._datacenter = self._get_datacenter(connection)
+            self._dvs = self._get_dvs(dvs_name, connection, self._datacenter)
+        except vmware_exceptions.VimException as e:
+            raise exceptions.wrap_wmvare_vim_exception(e)
 
     def create_network(self, network, segment):
         name = self._get_net_name(network)
         blocked = not network['admin_state_up']
 
         try:
-            dvs_ref = self._get_dvs()
             pg_spec = self._build_pg_create_spec(
                 name,
                 segment['segmentation_id'],
@@ -54,7 +56,7 @@ class DVSController(object):
             pg_create_task = self.connection.invoke_api(
                 self.connection.vim,
                 'CreateDVPortgroup_Task',
-                dvs_ref, spec=pg_spec)
+                self._dvs, spec=pg_spec)
 
             result = self.connection.wait_for_task(pg_create_task)
         except vmware_exceptions.VimException as e:
@@ -103,9 +105,8 @@ class DVSController(object):
             raise exceptions.wrap_wmvare_vim_exception(e)
 
     @lockutils.synchronized('vmware_dvs_bind_port', external=True)
-    def switch_port_blocked_state(self, port, state=None):
-        if state is None:
-            state = not port['admin_state_up']
+    def switch_port_blocked_state(self, port):
+        state = not port['admin_state_up']
 
         port_info = self._get_port_info(
             port['binding:vif_details']['dvs_port_key'])
@@ -121,7 +122,7 @@ class DVSController(object):
         update_spec = [update_spec]
         update_task = self.connection.invoke_api(
             self.connection.vim, 'ReconfigureDVPort_Task',
-            self._get_dvs(), port=update_spec)
+            self._dvs, port=update_spec)
         self.connection.wait_for_task(update_task)
 
     @lockutils.synchronized('vmware_dvs_bind_port', external=True)
@@ -139,11 +140,10 @@ class DVSController(object):
                 port_config.configVersion = port_info['config'][
                     'configVersion']
                 port_config_list.append(port_config)
-            dvs = self._get_dvs()
             task = self.connection.invoke_api(
                 self.connection.vim,
                 'ReconfigureDVPort_Task',
-                dvs, port=port_config_list
+                self._dvs, port=port_config_list
             )
             return self.connection.wait_for_task(task)
         except vmware_exceptions.VimException as e:
@@ -192,48 +192,41 @@ class DVSController(object):
         pg.configVersion = config_version
         return pg
 
-    def _get_datacenter(self):
+    def _get_datacenter(self, connection):
         """Get the datacenter reference."""
         # FIXME(dobgun): lookup datacenter by name(add it into config)
-        results = self.connection.invoke_api(
-            vim_util, 'get_objects', self.connection.vim,
+        results = connection.invoke_api(
+            vim_util, 'get_objects', connection.vim,
             'Datacenter', 100, ['name'])
         return results.objects[0].obj
 
-    def _get_network_folder(self):
-        """Get the network folder from datacenter."""
-        dc_ref = self._get_datacenter()
-        results = self.connection.invoke_api(
-            vim_util, 'get_object_property', self.connection.vim,
-            dc_ref, 'networkFolder')
-        return results
-
-    def _get_dvs(self):
+    def _get_dvs(self, dvs_name, connection, datacenter):
         """Get the dvs by name"""
-        net_folder = self._get_network_folder()
-        results = self.connection.invoke_api(
-            vim_util, 'get_object_property', self.connection.vim,
-            net_folder, 'childEntity')
+        network_folder = connection.invoke_api(
+            vim_util, 'get_object_property', connection.vim,
+            datacenter, 'networkFolder')
+        results = connection.invoke_api(
+            vim_util, 'get_object_property', connection.vim,
+            network_folder, 'childEntity')
         networks = results.ManagedObjectReference
         dvswitches = self._get_object_by_type(networks,
                                               'VmwareDistributedVirtualSwitch')
         for dvs in dvswitches:
-            name = self.connection.invoke_api(
+            name = connection.invoke_api(
                 vim_util, 'get_object_property',
-                self.connection.vim, dvs, 'name')
-            if name == self.dvs_name:
+                connection.vim, dvs, 'name')
+            if name == dvs_name:
                 dvs_ref = dvs
                 break
         else:
-            raise exceptions.DVSNotFound(dvs_name=self.dvs_name)
+            raise exceptions.DVSNotFound(dvs_name=dvs_name)
         return dvs_ref
 
     def _get_pg_by_name(self, pg_name):
         """Get the dpg ref by name"""
-        dc_ref = self._get_datacenter()
         net_list = self.connection.invoke_api(
             vim_util, 'get_object_property', self.connection.vim,
-            dc_ref, 'network').ManagedObjectReference
+            self._datacenter, 'network').ManagedObjectReference
         type_value = 'DistributedVirtualPortgroup'
         pg_list = self._get_object_by_type(net_list, type_value)
         for pg in pg_list:
@@ -296,12 +289,11 @@ class DVSController(object):
     def _lookup_unbound_port(self, port_group, bound_ports):
         builder = SpecBuilder(self.connection.vim.client.factory)
         criteria = builder.port_criteria(port_group_key=port_group.value)
-        dvs = self._get_dvs()
 
         ports = self.connection.invoke_api(
             self.connection.vim,
             'FetchDVPorts',
-            dvs, criteria=criteria)
+            self._dvs, criteria=criteria)
         for port in ports:
             if port.key not in bound_ports:
                 return port.key
@@ -322,11 +314,10 @@ class DVSController(object):
         """pg - ManagedObjectReference of Port Group"""
         builder = SpecBuilder(self.connection.vim.client.factory)
         criteria = builder.port_criteria(port_key=port_key)
-        dvs = self._get_dvs()
         return self.connection.invoke_api(
             self.connection.vim,
             'FetchDVPorts',
-            dvs, criteria=criteria)[0]
+            self._dvs, criteria=criteria)[0]
 
 
 class SpecBuilder(object):

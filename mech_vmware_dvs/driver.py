@@ -169,13 +169,9 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                     'port_id': context.current['id'],
                     'net_id': context.network.current['id']})
 
+        self._update_admin_state_up(dvs, context)
+
         force = context.original['status'] == 'DOWN'
-        try:
-            self._update_admin_state_up(dvs, context, force=force)
-        except (exceptions.VMNotFound, exceptions.PortNotFound):
-            # until port are not bind to any VM it doesn't exist
-            # so we can ignore status change
-            pass
         self._update_security_groups(dvs, context, force=force)
 
     def delete_port_postcommit(self, context):
@@ -206,16 +202,16 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             bound_ports.add(port_key)
             self._bound_ports = bound_ports
 
-    def _update_admin_state_up(self, dvs, context, force):
-        current_admin_state_up = context.current['admin_state_up']
-        if force:
-            perform = True
-        else:
+    def _update_admin_state_up(self, dvs, context):
+        try:
             original_admin_state_up = context.original['admin_state_up']
+        except KeyError:
+            pass
+        else:
+            current_admin_state_up = context.current['admin_state_up']
             perform = current_admin_state_up != original_admin_state_up
-
-        if perform:
-            dvs.switch_port_blocked_state(context.current)
+            if perform:
+                dvs.switch_port_blocked_state(context.current)
 
     @lockutils.synchronized('vmware_dvs_update_sg', external=True)
     def _update_security_groups(self, dvs, context, force):
@@ -300,7 +296,6 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                 raise exceptions.NoDVSForPhysicalNetwork(
                     physical_network=physical_network)
         else:
-            return
             raise exceptions.NotSupportedNetworkType(
                 network_type=segment['network_type'])
 

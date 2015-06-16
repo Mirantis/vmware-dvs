@@ -251,14 +251,16 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
 
     @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
                 '._update_security_groups')
-    def test_update_port_postcommit(self,
+
+    @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
+    def test_update_port_postcommit(self, hypervisor_by_host,
                                     _update_security_groups):
+        hypervisor_by_host.return_value = mock.Mock(
+            hypervisor_type=VALID_HYPERVISOR_TYPE)
         port_context = self._create_port_context()
 
         self.driver.update_port_postcommit(port_context)
-        self.assertEqual(
-            self.dvs.switch_port_blocked_state.call_args_list,
-            [mock.call(port_context.current)])
+
         self.assertTrue(_update_security_groups.called)
 
     @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
@@ -289,11 +291,13 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
 
     @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
                 '._get_bound_ports', return_value=set())
-    def test_bind_port(self, _getbound_ports):
+    @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
+    def test_bind_port(self, get_hypervisor, _getbound_ports):
         context = self._create_port_context()
+        get_hypervisor.return_value = mock.Mock(
+            hypervisor_type=VALID_HYPERVISOR_TYPE)
 
         self.dvs.get_unbound_port_key.return_value = '_unbound_key_'
-
 
         self.driver.bind_port(context)
 
@@ -310,7 +314,35 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
                     self.driver.vif_type, vif_details,
                     status='ACTIVE'))
 
-    def test__getbound_ports(self):
+    @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
+    def test__port_belongs_to_vmware__unbinded_port(self, get_hypervisor):
+        context = self._create_port_context()
+        port = context.current
+        port.pop('binding:host_id')
+
+        result = self.driver._port_belongs_to_vmware(context.current)
+        self.assertFalse(result)
+
+    @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
+    def test__port_belongs_to_vmware__invalid_hypervisor(
+            self, get_hypervisor):
+        context = self._create_port_context()
+        get_hypervisor.return_value = mock.Mock(
+            hypervisor_type=INVALID_HYPERVISOR_TYPE)
+
+        result = self.driver._port_belongs_to_vmware(context.current)
+        self.assertFalse(result)
+
+    @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
+    def test__is_port_belongs_to_vmware__not_found(self, get_hypervisor):
+        get_hypervisor.side_effect = exceptions.HypervisorNotFound
+        context = self._create_port_context()
+
+        result = self.driver._port_belongs_to_vmware(context.current)
+        self.assertTrue(get_hypervisor.called)
+        self.assertFalse(result)
+
+    def test__get_bound_ports(self):
         context = self._create_port_context()
         good_port = {'binding:vif_details': {
             'dvs_port_key': '_dummy_dvs_port_key_'}}
@@ -336,11 +368,6 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         self.driver._bound_ports = {1, 2}
         self.driver.delete_port_postcommit(context)
         self.assertEqual({1, 2}, self.driver._bound_ports)
-
-    def test__update_admin_state_up(self):
-        context = self._create_port_context()
-        self.driver._update_admin_state_up(self.dvs, context, False)
-        self.assertFalse(self.dvs.switch_port_blocked_state.called)
 
     def test_update_security_groups_no_update_when_sg_didnt_change(self):
         context = self._create_port_context()

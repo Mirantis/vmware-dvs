@@ -136,8 +136,21 @@ class DVSControllerBaseTestCase(UtilBaseTestCase):
         self.dvs_name = 'dvs_name'
         self.vim = mock.Mock()
         self.connection = self._get_connection_mock(self.dvs_name)
+
+        self.datacenter = 'datacenter1'
+        self.use_patch('mech_vmware_dvs.util.DVSController'
+                       '._get_datacenter', return_value=self.datacenter)
+        self.dvs = mock.Mock()
+        self.use_patch('mech_vmware_dvs.util.DVSController'
+                       '._get_dvs', return_value=self.dvs)
+
         self.controller = util.DVSController(self.dvs_name,
                                              self.connection)
+
+    def use_patch(self, *args, **kwargs):
+        patch = mock.patch(*args, **kwargs)
+        self.addCleanup(patch.stop)
+        return patch.start()
 
     def _get_connection_mock(self, dvs_name):
         raise NotImplementedError
@@ -147,7 +160,8 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
     """Tests of DVSController that don't call API methods"""
 
     def test_creation(self):
-        self.assertEqual(self.dvs_name, self.controller.dvs_name)
+        self.assertEqual(self.datacenter, self.controller._datacenter)
+        self.assertEqual(self.dvs, self.controller._dvs)
         self.assertIs(self.connection, self.controller.connection)
 
     def test__get_net_name(self):
@@ -207,7 +221,7 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
         except Exception as e:
             self.fail("Can't create network. Reason: %s" % e)
         else:
-            self.assertEqual(6, self.connection.invoke_api.call_count)
+            self.assertEqual(1, self.connection.invoke_api.call_count)
             self.assertEqual(1, self.connection.wait_for_task.call_count)
 
     def test_create_network_which_is_blocked(self):
@@ -227,21 +241,6 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
         network['admin_state_up'] = False
         self.controller.create_network(network, fake_segment)
 
-    def test_create_network_raises_DVSNotFoundException(self):
-        org_side_effect = self.connection.invoke_api.side_effect
-        vim = self.vim
-
-        def side_effect(module, method, *args, **kwargs):
-            if args == (vim, 'network_folder1', 'childEntity'):
-                return mock.Mock(ManagedObjectReference=[])
-            else:
-                return org_side_effect(module, method, *args, **kwargs)
-
-        self.connection.invoke_api.side_effect = side_effect
-        self.assertRaises(exceptions.DVSNotFound,
-                          self.controller.create_network,
-                          fake_network,
-                          fake_segment)
 
     def test_create_network_raises_VMWareDVSException(self):
         # first we count calls
@@ -276,12 +275,6 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
             'ns0:BoolPolicy',
             'ns0:DVPortgroupConfig',
             'ns0:DVPortgroupPolicy'))
-        controlled_dvs = mock.Mock(_type='VmwareDistributedVirtualSwitch',
-                                   name='controlled_dvs')
-        wrong_dvs = mock.Mock(_type='VmwareDistributedVirtualSwitch',
-                              name='wrong_dvs')
-        not_dvs = mock.Mock(_type='not_dvs', name='not_dvs')
-        objects = [wrong_dvs, controlled_dvs, not_dvs]
 
         def invoke_api_side_effect(module, method, *args, **kwargs):
             if module is vim_util:
@@ -290,20 +283,9 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
                         return mock.Mock(objects=[
                             mock.Mock(obj='datacenter1')
                         ])
-                elif method == 'get_object_property':
-                    if args == (vim, 'datacenter1', 'networkFolder'):
-                        return 'network_folder1'
-                    elif args == (vim, 'network_folder1', 'childEntity'):
-                        return mock.Mock(ManagedObjectReference=objects)
-                    elif args == (vim, wrong_dvs, 'name'):
-                        return 'wrong_dvs'
-                    elif args == (vim, controlled_dvs, 'name'):
-                        return dvs_name
-                    elif args == (vim, not_dvs, 'name'):
-                        self.fail('Called with not dvs')
             elif module == vim:
                 if method == 'CreateDVPortgroup_Task':
-                    self.assertEqual((controlled_dvs,), args)
+                    self.assertEqual((self.dvs,), args)
                     self.assert_create_specification(kwargs['spec'])
                     return kwargs['spec']
             self.fail('Unexpected call. Module: %(module)s; '
@@ -340,7 +322,7 @@ class DVSControllerNetworkUpdateTestCase(DVSControllerBaseTestCase):
         except Exception as e:
             self.fail("Didn't update network. Reason: %s" % e)
         else:
-            self.assertEqual(6, self.connection.invoke_api.call_count)
+            self.assertEqual(5, self.connection.invoke_api.call_count)
             self.assertEqual(1, self.connection.wait_for_task.call_count)
 
     def test_update_network_change_admin_state_to_down(self):
@@ -452,31 +434,8 @@ class DVSControllerNetworkDeletionTestCase(DVSControllerBaseTestCase):
         except Exception as e:
             self.fail("Didn't delete network. Reason: %s" % e)
         else:
-            self.assertEqual(5, self.connection.invoke_api.call_count)
+            self.assertEqual(4, self.connection.invoke_api.call_count)
             self.assertEqual(1, self.connection.wait_for_task.call_count)
-
-    def test_delete_network_raises_VMWareDVSException(self):
-        # first we count calls
-        self.controller.delete_network(fake_network)
-        api_calls = self.connection.invoke_api.call_count
-
-        # then we throw VimException for every api call
-        for i in range(api_calls):
-            connection = self._get_connection_mock(self.dvs_name)
-            org_side_effect = self.connection.invoke_api.side_effect
-
-            def side_effect(*args, **kwargs):
-                if connection.invoke_api.call_count == i + 1:
-                    msg = ('Failed test with args: %(args)s '
-                           'and kwargs: %(kwargs)s' % {'args': args,
-                                                       'kwargs': kwargs})
-                    raise vmware_exceptions.VimException(msg)
-                return org_side_effect(*args, **kwargs)
-
-            connection.invoke_api.side_effect = side_effect
-            controller = util.DVSController(self.dvs_name, connection)
-            self.assertRaises(exceptions.VMWareDVSException,
-                              controller.delete_network, fake_network)
 
     def test_delete_network_tries_to_delete_non_existing_port_group(self):
         org_side_effect = self.connection.invoke_api.side_effect
@@ -536,14 +495,6 @@ class DVSControllerNetworkDeletionTestCase(DVSControllerBaseTestCase):
 
 
 class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
-    def setUp(self):
-        super(DVSControllerPortUpdateTestCase, self).setUp()
-
-        self._dvs_ref = mock.Mock()
-        self.useFixture(fixtures.MonkeyPatch(
-            'mech_vmware_dvs.util.DVSController._get_dvs',
-            mock.Mock(return_value=self._dvs_ref)))
-
 
     def test_switch_port_blocked_state(self):
         neutron_port = fake_port.copy()
@@ -560,7 +511,7 @@ class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
             self.assertEqual(1, self.connection.invoke_api.call_count)
             self.assertEqual(
                 mock.call(
-                    self.vim, 'ReconfigureDVPort_Task', self._dvs_ref,
+                    self.vim, 'ReconfigureDVPort_Task', self.dvs,
                     port=mock.ANY),
                 self.connection.invoke_api.call_args)
             args, kwargs = self.connection.invoke_api.call_args
@@ -620,15 +571,12 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
         port_info = {'config': {'configVersion': '_config_version_'}}
         self.use_patch('mech_vmware_dvs.util.DVSController'
                        '._get_port_info', return_value=port_info)
-        dvs = mock.Mock()
-        self.use_patch('mech_vmware_dvs.util.DVSController'
-                       '._get_dvs', return_value=dvs)
         self.controller.update_port_rules(ports)
         self.assertTrue(self.connection.invoke_api.called)
         args, kwargs = self.connection.invoke_api.call_args
         self.assertEqual(self.vim, args[0])
         self.assertEqual('ReconfigureDVPort_Task', args[1])
-        self.assertEqual(dvs, args[2])
+        self.assertEqual(self.dvs, args[2])
         call_ports = kwargs['port']
         self.assertEqual(len(ports), len(call_ports))
         self.assertEqual('_config_version_', self.spec.configVersion)
@@ -650,9 +598,6 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
                                   pg, 'portKeys')
 
     def test__lookup_unbound_port(self):
-        dvs = mock.Mock()
-        self.use_patch('mech_vmware_dvs.util.DVSController'
-                       '._get_dvs', return_value=dvs)
         pg = mock.Mock()
         ports = [mock.Mock(key=k) for k in
                  list(self.BOUND_PORTS) + [self.UNBOUND_PORT]]
@@ -660,13 +605,10 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
                                return_value=ports) as m:
             key = self.controller._lookup_unbound_port(pg, self.BOUND_PORTS)
             self.assertEqual(key, self.UNBOUND_PORT)
-            m.assert_called_once_with(self.vim, 'FetchDVPorts', dvs,
+            m.assert_called_once_with(self.vim, 'FetchDVPorts', self.dvs,
                                       criteria=mock.ANY)
 
     def test__lookup_unbound_port_raises_exception(self):
-        dvs = mock.Mock()
-        self.use_patch('mech_vmware_dvs.util.DVSController'
-                       '._get_dvs', return_value=dvs)
         pg = mock.Mock()
         ports = [mock.Mock(key=k) for k in self.BOUND_PORTS]
         with mock.patch.object(self.controller.connection, 'invoke_api',
@@ -710,11 +652,6 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
 
     def _get_connection_mock(self, dvs_name):
         return mock.Mock(vim=self.vim)
-
-    def use_patch(self, *args, **kwargs):
-        patch = mock.patch(*args, **kwargs)
-        self.addCleanup(patch.stop)
-        return patch.start()
 
 
 class SpecBuilderTestCase(base.BaseTestCase):
@@ -939,7 +876,9 @@ class UtilTestCase(base.BaseTestCase):
             {},
             util.create_network_map_from_config(CONF.ml2_vmware))
 
-    def test_cretes_network_map_from_conf(self):
+    @mock.patch('mech_vmware_dvs.util.DVSController._get_dvs')
+    @mock.patch('mech_vmware_dvs.util.DVSController._get_datacenter')
+    def test_creates_network_map_from_conf(self, *args):
         network_map = ['physnet1:dvSwitch', 'physnet2:dvSwitch1']
         CONF.set_override(
             'network_maps', network_map, 'ml2_vmware')
@@ -949,7 +888,6 @@ class UtilTestCase(base.BaseTestCase):
 
         for net, dvs_name in [i.split(':') for i in network_map]:
             controller = actual[net]
-            self.assertEqual(dvs_name, controller.dvs_name)
             self.assertEqual('session', controller.connection)
 
         vmware_conf = config.CONF.ml2_vmware
