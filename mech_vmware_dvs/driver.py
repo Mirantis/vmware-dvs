@@ -28,6 +28,7 @@ from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api, driver_context
 from neutron.context import Context
 
+from mech_vmware_dvs import compute_util
 from mech_vmware_dvs import config
 from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util
@@ -184,6 +185,27 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         except KeyError:
             pass
 
+    @lockutils.synchronized('vmware_dvs_bind_port', external=True)
+    def bind_port(self, context):
+        if not self._port_belongs_to_vmware(context.current):
+            return
+        bound_ports = self._get_bound_ports(context)
+
+        for segment in context.network.network_segments:
+            dvs = self._lookup_dvs_for_context(context.network)
+            port_key = dvs.get_unbound_port_key(
+                context.network.current,
+                bound_ports
+            )
+            vif_details = dict(self.vif_details)
+            vif_details['dvs_port_key'] = port_key
+            context.set_binding(
+                segment[driver_api.ID],
+                self.vif_type, vif_details,
+                status=n_const.PORT_STATUS_ACTIVE)
+            bound_ports.add(port_key)
+            self._bound_ports = bound_ports
+
     def _update_admin_state_up(self, dvs, context, force):
         current_admin_state_up = context.current['admin_state_up']
         if force:
@@ -266,27 +288,6 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         sg_member_ips = sg_info['sg_member_ips']
         return devices, security_groups, sg_member_ips
 
-    @lockutils.synchronized('vmware_dvs_bind_port', external=True)
-    def bind_port(self, context):
-        if not self._port_belongs_to_vmware(context.current):
-            return
-        bound_ports = self._get_bound_ports(context)
-
-        for segment in context.network.network_segments:
-            dvs = self._lookup_dvs_for_context(context.network)
-            port_key = dvs.get_unbound_port_key(
-                context.network.current,
-                bound_ports
-            )
-            vif_details = dict(self.vif_details)
-            vif_details['dvs_port_key'] = port_key
-            context.set_binding(
-                segment[driver_api.ID],
-                self.vif_type, vif_details,
-                status=n_const.PORT_STATUS_ACTIVE)
-            bound_ports.add(port_key)
-            self._bound_ports = bound_ports
-
     def _lookup_dvs_for_context(self, network_context):
         segment = network_context.network_segments[0]
         if segment['network_type'] == constants.TYPE_VLAN:
@@ -299,6 +300,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                 raise exceptions.NoDVSForPhysicalNetwork(
                     physical_network=physical_network)
         else:
+            return
             raise exceptions.NotSupportedNetworkType(
                 network_type=segment['network_type'])
 
@@ -320,4 +322,20 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         return port_keys
 
     def _port_belongs_to_vmware(self, port):
-        return port['binding:vif_type'] == self.vif_type
+        try:
+            try:
+                host = port['binding:host_id']
+            except KeyError:
+                raise exceptions.HypervisorNotFound
+
+            hypervisor = compute_util.get_hypervisors_by_host(
+                CONF, host)
+
+            # value for field hypervisor_type collected from VMWare itself,
+            # need to make research, about all possible and suitable values
+            if hypervisor.hypervisor_type != 'VMware vCenter Server':
+                raise exceptions.HypervisorNotFound
+        except exceptions.ResourceNotFond:
+            return False
+
+        return True
