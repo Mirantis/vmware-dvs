@@ -14,6 +14,8 @@
 #    under the License.
 
 import abc
+import re
+
 import six
 from oslo import messaging as oslo_messaging
 from oslo_log import log
@@ -23,12 +25,11 @@ from neutron.common import rpc as n_rpc
 from neutron import manager
 from neutron.extensions import portbindings
 from neutron.openstack.common import lockutils
-from neutron.openstack.common.gettextutils import _LI, _
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api, driver_context
 from neutron.context import Context
 
-from mech_vmware_dvs import filter
+from neutron.openstack.common.gettextutils import _LI, _
 from mech_vmware_dvs import compute_util
 from mech_vmware_dvs import config
 from mech_vmware_dvs import exceptions
@@ -42,12 +43,18 @@ FAKE_PORT_ID = 'fake_id'
 
 @six.add_metaclass(abc.ABCMeta)
 class EndPointBase(object):
+    event_type_regex = None
 
     def __init__(self, driver):
         self.driver = driver
 
-    @abc.abstractmethod
     def info(self, ctxt, publisher_id, event_type, payload, metadata):
+        if (publisher_id == 'network.manager' and
+                re.match(self.event_type_regex)):
+            self._execute(ctxt, event_type, payload)
+
+    @abc.abstractmethod
+    def _execute(self, ctxt, event_type, payload):
         pass
 
     def update_security_group(self, ctxt, security_group_id):
@@ -68,23 +75,19 @@ class EndPointBase(object):
 
 
 class SecurityGroupRuleCreateEndPoint(EndPointBase):
-    filter_rule = filter.NotificationFilter(
-        publisher_id='network.manager',
-        event_type=r'security_group_rule\.create\.end')
+    event_type_regex = r'security_group_rule\.create\.end'
 
-    def info(self, ctxt, publisher_id, event_type, payload, metadata):
+    def _execute(self, ctxt, event_type, payload):
         security_group_id = payload['security_group_rule']['security_group_id']
         self.update_security_group(ctxt, security_group_id)
 
 
 class SecurityGroupRuleDeleteEndPoint(EndPointBase):
-    filter_rule = filter.NotificationFilter(
-        publisher_id='network.manager',
-        event_type=r'security_group_rule\.delete\.(start|end)')
+    event_type_regex = r'security_group_rule\.delete\.(start|end)'
 
     sgr_to_sg = {}
 
-    def info(self, ctxt, publisher_id, event_type, payload, metadata):
+    def _execute(self, ctxt, event_type, payload):
         security_group_rule_id = payload['security_group_rule_id']
         if event_type.endswith('start'):
             security_group_id = self.get_security_group_for(
