@@ -22,6 +22,7 @@ from neutron.common import constants as n_const
 from neutron.common import rpc as n_rpc
 from neutron import manager
 from neutron.extensions import portbindings
+from neutron.openstack.common import lockutils
 from neutron.openstack.common.gettextutils import _LI, _
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api, driver_context
