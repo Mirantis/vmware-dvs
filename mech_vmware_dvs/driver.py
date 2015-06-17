@@ -14,11 +14,10 @@
 #    under the License.
 
 import abc
-
 import six
+from oslo import messaging as oslo_messaging
 from oslo_log import log
 from oslo_concurrency import lockutils
-import oslo_messaging
 from neutron.common import constants as n_const
 from neutron.common import rpc as n_rpc
 from neutron import manager
@@ -28,6 +27,7 @@ from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api, driver_context
 from neutron.context import Context
 
+from mech_vmware_dvs import filter
 from mech_vmware_dvs import compute_util
 from mech_vmware_dvs import config
 from mech_vmware_dvs import exceptions
@@ -67,7 +67,7 @@ class EndPointBase(object):
 
 
 class SecurityGroupRuleCreateEndPoint(EndPointBase):
-    filter_rule = oslo_messaging.NotificationFilter(
+    filter_rule = filter.NotificationFilter(
         publisher_id='network.manager',
         event_type=r'security_group_rule\.create\.end')
 
@@ -77,7 +77,7 @@ class SecurityGroupRuleCreateEndPoint(EndPointBase):
 
 
 class SecurityGroupRuleDeleteEndPoint(EndPointBase):
-    filter_rule = oslo_messaging.NotificationFilter(
+    filter_rule = filter.NotificationFilter(
         publisher_id='network.manager',
         event_type=r'security_group_rule\.delete\.(start|end)')
 
