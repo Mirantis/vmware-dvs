@@ -49,8 +49,7 @@ class EndPointBase(object):
         self.driver = driver
 
     def info(self, ctxt, publisher_id, event_type, payload, metadata):
-        if (publisher_id == 'network.manager' and
-                re.match(self.event_type_regex)):
+        if re.match(self.event_type_regex, event_type):
             self._execute(ctxt, event_type, payload)
 
     @abc.abstractmethod
@@ -75,7 +74,7 @@ class EndPointBase(object):
 
 
 class SecurityGroupRuleCreateEndPoint(EndPointBase):
-    event_type_regex = r'security_group_rule\.create\.end'
+    event_type_regex = r'security_group_rule.create\.end'
 
     def _execute(self, ctxt, event_type, payload):
         security_group_id = payload['security_group_rule']['security_group_id']
