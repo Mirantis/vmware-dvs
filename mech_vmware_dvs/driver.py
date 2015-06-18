@@ -68,7 +68,6 @@ class EndPointBase(object):
 
 class SecurityGroupRuleCreateEndPoint(EndPointBase):
     filter_rule = oslo_messaging.NotificationFilter(
-        publisher_id='network.manager',
         event_type=r'security_group_rule\.create\.end')
 
     def info(self, ctxt, publisher_id, event_type, payload, metadata):
@@ -78,7 +77,6 @@ class SecurityGroupRuleCreateEndPoint(EndPointBase):
 
 class SecurityGroupRuleDeleteEndPoint(EndPointBase):
     filter_rule = oslo_messaging.NotificationFilter(
-        publisher_id='network.manager',
         event_type=r'security_group_rule\.delete\.(start|end)')
 
     sgr_to_sg = {}
