@@ -19,10 +19,11 @@ import re
 import six
 from oslo import messaging as oslo_messaging
 from oslo_log import log
-from oslo_concurrency import lockutils
 from neutron.common import constants as n_const
 from neutron.common import rpc as n_rpc
 from neutron import manager
+from neutron.db import api as db
+from neutron.db import securitygroups_db
 from neutron.extensions import portbindings
 from neutron.openstack.common import lockutils
 from neutron.plugins.common import constants
@@ -48,12 +49,13 @@ class EndPointBase(object):
     def __init__(self, driver):
         self.driver = driver
 
+    @lockutils.synchronized('vmware_dvs_info', external=True)
     def info(self, ctxt, publisher_id, event_type, payload, metadata):
         if re.match(self.event_type_regex, event_type):
-            self._execute(ctxt, event_type, payload)
+            self._execute(ctxt, payload)
 
     @abc.abstractmethod
-    def _execute(self, ctxt, event_type, payload):
+    def _execute(self, ctxt, payload):
         pass
 
     def update_security_group(self, ctxt, security_group_id):
@@ -74,35 +76,42 @@ class EndPointBase(object):
 
 
 class SecurityGroupRuleCreateEndPoint(EndPointBase):
-    event_type_regex = r'security_group_rule.create\.end'
+    event_type_regex = r'security_group_rule\.create\.end'
 
-    def _execute(self, ctxt, event_type, payload):
+    def _execute(self, ctxt, payload):
+        security_group_rule_id = payload['security_group_rule']['id']
         security_group_id = payload['security_group_rule']['security_group_id']
+        self.driver.sgr_to_sg[security_group_rule_id] = security_group_id
         self.update_security_group(ctxt, security_group_id)
 
 
 class SecurityGroupRuleDeleteEndPoint(EndPointBase):
-    event_type_regex = r'security_group_rule\.delete\.(start|end)'
+    event_type_regex = r'security_group_rule\.delete\.end'
 
-    sgr_to_sg = {}
+    def __init__(self, driver):
+        super(SecurityGroupRuleDeleteEndPoint, self).__init__(driver)
 
-    def _execute(self, ctxt, event_type, payload):
+    def _execute(self, ctxt, payload):
         security_group_rule_id = payload['security_group_rule_id']
-        if event_type.endswith('start'):
-            security_group_id = self.get_security_group_for(
-                ctxt,
-                security_group_rule_id)
-            self.sgr_to_sg[security_group_rule_id] = security_group_id
-        else:
-            security_group_id = self.sgr_to_sg.pop(security_group_rule_id)
-            self.update_security_group(ctxt, security_group_id)
+        security_group_id = self.driver.sgr_to_sg.pop(security_group_rule_id)
+        self.update_security_group(ctxt, security_group_id)
 
-    def get_security_group_for(self, ctxt, security_group_rule_id):
-        plugin_context = Context.from_dict(ctxt)
-        plugin = manager.NeutronManager.get_plugin()
-        rule = plugin.get_security_group_rule(plugin_context,
-                                              security_group_rule_id)
-        return rule['security_group_id']
+
+class SecurityGroupCreateEndPoint(EndPointBase):
+    event_type_regex = r'security_group\.create\.end'
+
+    def _execute(self, ctxt, payload):
+        for rule in payload['security_group_rules']:
+            self.driver.sgr_to_sg[rule['id']] = payload['id']
+
+
+class SecurityGroupDeleteEndPoint(EndPointBase):
+    event_type_regex = r'security_group\.delete\.end'
+
+    def _execute(self, ctxt, payload):
+        for sgr_id, sg_id in self.driver.sgr_to_sg.items():
+            if sg_id == payload['security_group_id']:
+                del self.driver.sgr_to_sg[sgr_id]
 
 
 class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
@@ -115,11 +124,18 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
     def initialize(self):
         self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)
         self._bound_ports = set()
+
+        session = db.get_session()
+        rules = session.query(securitygroups_db.SecurityGroupRule).all()
+        self.sgr_to_sg = {r['id']: r['security_group_id']for r in rules}
+
         listener = oslo_messaging.get_notification_listener(
             n_rpc.TRANSPORT,
             targets=[oslo_messaging.Target(topic='vmware_dvs')],
             endpoints=[SecurityGroupRuleCreateEndPoint(self),
-                       SecurityGroupRuleDeleteEndPoint(self)],
+                       SecurityGroupRuleDeleteEndPoint(self),
+                       SecurityGroupCreateEndPoint(self),
+                       SecurityGroupDeleteEndPoint(self)],
             executor='eventlet')
         listener.start()
 

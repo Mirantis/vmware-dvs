@@ -8,4 +8,4 @@ oslo.vmware>=0.6.0
 -e git://git.openstack.org/openstack/python-novaclient#egg=python-novaclient
 -e git+git://github.com/yunesj/suds#egg=suds
 oslo.log
-oslo.messaging
+oslo.messaging>=1.6.0
