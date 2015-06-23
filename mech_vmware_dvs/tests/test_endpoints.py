@@ -15,14 +15,10 @@
 #    under the License.
 
 import mock
-from neutron.plugins.common import constants
 from neutron.tests import base
 from neutron.context import Context
 
-from mech_vmware_dvs import config
 from mech_vmware_dvs import endpoints
-from mech_vmware_dvs import exceptions
-
 
 fake_endpoint_context = {
     u'auth_token': u'da91541654c64e3ca416ce7d0c2bfbcf',
@@ -52,7 +48,7 @@ fake_endpoint_context = {
 class EndPointBaseTestCase(base.BaseTestCase):
     def setUp(self):
         class ConcreteEndPoint(endpoints.EndPointBase):
-            def info(self, ctxt, publisher_id, event_type, payload, metadata):
+            def _execute(self, ctxt, payload):
                 pass
 
         super(EndPointBaseTestCase, self).setUp()
@@ -66,7 +62,8 @@ class EndPointBaseTestCase(base.BaseTestCase):
 
         self.endpoint = ConcreteEndPoint(self.driver)
 
-    def test_update_security_group(self):
+    @mock.patch('neutron.policy.get_admin_roles')
+    def test_update_security_group(self, get_admin_roles):
         def PortContext(plugin, plugin_context, port, network, binding,
                         binding_levels, original_port=None):
             expected = Context.from_dict(fake_endpoint_context)
@@ -106,7 +103,8 @@ class SecurityGroupRuleCreateEndPointTestCase(base.BaseTestCase):
                 '.update_security_group')
     def test_info(self, update_security_group):
         self.endpoint.info(fake_endpoint_context, '_publisher_id_',
-                           '_event_type_', self.payload, '_metadata_')
+                           'security_group_rule.create.end',
+                           self.payload, '_metadata_')
         update_security_group.assert_called_once_with(
             fake_endpoint_context,
             '_dummy_security_group_id_')
@@ -128,7 +126,8 @@ class SecurityGroupRuleDeleteEndPointTestCase(base.BaseTestCase):
         self.driver.sgr_to_sg[
             '_security_group_rule_id_'] = '_dummy_security_group_id_'
         self.endpoint.info(fake_endpoint_context, '_publisher_id_',
-                           '_event_type_.end', self.payload, '_metadata_')
+                           'security_group_rule.delete.end',
+                           self.payload, '_metadata_')
         update_security_group.assert_called_once_with(
             fake_endpoint_context,
             '_dummy_security_group_id_')
