@@ -9,3 +9,4 @@ oslo.vmware>=0.6.0
 -e git+git://github.com/yunesj/suds#egg=suds
 oslo.log
 oslo.messaging>=1.6.0
+oslo.config<=1.11.0
