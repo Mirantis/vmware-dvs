@@ -115,8 +115,9 @@ class SecurityGroupRuleCreateEndPointTestCase(base.BaseTestCase):
         super(SecurityGroupRuleCreateEndPointTestCase, self).setUp()
         self.payload = {
             'security_group_rule': {
+                'id': '_dummy_id_',
                 'security_group_id': '_dummy_security_group_id_'}}
-        self.driver = mock.Mock()
+        self.driver = mock.Mock(sgr_to_sg={})
         self.endpoint = driver.SecurityGroupRuleCreateEndPoint(self.driver)
 
     @mock.patch('mech_vmware_dvs.driver.SecurityGroupRuleCreateEndPoint'
@@ -127,6 +128,8 @@ class SecurityGroupRuleCreateEndPointTestCase(base.BaseTestCase):
         update_security_group.assert_called_once_with(
             fake_endpoint_context,
             '_dummy_security_group_id_')
+        self.assertEqual('_dummy_security_group_id_',
+                         self.driver.sgr_to_sg['_dummy_id_'])
 
 
 class SecurityGroupRuleDeleteEndPointTestCase(base.BaseTestCase):
@@ -134,44 +137,20 @@ class SecurityGroupRuleDeleteEndPointTestCase(base.BaseTestCase):
         super(SecurityGroupRuleDeleteEndPointTestCase, self).setUp()
         self.payload = {
             'security_group_rule_id': '_security_group_rule_id_'}
-        self.driver = mock.Mock()
+        self.driver = mock.Mock(sgr_to_sg={})
         self.endpoint = driver.SecurityGroupRuleDeleteEndPoint(self.driver)
 
     @mock.patch('mech_vmware_dvs.driver.SecurityGroupRuleDeleteEndPoint'
-                '.get_security_group_for',
-                return_value='_dummy_security_group_id_')
-    def test_info_when_delete_start(self, get_security_group_for):
-        self.endpoint.sgr_to_sg[
-            '_security_group_rule_id_'] = '_dummy_security_group_id_'
-        self.endpoint.info(fake_endpoint_context, '_publisher_id_',
-                           '_event_type_.start', self.payload, '_metadata_')
-        get_security_group_for.assert_called_once_with(
-            fake_endpoint_context,
-            '_security_group_rule_id_')
-        self.assertEqual({
-            '_security_group_rule_id_': '_dummy_security_group_id_'},
-            self.endpoint.sgr_to_sg)
-
-    @mock.patch('mech_vmware_dvs.driver.SecurityGroupRuleDeleteEndPoint'
                 '.update_security_group')
-    def test_info_when_delete_end(self, update_security_group):
-        self.endpoint.sgr_to_sg[
+    def test_info(self, update_security_group):
+        self.driver.sgr_to_sg[
             '_security_group_rule_id_'] = '_dummy_security_group_id_'
         self.endpoint.info(fake_endpoint_context, '_publisher_id_',
                            '_event_type_.end', self.payload, '_metadata_')
         update_security_group.assert_called_once_with(
             fake_endpoint_context,
             '_dummy_security_group_id_')
-        self.assertEqual({}, self.endpoint.sgr_to_sg)
-
-    @mock.patch('neutron.manager.NeutronManager.get_plugin')
-    def test_get_security_group_for(self, get_plugin):
-        get_plugin.return_value.get_security_group_rule.return_value = {
-            'security_group_id': 'some_id'}
-        result = self.endpoint.get_security_group_for(
-            fake_endpoint_context,
-            '_dummy_security_rule_id_')
-        self.assertEqual('some_id', result)
+        self.assertEqual({}, self.driver.sgr_to_sg)
 
 
 class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
@@ -183,11 +162,13 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         self.dvs = mock.Mock()
         self.driver.network_map = {'physnet1': self.dvs}
 
+    @mock.patch('neutron.db.api.get_session')
     @mock.patch('mech_vmware_dvs.util.create_network_map_from_config',
                 return_value='network_map')
-    def test_initialize(self, m):
+    def test_initialize(self, create_network_map_from_config, get_session):
         self.driver.initialize()
-        m.assert_called_once_with(config.CONF.ml2_vmware)
+        create_network_map_from_config.assert_called_once_with(
+            config.CONF.ml2_vmware)
         self.assertEqual('network_map', self.driver.network_map)
 
     def test_create_network_precommit(self):
