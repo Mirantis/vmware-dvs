@@ -228,13 +228,19 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
 
         self.assertEqual(bound_ports.union({'_dummy_dvs_port_key_'}), result)
 
-    def test_delete_port_postcommit(self):
+    @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
+                '._update_security_groups')
+    @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
+    def test_delete_port_postcommit(self, *args):
         context = self._create_port_context()
         self.driver._bound_ports = {1, 2, '_dummy_dvs_port_key_'}
         self.driver.delete_port_postcommit(context)
         self.assertEqual({1, 2}, self.driver._bound_ports)
 
-    def test_delete_port_postcommit_when_KeyError(self):
+    @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
+                '._update_security_groups')
+    @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
+    def test_delete_port_postcommit_when_KeyError(self, *args):
         context = self._create_port_context()
         self.driver._bound_ports = {1, 2}
         self.driver.delete_port_postcommit(context)

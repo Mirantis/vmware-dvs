@@ -121,6 +121,19 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         except KeyError:
             pass
 
+        if not self._port_belongs_to_vmware(context.current):
+            return
+
+        try:
+            dvs = self._lookup_dvs_for_context(context.network)
+        except exceptions.NoDVSForPhysicalNetwork:
+            raise exceptions.InvalidSystemState(details=_(
+                'Port %(port_id)s belong to VMWare VM, but there is no '
+                'mapping from network %(net_id)s to DVS.') % {
+                    'port_id': context.current['id'],
+                    'net_id': context.network.current['id']})
+        self._update_security_groups(dvs, context, force=True)
+
     @lockutils.synchronized('vmware_dvs_bind_port', external=True)
     def bind_port(self, context):
         if not self._port_belongs_to_vmware(context.current):
@@ -155,6 +168,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
 
     @lockutils.synchronized('vmware_dvs_update_sg', external=True)
     def _update_security_groups(self, dvs, context, force):
+        if not dvs:
+            return
         current_sg = set(context.current['security_groups'])
         if force:
             changed_sg = current_sg
@@ -170,7 +185,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             sg_to_update = set()
             ports_to_update = set()
 
-            if context.current['id'] == endpoints.FAKE_PORT_ID:
+            if context.current['id'] not in devices:
                 sg_to_update = sg_to_update.union(changed_sg)
             else:
                 ports_to_update.add(context.current['id'])
