@@ -15,14 +15,10 @@
 #    under the License.
 
 import mock
-from neutron.plugins.common import constants
 from neutron.tests import base
 from neutron.context import Context
 
-from mech_vmware_dvs import config
 from mech_vmware_dvs import endpoints
-from mech_vmware_dvs import exceptions
-
 
 fake_endpoint_context = {
     u'auth_token': u'da91541654c64e3ca416ce7d0c2bfbcf',
