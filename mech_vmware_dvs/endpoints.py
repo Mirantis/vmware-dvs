@@ -18,7 +18,7 @@ import abc
 import re
 
 import six
-from oslo_concurrency import lockutils
+from neutron.openstack.common import lockutils
 from neutron import manager
 from neutron.context import Context
 from neutron.plugins.ml2 import driver_context
