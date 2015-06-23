@@ -15,6 +15,8 @@
 
 import abc
 
+from neutron.db import api as db
+from neutron.db import securitygroups_db
 import six
 from oslo_log import log
 from oslo_concurrency import lockutils
@@ -26,6 +28,7 @@ from neutron.extensions import portbindings
 from neutron.i18n import _LI, _
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api, driver_context
+
 from neutron.context import Context
 
 from mech_vmware_dvs import compute_util
@@ -70,34 +73,44 @@ class SecurityGroupRuleCreateEndPoint(EndPointBase):
     filter_rule = oslo_messaging.NotificationFilter(
         event_type=r'security_group_rule\.create\.end')
 
+    @lockutils.synchronized('vmware_dvs_info', external=True)
     def info(self, ctxt, publisher_id, event_type, payload, metadata):
+        security_group_rule_id = payload['security_group_rule']['id']
         security_group_id = payload['security_group_rule']['security_group_id']
+        self.driver.sgr_to_sg[security_group_rule_id] = security_group_id
         self.update_security_group(ctxt, security_group_id)
+
+
+class SecurityGroupCreateEndPoint(EndPointBase):
+    filter_rule = oslo_messaging.NotificationFilter(
+        event_type=r'security_group\.create\.end')
+
+    @lockutils.synchronized('vmware_dvs_info', external=True)
+    def info(self, ctxt, publisher_id, event_type, payload, metadata):
+        for rule in payload['security_group_rules']:
+            self.driver.sgr_to_sg[rule['id']] = payload['id']
+
+
+class SecurityGroupDeleteEndPoint(EndPointBase):
+    filter_rule = oslo_messaging.NotificationFilter(
+        event_type=r'security_group\.delete\.end')
+
+    @lockutils.synchronized('vmware_dvs_info', external=True)
+    def info(self, ctxt, publisher_id, event_type, payload, metadata):
+        for sgr_id, sg_id in self.driver.sgr_to_sg.items():
+            if sg_id == payload['security_group_id']:
+                del self.driver.sgr_to_sg[sgr_id]
 
 
 class SecurityGroupRuleDeleteEndPoint(EndPointBase):
     filter_rule = oslo_messaging.NotificationFilter(
-        event_type=r'security_group_rule\.delete\.(start|end)')
+        event_type=r'security_group_rule\.delete\.\end')
 
-    sgr_to_sg = {}
-
+    @lockutils.synchronized('vmware_dvs_info', external=True)
     def info(self, ctxt, publisher_id, event_type, payload, metadata):
         security_group_rule_id = payload['security_group_rule_id']
-        if event_type.endswith('start'):
-            security_group_id = self.get_security_group_for(
-                ctxt,
-                security_group_rule_id)
-            self.sgr_to_sg[security_group_rule_id] = security_group_id
-        else:
-            security_group_id = self.sgr_to_sg.pop(security_group_rule_id)
-            self.update_security_group(ctxt, security_group_id)
-
-    def get_security_group_for(self, ctxt, security_group_rule_id):
-        plugin_context = Context.from_dict(ctxt)
-        plugin = manager.NeutronManager.get_plugin()
-        rule = plugin.get_security_group_rule(plugin_context,
-                                              security_group_rule_id)
-        return rule['security_group_id']
+        security_group_id = self.driver.sgr_to_sg.pop(security_group_rule_id)
+        self.update_security_group(ctxt, security_group_id)
 
 
 class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
@@ -110,6 +123,11 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
     def initialize(self):
         self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)
         self._bound_ports = set()
+
+        session = db.get_session()
+        rules = session.query(securitygroups_db.SecurityGroupRule).all()
+        self.sgr_to_sg = {r['id']: r['security_group_id'] for r in rules}
+
         listener = oslo_messaging.get_notification_listener(
             n_rpc.TRANSPORT,
             targets=[oslo_messaging.Target(topic='vmware_dvs')],
