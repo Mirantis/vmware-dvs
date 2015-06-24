@@ -146,9 +146,11 @@ class SecurityGroupCreateEndPoint(base.BaseTestCase):
 
     def test_info(self):
         self.endpoint.info(fake_endpoint_context, '_publisher_id_',
-                           '_event_type_', self.payload, '_metadata_')
-        self.assertDictEqual({'_security_group_rule_id_': '_security_group_id_'},
-                         self.driver.sgr_to_sg)
+                           'security_group.create.end',
+                           self.payload, '_metadata_')
+        self.assertDictEqual(
+            {'_security_group_rule_id_': '_security_group_id_'},
+            self.driver.sgr_to_sg)
 
 
 class SecurityGroupDeleteEndPoint(base.BaseTestCase):
@@ -165,6 +167,7 @@ class SecurityGroupDeleteEndPoint(base.BaseTestCase):
 
     def test_info(self):
         self.endpoint.info(fake_endpoint_context, '_publisher_id_',
-                           '_event_type_', self.payload, '_metadata_')
+                           'security_group.delete.end',
+                           self.payload, '_metadata_')
         self.assertDictEqual({'sgr2': '_other_scurity_group_id_'},
                          self.driver.sgr_to_sg)

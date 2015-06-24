@@ -10,3 +10,4 @@ oslo.vmware>=0.6.0
 oslo.log
 oslo.messaging>=1.6.0
 oslo.config<=1.11.0
+oslo.i18n<2.0.0
