@@ -131,4 +131,40 @@ class SecurityGroupRuleDeleteEndPointTestCase(base.BaseTestCase):
         update_security_group.assert_called_once_with(
             fake_endpoint_context,
             '_dummy_security_group_id_')
-        self.assertEqual({}, self.driver.sgr_to_sg)
+        self.assertDictEqual({}, self.driver.sgr_to_sg)
+
+
+class SecurityGroupCreateEndPoint(base.BaseTestCase):
+    def setUp(self):
+        super(SecurityGroupCreateEndPoint, self).setUp()
+        self.payload = {
+            'id': '_security_group_id_',
+            'security_group_rules': [{
+                'id': '_security_group_rule_id_'}]}
+        self.driver = mock.Mock(sgr_to_sg={})
+        self.endpoint = endpoints.SecurityGroupCreateEndPoint(self.driver)
+
+    def test_info(self):
+        self.endpoint.info(fake_endpoint_context, '_publisher_id_',
+                           '_event_type_', self.payload, '_metadata_')
+        self.assertDictEqual({'_security_group_rule_id_': '_security_group_id_'},
+                         self.driver.sgr_to_sg)
+
+
+class SecurityGroupDeleteEndPoint(base.BaseTestCase):
+    def setUp(self):
+        super(SecurityGroupDeleteEndPoint, self).setUp()
+        self.payload = {
+            'security_group_id': '_security_group_id_'}
+        self.driver = mock.Mock(sgr_to_sg={
+            'sgr1': '_security_group_id_',
+            'sgr2': '_other_scurity_group_id_',
+            'sgr3': '_security_group_id_',
+        })
+        self.endpoint = endpoints.SecurityGroupDeleteEndPoint(self.driver)
+
+    def test_info(self):
+        self.endpoint.info(fake_endpoint_context, '_publisher_id_',
+                           '_event_type_', self.payload, '_metadata_')
+        self.assertDictEqual({'sgr2': '_other_scurity_group_id_'},
+                         self.driver.sgr_to_sg)
