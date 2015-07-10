@@ -63,7 +63,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
     def create_network_precommit(self, context):
         try:
             dvs = self._lookup_dvs_for_context(context)
-        except exceptions.NoDVSForPhysicalNetwork as e:
+        except (exceptions.NoDVSForPhysicalNetwork,
+                exceptions.NotSupportedNetworkType) as e:
             LOG.info(_LI('Network %(id)s not created. Reason: %(reason)s') % {
                 'id': context.current['id'],
                 'reason': e.message})
@@ -75,7 +76,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
     def update_network_precommit(self, context):
         try:
             dvs = self._lookup_dvs_for_context(context)
-        except exceptions.NoDVSForPhysicalNetwork as e:
+        except (exceptions.NoDVSForPhysicalNetwork,
+                exceptions.NotSupportedNetworkType) as e:
             LOG.info(_LI('Network %(id)s not updated. Reason: %(reason)s') % {
                 'id': context.current['id'],
                 'reason': e.message})
@@ -87,7 +89,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
     def delete_network_postcommit(self, context):
         try:
             dvs = self._lookup_dvs_for_context(context)
-        except exceptions.NoDVSForPhysicalNetwork as e:
+        except (exceptions.NoDVSForPhysicalNetwork,
+                exceptions.NotSupportedNetworkType) as e:
             LOG.info(_LI('Network %(id)s not deleted. Reason: %(reason)s') % {
                 'id': context.current['id'],
                 'reason': e.message})
@@ -102,17 +105,21 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
 
         try:
             dvs = self._lookup_dvs_for_context(context.network)
+        except exceptions.NotSupportedNetworkType as e:
+            LOG.info(_LI('Port %(id)s not updated. Reason: %(reason)s') % {
+                'id': context.current['id'],
+                'reason': e.message})
         except exceptions.NoDVSForPhysicalNetwork:
             raise exceptions.InvalidSystemState(details=_(
                 'Port %(port_id)s belong to VMWare VM, but there is no '
                 'mapping from network %(net_id)s to DVS.') % {
                     'port_id': context.current['id'],
                     'net_id': context.network.current['id']})
+        else:
+            self._update_admin_state_up(dvs, context)
 
-        self._update_admin_state_up(dvs, context)
-
-        force = context.original['status'] == 'DOWN'
-        self._update_security_groups(dvs, context, force=force)
+            force = context.original['status'] == 'DOWN'
+            self._update_security_groups(dvs, context, force=force)
 
     def delete_port_postcommit(self, context):
         try:
