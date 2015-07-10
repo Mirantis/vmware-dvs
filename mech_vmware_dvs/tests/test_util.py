@@ -16,8 +16,8 @@
 import string
 
 import mock
-from oslo_vmware import exceptions as vmware_exceptions
-from oslo_vmware import vim_util
+from oslo.vmware import exceptions as vmware_exceptions
+from oslo.vmware import vim_util
 from neutron.tests import base
 
 from mech_vmware_dvs import config
@@ -863,7 +863,7 @@ class UtilTestCase(base.BaseTestCase):
 
     def setUp(self):
         super(UtilTestCase, self).setUp()
-        patch = mock.patch('oslo_vmware.api.VMwareAPISession',
+        patch = mock.patch('oslo.vmware.api.VMwareAPISession',
                            return_value='session')
         self.session_mock = patch.start()
         self.addCleanup(patch.stop)

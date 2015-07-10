@@ -18,9 +18,9 @@ import abc
 
 import six
 from oslo_log import log
-from oslo_vmware import api
-from oslo_vmware import exceptions as vmware_exceptions
-from oslo_vmware import vim_util
+from oslo.vmware import api
+from oslo.vmware import exceptions as vmware_exceptions
+from oslo.vmware import vim_util
 
 from neutron.openstack.common import lockutils
 from neutron.openstack.common.gettextutils import _LI
