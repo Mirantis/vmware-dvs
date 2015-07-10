@@ -560,7 +560,7 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
                                side_effect=side_effect) as m:
             key = self.controller.get_unbound_port_key(fake_network,
                                                        self.BOUND_PORTS)
-            m.assert_called_any_call(pg, self.BOUND_PORTS)
+            m.assert_any_call(pg, self.BOUND_PORTS)
             self.assertEqual(self.UNBOUND_PORT, key)
             _increase_ports_on_portgroup.assert_called_once_with(pg)
 
