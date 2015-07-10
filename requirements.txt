@@ -4,8 +4,9 @@
 
 pbr>=0.6,!=0.7,<1.0
 oslo.vmware>=0.6.0
--e git+git://git.openstack.org/openstack/neutron.git#egg=neutron
+-e git+git://git.openstack.org/openstack/neutron.git@stable/kilo#egg=neutron
 -e git+git://git.openstack.org/openstack/python-novaclient#egg=python-novaclient
 -e git+git://github.com/yunesj/suds#egg=suds
-oslo.log
-oslo.messaging
+oslo.log>=1.6.0
+oslo.messaging>=1.6.0
+oslo.i18n<2.0.0
