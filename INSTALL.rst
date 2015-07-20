@@ -36,6 +36,25 @@ To enable vmware-dvs driver you have to update neutron configuration like this:
   [ml2]
   mechanism_drivers = openvswitch,vmware_dvs
 
-For further configuration options that needs to be set in
+.. code:: ini
+
+  # /etc/neutron/neutron.conf
+
+  [DEFAULT]
+  nova_admin_tenant_name = <nova admin tenant name>
+  nova_admin_username = <nova admin user name>
+  nova_admin_password = <nova admin password>
+  nova_admin_tenant_id = <nova admin tenant_id>
+
+  notification_driver = messagingv2
+  notification_topics=vmware_dvs
+
+On Compute node that proxies requests to vCenter apply
+nova patch: https://github.com/Mirantis/vmware-dvs/blob/master/nova.patch
+and restart nova-compute
+
+On Controller update python package "suds" to this version: https://github.com/yunesj/suds
+
+For further configuration options that needs to be set look into:
 /etc/neutron/plugins/ml2/ml2_conf.ini please read etc/ml2_conf_vmware_dvs.ini
 in this repository.
