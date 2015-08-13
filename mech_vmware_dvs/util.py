@@ -22,16 +22,22 @@ from oslo.vmware import api
 from oslo.vmware import exceptions as vmware_exceptions
 from oslo.vmware import vim_util
 
-from neutron.openstack.common import lockutils
 from neutron.openstack.common.gettextutils import _LI
 
 from mech_vmware_dvs import exceptions
 
 LOG = log.getLogger(__name__)
+
 DVS_PORTGROUP_NAME_MAXLEN = 80
+
 VM_NETWORK_DEVICE_TYPES = [
     'VirtualE1000', 'VirtualE1000e', 'VirtualPCNet32',
     'VirtualSriovEthernetCard', 'VirtualVmxnet']
+
+CONCURRENT_MODIFICATION_TEXT = 'Cannot complete operation due to concurrent ' \
+                               'modification by another operation.'
+
+LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect user name or password"
 
 
 class DVSController(object):
@@ -105,7 +111,6 @@ class DVSController(object):
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
-    @lockutils.synchronized('vmware_dvs_bind_port', external=True)
     def switch_port_blocked_state(self, port):
         state = not port['admin_state_up']
 
@@ -118,15 +123,12 @@ class DVSController(object):
 
         update_spec = builder.port_config_spec(
             port_info.config.configVersion, port_settings)
-        update_spec.operation = 'edit'
         update_spec.key = port_info.key
-        update_spec = [update_spec]
         update_task = self.connection.invoke_api(
             self.connection.vim, 'ReconfigureDVPort_Task',
-            self._dvs, port=update_spec)
+            self._dvs, port=[update_spec])
         self.connection.wait_for_task(update_task)
 
-    @lockutils.synchronized('vmware_dvs_bind_port', external=True)
     def update_port_rules(self, ports):
         try:
             builder = SpecBuilder(self.connection.vim.client.factory)
@@ -165,6 +167,42 @@ class DVSController(object):
                 return self._lookup_unbound_port(pg, bound_ports)
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
+
+    def book_port(self, network):
+        try:
+            net_name = self._get_net_name(network)
+            pg = self._get_pg_by_name(net_name)
+            try:
+                port_info = self._lookup_unbound_port(pg, [])
+            except exceptions.UnboundPortNotFound:
+                self._increase_ports_on_portgroup(pg)
+                port_info = self._lookup_unbound_port(pg, [])
+
+            builder = SpecBuilder(self.connection.vim.client.factory)
+            port_settings = builder.port_setting()
+            port_settings.blocked = builder.blocked(False)
+            update_spec = builder.port_config_spec(
+                port_info.config.configVersion, port_settings, name='bound')
+            update_spec.key = port_info.key
+            update_task = self.connection.invoke_api(
+                self.connection.vim, 'ReconfigureDVPort_Task',
+                self._dvs, port=[update_spec])
+            self.connection.wait_for_task(update_task)
+            return port_info.key
+        except vmware_exceptions.VimException as e:
+            raise exceptions.wrap_wmvare_vim_exception(e)
+
+    def release_port(self, port):
+        port_key = port['binding:vif_details']['dvs_port_key']
+        port_info = self._get_port_info(port_key)
+        builder = SpecBuilder(self.connection.vim.client.factory)
+        update_spec = builder.port_config_spec(
+            port_info.config.configVersion, name='')
+        update_spec.key = port_info.key
+        update_task = self.connection.invoke_api(
+            self.connection.vim, 'ReconfigureDVPort_Task',
+            self._dvs, port=[update_spec])
+        self.connection.wait_for_task(update_task)
 
     def _build_pg_create_spec(self, name, vlan_tag, blocked):
         builder = SpecBuilder(self.connection.vim.client.factory)
@@ -288,6 +326,7 @@ class DVSController(object):
             self.connection.vim, pg, 'portKeys')[0]
 
     def _lookup_unbound_port(self, port_group, bound_ports):
+        # TODO(askupien): remove bound_ports param
         builder = SpecBuilder(self.connection.vim.client.factory)
         criteria = builder.port_criteria(port_group_key=port_group.value)
 
@@ -296,8 +335,8 @@ class DVSController(object):
             'FetchDVPorts',
             self._dvs, criteria=criteria)
         for port in ports:
-            if port.key not in bound_ports:
-                return port.key
+            if not getattr(port.config, 'name', None):
+                return port
         raise exceptions.UnboundPortNotFound()
 
     def _increase_ports_on_portgroup(self, port_group):
@@ -340,10 +379,15 @@ class SpecBuilder(object):
         spec.policy = policy
         return spec
 
-    def port_config_spec(self, version, config):
+    def port_config_spec(self, version, setting=None, name=None):
         spec = self.factory.create('ns0:DVPortConfigSpec')
         spec.configVersion = version
-        spec.setting = config
+        spec.operation = 'edit'
+        if setting:
+            spec.setting = setting
+
+        if name is not None:
+            spec.name = name
         return spec
 
     def port_lookup_criteria(self):
@@ -555,3 +599,25 @@ def create_network_map_from_config(config):
         network, dvs = pair.split(':')
         network_map[network] = DVSController(dvs, connection)
     return network_map
+
+
+def wrap_retry(func):
+    """
+    Retry operation on dvs when concurrent modification by another operation
+    was discovered
+    """
+    @six.wraps(func)
+    def wrapper(*args, **kwargs):
+        while True:
+            try:
+                return func(*args, **kwargs)
+            except (vmware_exceptions.VMwareDriverException,
+                    exceptions.VMWareDVSException) as e:
+                if CONCURRENT_MODIFICATION_TEXT in e.message:
+                    continue
+                elif LOGIN_PROBLEM_TEXT in e.msg:
+                    #TODO(askupien) what happen if credantials ARE wrong for real!
+                    continue
+                else:
+                    raise
+    return wrapper

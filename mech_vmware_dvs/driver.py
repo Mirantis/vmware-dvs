@@ -21,7 +21,6 @@ from neutron.common import constants as n_const
 from neutron.common import rpc as n_rpc
 from neutron.openstack.common.gettextutils import _LI, _
 from neutron.extensions import portbindings
-from neutron.openstack.common import lockutils
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api
 
@@ -121,13 +120,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             force = context.original['status'] == 'DOWN'
             self._update_security_groups(dvs, context, force=force)
 
+    @util.wrap_retry
     def delete_port_postcommit(self, context):
-        try:
-            self._bound_ports.remove(
-                context.current['binding:vif_details']['dvs_port_key'])
-        except KeyError:
-            pass
-
         if not self._port_belongs_to_vmware(context.current):
             return
 
@@ -140,27 +134,22 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                     'port_id': context.current['id'],
                     'net_id': context.network.current['id']})
         self._update_security_groups(dvs, context, force=True)
+        dvs.release_port(context.current)
 
-    @lockutils.synchronized('vmware_dvs_bind_port', external=True)
+    @util.wrap_retry
     def bind_port(self, context):
         if not self._port_belongs_to_vmware(context.current):
             return
-        bound_ports = self._get_bound_ports(context)
 
         for segment in context.network.network_segments:
             dvs = self._lookup_dvs_for_context(context.network)
-            port_key = dvs.get_unbound_port_key(
-                context.network.current,
-                bound_ports
-            )
+            port_key = dvs.book_port(context.network.current)
             vif_details = dict(self.vif_details)
             vif_details['dvs_port_key'] = port_key
             context.set_binding(
                 segment[driver_api.ID],
                 self.vif_type, vif_details,
                 status=n_const.PORT_STATUS_ACTIVE)
-            bound_ports.add(port_key)
-            self._bound_ports = bound_ports
 
     def _update_admin_state_up(self, dvs, context):
         try:
@@ -173,7 +162,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             if perform:
                 dvs.switch_port_blocked_state(context.current)
 
-    @lockutils.synchronized('vmware_dvs_update_sg', external=True)
+    @util.wrap_retry
     def _update_security_groups(self, dvs, context, force):
         if not dvs:
             return
@@ -279,6 +268,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         return port_keys
 
     def _port_belongs_to_vmware(self, port):
+        #TODO(askupien): change to decorator
         try:
             try:
                 host = port['binding:host_id']
