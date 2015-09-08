@@ -47,7 +47,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
 
         session = db.get_session()
         rules = session.query(securitygroups_db.SecurityGroupRule).all()
-        self.sgr_to_sg = {r['id']: r['security_group_id']for r in rules}
+        self.sgr_to_sg = dict([(r['id'],
+                                r['security_group_id']) for r in rules])
 
         listener = oslo_messaging.get_notification_listener(
             n_rpc.TRANSPORT,
