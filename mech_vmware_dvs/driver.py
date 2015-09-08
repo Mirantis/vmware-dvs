@@ -228,7 +228,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                 p['security_group_rules'] = []
             if p['id'] == context.current['id']:
                 p['security_groups'] = current_security_group
-        port_dict = {p['id']: p for p in ports}
+        port_dict = dict([(p['id'], p) for p in ports])
         sg_info = context._plugin.security_group_info_for_ports(
             context._plugin_context, port_dict)
         devices = sg_info['devices']
