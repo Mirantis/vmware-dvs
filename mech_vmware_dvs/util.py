@@ -79,6 +79,7 @@ class DVSController(object):
         try:
             pg_ref = self._get_pg_by_name(name)
             pg_config_info = self._get_config_by_ref(pg_ref)
+
             if not pg_config_info.defaultPortConfig.blocked.value == blocked:
                 # we upgrade only defaultPortConfig, because it is inherited
                 # by all ports in PortGroup, unless they are explicite
@@ -206,10 +207,23 @@ class DVSController(object):
 
     def _build_pg_create_spec(self, name, vlan_tag, blocked):
         builder = SpecBuilder(self.connection.vim.client.factory)
-        port = builder.port_setting()
-        port.vlan = builder.vlan(vlan_tag)
-        port.blocked = builder.blocked(blocked)
-        pg = builder.pg_config(port)
+        port_setting = builder.port_setting()
+
+        port_setting.vlan = builder.vlan(vlan_tag)
+        port_setting.blocked = builder.blocked(blocked)
+
+        # block all traffic by default
+        rule = builder.factory.create('ns0:DvsTrafficRule')
+        rule.sequence = 10
+        rule.action = builder.factory.create(
+            'ns0:DvsDropNetworkRuleAction')
+        rule.direction = 'both'
+        rule.qualifier = [builder.factory.create(
+            'ns0:DvsIpNetworkRuleQualifier'
+        )]
+        port_setting.filterPolicy = builder.filter_policy([rule])
+
+        pg = builder.pg_config(port_setting)
         pg.name = name
         pg.numPorts = 0
 
@@ -396,6 +410,22 @@ class SpecBuilder(object):
     def port_setting(self):
         return self.factory.create('ns0:VMwareDVSPortSetting')
 
+    def filter_policy(self, rules):
+        filter_policy = self.factory.create('ns0:DvsFilterPolicy')
+        if rules:
+            traffic_ruleset = self.factory.create('ns0:DvsTrafficRuleset')
+            traffic_ruleset.enabled = '1'
+            traffic_ruleset.rules = rules
+            filter_config = self.factory.create('ns0:DvsTrafficFilterConfig')
+            filter_config.agentName = "dvfilter-generic-vmware"
+            filter_config.inherited = '0'
+            filter_config.trafficRuleset = traffic_ruleset
+            filter_policy.filterConfig = [filter_config]
+            filter_policy.inherited = '0'
+        else:
+            filter_policy.inherited = '1'
+        return filter_policy
+
     def port_config(self, port_key, sg_rules):
         rules = []
         for i, rule_info in enumerate(sg_rules):
@@ -405,17 +435,8 @@ class SpecBuilder(object):
             else:
                 rules.append(self._create_rule(rule_info, i * 10))
 
-        traffic_ruleset = self.factory.create('ns0:DvsTrafficRuleset')
-        traffic_ruleset.enabled = '1'
-        traffic_ruleset.rules = rules
-        filter_config = self.factory.create('ns0:DvsTrafficFilterConfig')
-        filter_config.agentName = "dvfilter-generic-vmware"
-        filter_config.inherited = '0'
-        filter_config.trafficRuleset = traffic_ruleset
-        filter_policy = self.factory.create('ns0:DvsFilterPolicy')
-        filter_policy.filterConfig = [filter_config]
-        filter_policy.inherited = '0'
-        setting = self.factory.create('ns0:VMwareDVSPortSetting')
+        filter_policy = self.filter_policy(rules)
+        setting = self.port_setting()
         setting.filterPolicy = filter_policy
 
         spec = self.factory.create('ns0:DVPortConfigSpec')
@@ -615,7 +636,7 @@ def wrap_retry(func):
                     exceptions.VMWareDVSException) as e:
                 if CONCURRENT_MODIFICATION_TEXT in e.message:
                     continue
-                elif LOGIN_PROBLEM_TEXT in e.msg:
+                elif LOGIN_PROBLEM_TEXT in getattr(e, 'msg', ''):
                     #TODO(askupien) what happen if credantials ARE wrong for real!
                     continue
                 else:

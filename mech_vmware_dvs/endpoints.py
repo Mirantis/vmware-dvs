@@ -18,7 +18,6 @@ import abc
 import re
 
 import six
-from neutron.openstack.common import lockutils
 from neutron import manager
 from neutron.context import Context
 from neutron.plugins.ml2 import driver_context
@@ -33,7 +32,6 @@ class EndPointBase(object):
     def __init__(self, driver):
         self.driver = driver
 
-    @lockutils.synchronized('vmware_dvs_info', external=True)
     def info(self, ctxt, publisher_id, event_type, payload, metadata):
         if re.match(self.event_type_regex, event_type):
             self._execute(ctxt, payload)
