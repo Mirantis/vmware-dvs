@@ -37,7 +37,8 @@ VM_NETWORK_DEVICE_TYPES = [
 CONCURRENT_MODIFICATION_TEXT = 'Cannot complete operation due to concurrent ' \
                                'modification by another operation.'
 
-LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect user name or password"
+LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect " \
+                     "user name or password"
 
 
 class DVSController(object):
@@ -158,31 +159,16 @@ class DVSController(object):
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
-    def get_unbound_port_key(self, network, bound_ports):
-        """
-        returns first empty port in portgroup
-        If there is now empty port, than we double ports number in portgroup
-        """
-        try:
-            net_name = self._get_net_name(network)
-            pg = self._get_pg_by_name(net_name)
-            try:
-                return self._lookup_unbound_port(pg, bound_ports)
-            except exceptions.UnboundPortNotFound:
-                self._increase_ports_on_portgroup(pg)
-                return self._lookup_unbound_port(pg, bound_ports)
-        except vmware_exceptions.VimException as e:
-            raise exceptions.wrap_wmvare_vim_exception(e)
-
     def book_port(self, network):
         try:
             net_name = self._get_net_name(network)
             pg = self._get_pg_by_name(net_name)
-            try:
-                port_info = self._lookup_unbound_port(pg, [])
-            except exceptions.UnboundPortNotFound:
-                self._increase_ports_on_portgroup(pg)
-                port_info = self._lookup_unbound_port(pg, [])
+            while True:
+                try:
+                    port_info = self._lookup_unbound_port(pg, [])
+                    break
+                except exceptions.UnboundPortNotFound:
+                    self._increase_ports_on_portgroup(pg)
 
             builder = SpecBuilder(self.connection.vim.client.factory)
             port_settings = builder.port_setting()
@@ -642,7 +628,8 @@ def wrap_retry(func):
                 if CONCURRENT_MODIFICATION_TEXT in e.message:
                     continue
                 elif LOGIN_PROBLEM_TEXT in getattr(e, 'msg', ''):
-                    #TODO(askupien) what happen if credantials ARE wrong for real!
+                    #TODO(askupien) what happen
+                    # if credantials ARE wrong for real!
                     continue
                 else:
                     raise

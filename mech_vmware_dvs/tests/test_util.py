@@ -272,7 +272,13 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
             'ns0:VmwareDistributedVirtualSwitchVlanIdSpec',
             'ns0:BoolPolicy',
             'ns0:DVPortgroupConfig',
-            'ns0:DVPortgroupPolicy'))
+            'ns0:DVPortgroupPolicy',
+            'ns0:DvsTrafficRule',
+            'ns0:DvsDropNetworkRuleAction',
+            'ns0:DvsIpNetworkRuleQualifier',
+            'ns0:DvsFilterPolicy',
+            'ns0:DvsTrafficRuleset',
+            'ns0:DvsTrafficFilterConfig'))
 
         def invoke_api_side_effect(module, method, *args, **kwargs):
             if module is vim_util:
@@ -533,37 +539,6 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
         self.spec = mock.Mock()
         self.vim.client.factory.create.return_value = self.spec
 
-    def test_get_unbound_port_key(self):
-        self.use_patch('mech_vmware_dvs.util.DVSController'
-                       '._get_net_name', return_value=self.dvs_name)
-        pg = mock.Mock(value=self.PORTGROUP_KEY)
-        self.use_patch('mech_vmware_dvs.util.DVSController'
-                       '._get_pg_by_name', return_value=pg)
-        with mock.patch.object(self.controller, '_lookup_unbound_port',
-                               return_value=self.UNBOUND_PORT) as m:
-            key = self.controller.get_unbound_port_key(fake_network,
-                                                       self.BOUND_PORTS)
-            m.assert_called_once_with(pg, self.BOUND_PORTS)
-            self.assertEqual(self.UNBOUND_PORT, key)
-
-    def test_get_unbound_port_key_when_no_unbound_ports_in_portgroup(self):
-        self.use_patch('mech_vmware_dvs.util.DVSController'
-                       '._get_net_name', return_value=self.dvs_name)
-        pg = mock.Mock(value=self.PORTGROUP_KEY)
-        self.use_patch('mech_vmware_dvs.util.DVSController'
-                       '._get_pg_by_name', return_value=pg)
-
-        _increase_ports_on_portgroup = self.use_patch(
-            'mech_vmware_dvs.util.DVSController._increase_ports_on_portgroup')
-        side_effect = [exceptions.UnboundPortNotFound, self.UNBOUND_PORT]
-        with mock.patch.object(self.controller, '_lookup_unbound_port',
-                               side_effect=side_effect) as m:
-            key = self.controller.get_unbound_port_key(fake_network,
-                                                       self.BOUND_PORTS)
-            m.assert_any_call(pg, self.BOUND_PORTS)
-            self.assertEqual(self.UNBOUND_PORT, key)
-            _increase_ports_on_portgroup.assert_called_once_with(pg)
-
     def test_update_port_rules(self):
         ports = [fake_port]
         port_info = {'config': {'configVersion': '_config_version_'}}
@@ -594,26 +569,6 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
             )
         m.assert_called_once_with(mock.ANY, 'get_object_property', self.vim,
                                   pg, 'portKeys')
-
-    def test__lookup_unbound_port(self):
-        pg = mock.Mock()
-        ports = [mock.Mock(key=k) for k in
-                 list(self.BOUND_PORTS) + [self.UNBOUND_PORT]]
-        with mock.patch.object(self.controller.connection, 'invoke_api',
-                               return_value=ports) as m:
-            key = self.controller._lookup_unbound_port(pg, self.BOUND_PORTS)
-            self.assertEqual(key, self.UNBOUND_PORT)
-            m.assert_called_once_with(self.vim, 'FetchDVPorts', self.dvs,
-                                      criteria=mock.ANY)
-
-    def test__lookup_unbound_port_raises_exception(self):
-        pg = mock.Mock()
-        ports = [mock.Mock(key=k) for k in self.BOUND_PORTS]
-        with mock.patch.object(self.controller.connection, 'invoke_api',
-                               return_value=ports):
-            self.assertRaises(exceptions.UnboundPortNotFound,
-                              self.controller._lookup_unbound_port, pg,
-                              self.BOUND_PORTS)
 
     def test__increase_ports_on_portgroup(self):
         ports_number = 8
