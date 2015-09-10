@@ -60,6 +60,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             executor='eventlet')
         listener.start()
 
+    @util.wrap_retry
     def create_network_precommit(self, context):
         try:
             dvs = self._lookup_dvs_for_context(context)
@@ -73,6 +74,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         else:
             dvs.create_network(context.current, context.network_segments[0])
 
+    @util.wrap_retry
     def update_network_precommit(self, context):
         try:
             dvs = self._lookup_dvs_for_context(context)
@@ -86,6 +88,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         else:
             dvs.update_network(context.current)
 
+    @util.wrap_retry
     def delete_network_postcommit(self, context):
         try:
             dvs = self._lookup_dvs_for_context(context)
@@ -99,6 +102,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         else:
             dvs.delete_network(context.current)
 
+    @util.wrap_retry
     def update_port_postcommit(self, context):
         if not self._port_belongs_to_vmware(context.current):
             return
