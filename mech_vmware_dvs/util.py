@@ -73,20 +73,25 @@ class DVSController(object):
             LOG.info(_LI('Network %(name)s created \n%(pg_ref)s'),
                      {'name': name, 'pg_ref': pg})
 
-    def update_network(self, network):
-        name = self._get_net_name(network)
+    def update_network(self, network, original=None):
+        if original:
+            name = self._get_net_name(original)
+        else:
+            name = self._get_net_name(network)
         blocked = not network['admin_state_up']
         try:
             pg_ref = self._get_pg_by_name(name)
             pg_config_info = self._get_config_by_ref(pg_ref)
 
-            if not pg_config_info.defaultPortConfig.blocked.value == blocked:
+            if (pg_config_info.defaultPortConfig.blocked.value != blocked or
+                    (original and original['name'] != network['name'])):
                 # we upgrade only defaultPortConfig, because it is inherited
                 # by all ports in PortGroup, unless they are explicite
                 # overwritten on specific port.
                 pg_spec = self._build_pg_update_spec(
                     pg_config_info.configVersion,
                     blocked=blocked)
+                pg_spec.name = self._get_net_name(network)
                 pg_update_task = self.connection.invoke_api(
                     self.connection.vim,
                     'ReconfigureDVPortgroup_Task',

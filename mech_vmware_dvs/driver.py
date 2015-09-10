@@ -86,7 +86,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         except exceptions.InvalidNetwork:
             pass
         else:
-            dvs.update_network(context.current)
+            dvs.update_network(context.current, context.original)
 
     @util.wrap_retry
     def delete_network_postcommit(self, context):
