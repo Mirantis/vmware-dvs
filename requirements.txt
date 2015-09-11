@@ -11,4 +11,4 @@ oslo.messaging==1.6.0 # latest version compatible with python2.6
 oslo.config<=1.11.0
 oslo.i18n<2.0.0
 oslo.utils<2.0.0
-
+oslo.serialization==1.4.0
