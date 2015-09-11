@@ -189,21 +189,6 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         self.assertTrue(get_hypervisor.called)
         self.assertFalse(result)
 
-    def test__get_bound_ports(self):
-        context = self._create_port_context()
-        good_port = {'binding:vif_details': {
-            'dvs_port_key': '_dummy_dvs_port_key_'}}
-        wrong_port1 = {}
-        wrong_port2 = {'binding:vif_details': {}}
-        context._plugin.get_ports.return_value = [good_port, wrong_port1,
-                                                  wrong_port2]
-        bound_ports = {1, 2, 3}
-        self.driver._bound_ports = bound_ports
-
-        result = self.driver._get_bound_ports(context)
-
-        self.assertEqual(bound_ports.union({'_dummy_dvs_port_key_'}), result)
-
     @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
                 '._update_security_groups')
     @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')

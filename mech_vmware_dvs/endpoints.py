@@ -18,6 +18,8 @@ import abc
 import re
 
 import six
+from neutron.db import api as db
+from neutron.db import securitygroups_db
 from neutron import manager
 from neutron.context import Context
 from neutron.plugins.ml2 import driver_context
@@ -40,7 +42,7 @@ class EndPointBase(object):
     def _execute(self, ctxt, payload):
         pass
 
-    def update_security_group(self, ctxt, security_group_id):
+    def update_security_group(self, ctxt, *security_group_ids):
         plugin_context = Context.from_dict(ctxt)
         plugin = manager.NeutronManager.get_plugin()
         fake_network = {
@@ -48,7 +50,7 @@ class EndPointBase(object):
         }
         fake_port = {
             'id': FAKE_PORT_ID,
-            'security_groups': [security_group_id]
+            'security_groups': security_group_ids
         }
         context = driver_context.PortContext(
             plugin, plugin_context, fake_port, fake_network, None, None
@@ -61,9 +63,7 @@ class SecurityGroupRuleCreateEndPoint(EndPointBase):
     event_type_regex = r'security_group_rule\.create\.end'
 
     def _execute(self, ctxt, payload):
-        security_group_rule_id = payload['security_group_rule']['id']
         security_group_id = payload['security_group_rule']['security_group_id']
-        self.driver.sgr_to_sg[security_group_rule_id] = security_group_id
         self.update_security_group(ctxt, security_group_id)
 
 
@@ -74,23 +74,7 @@ class SecurityGroupRuleDeleteEndPoint(EndPointBase):
         super(SecurityGroupRuleDeleteEndPoint, self).__init__(driver)
 
     def _execute(self, ctxt, payload):
-        security_group_rule_id = payload['security_group_rule_id']
-        security_group_id = self.driver.sgr_to_sg.pop(security_group_rule_id)
-        self.update_security_group(ctxt, security_group_id)
-
-
-class SecurityGroupCreateEndPoint(EndPointBase):
-    event_type_regex = r'security_group\.create\.end'
-
-    def _execute(self, ctxt, payload):
-        for rule in payload['security_group_rules']:
-            self.driver.sgr_to_sg[rule['id']] = payload['id']
-
-
-class SecurityGroupDeleteEndPoint(EndPointBase):
-    event_type_regex = r'security_group\.delete\.end'
-
-    def _execute(self, ctxt, payload):
-        for sgr_id, sg_id in self.driver.sgr_to_sg.items():
-            if sg_id == payload['security_group_id']:
-                del self.driver.sgr_to_sg[sgr_id]
+        session = db.get_session()
+        groups = session.query(securitygroups_db.SecurityGroup).all()
+        ids = [g['id'] for g in groups]
+        self.update_security_group(ctxt, *ids)

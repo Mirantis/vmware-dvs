@@ -13,8 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from neutron.db import api as db
-from neutron.db import securitygroups_db
 from oslo_log import log
 import oslo_messaging
 from neutron.common import constants as n_const
@@ -43,20 +41,12 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
 
     def initialize(self):
         self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)
-        self._bound_ports = set()
-
-        session = db.get_session()
-        rules = session.query(securitygroups_db.SecurityGroupRule).all()
-        self.sgr_to_sg = dict([(r['id'],
-                                r['security_group_id']) for r in rules])
 
         listener = oslo_messaging.get_notification_listener(
             n_rpc.TRANSPORT,
             targets=[oslo_messaging.Target(topic='vmware_dvs')],
             endpoints=[endpoints.SecurityGroupRuleCreateEndPoint(self),
-                       endpoints.SecurityGroupRuleDeleteEndPoint(self),
-                       endpoints.SecurityGroupCreateEndPoint(self),
-                       endpoints.SecurityGroupDeleteEndPoint(self)],
+                       endpoints.SecurityGroupRuleDeleteEndPoint(self)],
             executor='eventlet')
         listener.start()
 
@@ -254,23 +244,6 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         else:
             raise exceptions.NotSupportedNetworkType(
                 network_type=segment['network_type'])
-
-    def _get_bound_ports(self, context):
-        network_id = context.network.current['id']
-        ports = context._plugin.get_ports(
-            context._plugin_context,
-            filters={
-                'network_id': [network_id],
-                'binding:vif_type': [self.vif_type]
-            }
-        )
-        port_keys = set(self._bound_ports)
-        for port in ports:
-            try:
-                port_keys.add(port['binding:vif_details']['dvs_port_key'])
-            except KeyError:
-                pass
-        return port_keys
 
     def _port_belongs_to_vmware(self, port):
         #TODO(askupien): change to decorator

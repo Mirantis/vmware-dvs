@@ -73,7 +73,7 @@ class EndPointBaseTestCase(base.BaseTestCase):
             self.assertDictEqual(network, {'id': 'fake'})
             self.assertDictEqual(
                 port, {'id': endpoints.FAKE_PORT_ID,
-                       'security_groups': ['_dummy_security_group_id_']})
+                       'security_groups': ('_dummy_security_group_id_',)})
             self.assertIsNone(binding)
             self.assertIsNone(binding_levels)
             self.assertIsNone(original_port)
@@ -96,7 +96,7 @@ class SecurityGroupRuleCreateEndPointTestCase(base.BaseTestCase):
             'security_group_rule': {
                 'id': '_dummy_id_',
                 'security_group_id': '_dummy_security_group_id_'}}
-        self.driver = mock.Mock(sgr_to_sg={})
+        self.driver = mock.Mock()
         self.endpoint = endpoints.SecurityGroupRuleCreateEndPoint(self.driver)
 
     @mock.patch('mech_vmware_dvs.endpoints.SecurityGroupRuleCreateEndPoint'
@@ -108,8 +108,6 @@ class SecurityGroupRuleCreateEndPointTestCase(base.BaseTestCase):
         update_security_group.assert_called_once_with(
             fake_endpoint_context,
             '_dummy_security_group_id_')
-        self.assertEqual('_dummy_security_group_id_',
-                         self.driver.sgr_to_sg['_dummy_id_'])
 
 
 class SecurityGroupRuleDeleteEndPointTestCase(base.BaseTestCase):
@@ -117,57 +115,20 @@ class SecurityGroupRuleDeleteEndPointTestCase(base.BaseTestCase):
         super(SecurityGroupRuleDeleteEndPointTestCase, self).setUp()
         self.payload = {
             'security_group_rule_id': '_security_group_rule_id_'}
-        self.driver = mock.Mock(sgr_to_sg={})
+        self.driver = mock.Mock()
         self.endpoint = endpoints.SecurityGroupRuleDeleteEndPoint(self.driver)
 
+    @mock.patch('mech_vmware_dvs.endpoints.db')
     @mock.patch('mech_vmware_dvs.endpoints.SecurityGroupRuleDeleteEndPoint'
                 '.update_security_group')
-    def test_info(self, update_security_group):
-        self.driver.sgr_to_sg[
-            '_security_group_rule_id_'] = '_dummy_security_group_id_'
+    def test_info(self, update_security_group, db):
+        session = mock.Mock()
+        session.query.return_value.all.return_value = [{'id': 'id1'},
+                                                       {'id': 'id2'}]
+        db.get_session.return_value = session
         self.endpoint.info(fake_endpoint_context, '_publisher_id_',
                            'security_group_rule.delete.end',
                            self.payload, '_metadata_')
         update_security_group.assert_called_once_with(
             fake_endpoint_context,
-            '_dummy_security_group_id_')
-        self.assertDictEqual({}, self.driver.sgr_to_sg)
-
-
-class SecurityGroupCreateEndPoint(base.BaseTestCase):
-    def setUp(self):
-        super(SecurityGroupCreateEndPoint, self).setUp()
-        self.payload = {
-            'id': '_security_group_id_',
-            'security_group_rules': [{
-                'id': '_security_group_rule_id_'}]}
-        self.driver = mock.Mock(sgr_to_sg={})
-        self.endpoint = endpoints.SecurityGroupCreateEndPoint(self.driver)
-
-    def test_info(self):
-        self.endpoint.info(fake_endpoint_context, '_publisher_id_',
-                           'security_group.create.end',
-                           self.payload, '_metadata_')
-        self.assertDictEqual(
-            {'_security_group_rule_id_': '_security_group_id_'},
-            self.driver.sgr_to_sg)
-
-
-class SecurityGroupDeleteEndPoint(base.BaseTestCase):
-    def setUp(self):
-        super(SecurityGroupDeleteEndPoint, self).setUp()
-        self.payload = {
-            'security_group_id': '_security_group_id_'}
-        self.driver = mock.Mock(sgr_to_sg={
-            'sgr1': '_security_group_id_',
-            'sgr2': '_other_scurity_group_id_',
-            'sgr3': '_security_group_id_',
-        })
-        self.endpoint = endpoints.SecurityGroupDeleteEndPoint(self.driver)
-
-    def test_info(self):
-        self.endpoint.info(fake_endpoint_context, '_publisher_id_',
-                           'security_group.delete.end',
-                           self.payload, '_metadata_')
-        self.assertDictEqual({'sgr2': '_other_scurity_group_id_'},
-                         self.driver.sgr_to_sg)
+            'id1', 'id2')
