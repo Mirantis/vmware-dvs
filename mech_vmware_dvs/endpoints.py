@@ -63,8 +63,12 @@ class SecurityGroupRuleCreateEndPoint(EndPointBase):
     event_type_regex = r'security_group_rule\.create\.end'
 
     def _execute(self, ctxt, payload):
-        security_group_id = payload['security_group_rule']['security_group_id']
-        self.update_security_group(ctxt, security_group_id)
+        try:
+            rules = [payload['security_group_rule']]
+        except KeyError:
+            rules = payload['security_group_rules']
+        self.update_security_group(ctxt,
+                                   *[r['security_group_id'] for r in rules])
 
 
 class SecurityGroupRuleDeleteEndPoint(EndPointBase):
