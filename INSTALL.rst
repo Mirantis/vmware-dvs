@@ -47,7 +47,7 @@ To enable vmware-dvs driver you have to update neutron configuration like this:
   nova_admin_tenant_id = <nova admin tenant_id>
 
   notification_driver = messagingv2
-  notification_topics=vmware_dvs
+  notification_topics = notifications,vmware_dvs
 
 On Compute node that proxies requests to vCenter apply
 nova patch: https://github.com/Mirantis/vmware-dvs/blob/master/nova.patch
