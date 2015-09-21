@@ -7,7 +7,7 @@ index 3d228d7..d513a74 100644
                          CONF.vmware.integration_bridge)
          network_ref = get_neutron_network(session, network_name, cluster, vif)
 +        try:
-+            network_ref['dvs_port_key']=vif['details']['dvs_port_key']
++            network_ref['dvs_port_key'] = vif['details']['dvs_port_key']
 +        except KeyError:
 +            pass
      else:
