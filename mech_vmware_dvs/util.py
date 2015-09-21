@@ -410,12 +410,17 @@ class SpecBuilder(object):
 
     def port_config(self, port_key, sg_rules):
         rules = []
-        for i, rule_info in enumerate(sg_rules):
+        seq = 0
+        for rule_info in sg_rules:
             if 'ip_set' in rule_info:
                 for ip in rule_info['ip_set']:
-                    rules.append(self._create_rule(rule_info, i * 10, ip))
+                    rules.append(self._create_rule(rule_info, seq, ip))
+                    seq += 10
             else:
-                rules.append(self._create_rule(rule_info, i * 10))
+                rules.append(self._create_rule(rule_info, seq))
+                seq += 10
+
+        rules.append(self._create_drop_rule(seq))
 
         filter_policy = self.filter_policy(rules)
         setting = self.port_setting()
@@ -449,6 +454,17 @@ class SpecBuilder(object):
                         rule_info.get('port_range_max'))
         rule.cidr(ip or cidr)
         return rule.build()
+
+    def _create_drop_rule(self, sequence):
+        rule = self.factory.create('ns0:DvsTrafficRule')
+        rule.sequence = sequence
+        rule.action = self.factory.create(
+            'ns0:DvsDropNetworkRuleAction')
+        rule.direction = 'both'
+        rule.qualifier = [self.factory.create(
+            'ns0:DvsIpNetworkRuleQualifier'
+        )]
+        return rule
 
     def port_criteria(self, port_key=None, port_group_key=None):
         criteria = self.factory.create(
