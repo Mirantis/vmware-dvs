@@ -762,7 +762,7 @@ class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
         self.assertEqual('0', qualifier.destinationAddress.prefixLength)
 
     def test_build_ethertype_protocol(self):
-        for name, rfc in util.TrafficRuleBuilder.PROTOCOL.iteritems():
+        for name, rfc in util.PROTOCOL.iteritems():
             builder = self._create_builder(protocol=name)
             rule = builder.build()
             qualifier = rule.qualifier[0]

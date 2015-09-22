@@ -28,6 +28,11 @@ from mech_vmware_dvs import exceptions
 
 LOG = log.getLogger(__name__)
 
+
+PROTOCOL = {'icmp': 1,
+            'tcp': 6,
+            'udp': 17}
+
 DVS_PORTGROUP_NAME_MAXLEN = 80
 
 VM_NETWORK_DEVICE_TYPES = [
@@ -420,7 +425,8 @@ class SpecBuilder(object):
                 rules.append(self._create_rule(rule_info, seq))
                 seq += 10
 
-        rules.append(self._create_drop_rule(seq))
+        for i, protocol in enumerate(PROTOCOL.values()):
+            rules.append(self._create_drop_rule(seq + i * 10, protocol))
 
         filter_policy = self.filter_policy(rules)
         setting = self.port_setting()
@@ -455,15 +461,20 @@ class SpecBuilder(object):
         rule.cidr(ip or cidr)
         return rule.build()
 
-    def _create_drop_rule(self, sequence):
+    def _create_drop_rule(self, sequence, protocol):
         rule = self.factory.create('ns0:DvsTrafficRule')
         rule.sequence = sequence
         rule.action = self.factory.create(
             'ns0:DvsDropNetworkRuleAction')
         rule.direction = 'both'
-        rule.qualifier = [self.factory.create(
+        qualifier = self.factory.create(
             'ns0:DvsIpNetworkRuleQualifier'
-        )]
+        )
+        int_exp = self.factory.create('ns0:IntExpression')
+        int_exp.value = PROTOCOL.get(protocol, protocol)
+        int_exp.negate = 'false'
+        qualifier.protocol = int_exp
+        rule.qualifier = [qualifier]
         return rule
 
     def port_criteria(self, port_key=None, port_group_key=None):
@@ -498,9 +509,6 @@ class SpecBuilder(object):
 @six.add_metaclass(abc.ABCMeta)
 class TrafficRuleBuilder(object):
     # protocol number according to RFC 1700
-    PROTOCOL = {'icmp': 1,
-                'tcp': 6,
-                'udp': 17}
     direction = None
 
     def __init__(self, spec_factory, ethertype, protocol, sequence):
@@ -521,7 +529,7 @@ class TrafficRuleBuilder(object):
         self.protocol = protocol
         if protocol:
             int_exp = self.factory.create('ns0:IntExpression')
-            int_exp.value = self.PROTOCOL.get(protocol, protocol)
+            int_exp.value = PROTOCOL.get(protocol, protocol)
             int_exp.negate = 'false'
             self.ip_qualifier.protocol = int_exp
 
