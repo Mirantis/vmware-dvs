@@ -29,6 +29,7 @@ from mech_vmware_dvs import exceptions
 LOG = log.getLogger(__name__)
 
 
+# protocol number according to RFC 1700
 PROTOCOL = {'icmp': 1,
             'tcp': 6,
             'udp': 17}
@@ -508,8 +509,7 @@ class SpecBuilder(object):
 
 @six.add_metaclass(abc.ABCMeta)
 class TrafficRuleBuilder(object):
-    # protocol number according to RFC 1700
-    direction = None
+    direction = 'both'
 
     def __init__(self, spec_factory, ethertype, protocol, sequence):
         self.factory = spec_factory
@@ -580,7 +580,6 @@ class TrafficRuleBuilder(object):
 
 
 class IngressRule(TrafficRuleBuilder):
-    direction = 'incomingPackets'
 
     def port_range(self, start, end):
         if self._has_port(start):
@@ -597,8 +596,6 @@ class IngressRule(TrafficRuleBuilder):
 
 
 class EgressRule(TrafficRuleBuilder):
-
-    direction = 'outgoingPackets'
 
     def port_range(self, start, end):
         if self._has_port(start):

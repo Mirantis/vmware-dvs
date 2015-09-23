@@ -634,11 +634,11 @@ class SpecBuilderTestCase(base.BaseTestCase):
 
     def test__create_rule_egress(self):
         rule = self._create_rule(direction='egress')
-        self.assertEqual(rule.direction, 'outgoingPackets')
+        self.assertEqual(rule.direction, 'both')
 
     def test__create_rule_ingress(self):
         rule = self._create_rule(direction='ingress')
-        self.assertEqual(rule.direction, 'incomingPackets')
+        self.assertEqual(rule.direction, 'both')
 
     def test__create_rule_ingress_source_port_range(self):
         rule = self._create_rule(direction='ingress',
