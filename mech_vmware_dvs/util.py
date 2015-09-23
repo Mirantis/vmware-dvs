@@ -427,7 +427,8 @@ class SpecBuilder(object):
                 seq += 10
 
         for i, protocol in enumerate(PROTOCOL.values()):
-            rules.append(self._create_drop_rule(seq + i * 10, protocol))
+            rules.append(DropAllRule(self.factory, None,
+                                     protocol, seq + i * 10).build())
 
         filter_policy = self.filter_policy(rules)
         setting = self.port_setting()
@@ -462,22 +463,6 @@ class SpecBuilder(object):
         rule.cidr(ip or cidr)
         return rule.build()
 
-    def _create_drop_rule(self, sequence, protocol):
-        rule = self.factory.create('ns0:DvsTrafficRule')
-        rule.sequence = sequence
-        rule.action = self.factory.create(
-            'ns0:DvsDropNetworkRuleAction')
-        rule.direction = 'both'
-        qualifier = self.factory.create(
-            'ns0:DvsIpNetworkRuleQualifier'
-        )
-        int_exp = self.factory.create('ns0:IntExpression')
-        int_exp.value = PROTOCOL.get(protocol, protocol)
-        int_exp.negate = 'false'
-        qualifier.protocol = int_exp
-        rule.qualifier = [qualifier]
-        return rule
-
     def port_criteria(self, port_key=None, port_group_key=None):
         criteria = self.factory.create(
             'ns0:DistributedVirtualSwitchPortCriteria')
@@ -509,23 +494,24 @@ class SpecBuilder(object):
 
 @six.add_metaclass(abc.ABCMeta)
 class TrafficRuleBuilder(object):
-    direction = 'both'
+    action = 'ns0:DvsAcceptNetworkRuleAction'
 
     def __init__(self, spec_factory, ethertype, protocol, sequence):
         self.factory = spec_factory
 
         self.rule = self.factory.create('ns0:DvsTrafficRule')
         self.rule.sequence = sequence
-        self.rule.action = self.factory.create(
-            'ns0:DvsAcceptNetworkRuleAction')
-        self.rule.direction = self.direction
+        self.rule.action = self.factory.create(self.action)
+        self.rule.direction = 'both'
 
         self.ip_qualifier = self.factory.create(
             'ns0:DvsIpNetworkRuleQualifier'
         )
-        any_ip = '0.0.0.0/0' if ethertype == 'IPv4' else '::/0'
-        self.ip_qualifier.sourceAddress = self._cidr_spec(any_ip)
-        self.ip_qualifier.destinationAddress = self._cidr_spec(any_ip)
+        if ethertype:
+            any_ip = '0.0.0.0/0' if ethertype == 'IPv4' else '::/0'
+            self.ip_qualifier.sourceAddress = self._cidr_spec(any_ip)
+            self.ip_qualifier.destinationAddress = self._cidr_spec(any_ip)
+
         self.protocol = protocol
         if protocol:
             int_exp = self.factory.create('ns0:IntExpression')
@@ -608,6 +594,19 @@ class EgressRule(TrafficRuleBuilder):
     def cidr(self, cidr):
         if cidr:
             self.ip_qualifier.destinationAddress = self._cidr_spec(cidr)
+
+
+class DropAllRule(TrafficRuleBuilder):
+    action = 'ns0:DvsDropNetworkRuleAction'
+
+    def port_range(self, start, end):
+        pass
+
+    def dest_port_range(self, start, end):
+        pass
+
+    def cidr(self, cidr):
+        pass
 
 
 def create_network_map_from_config(config):
