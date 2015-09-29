@@ -15,6 +15,7 @@
 
 import re
 import abc
+from time import sleep
 
 import six
 from oslo_log import log
@@ -40,11 +41,13 @@ VM_NETWORK_DEVICE_TYPES = [
     'VirtualE1000', 'VirtualE1000e', 'VirtualPCNet32',
     'VirtualSriovEthernetCard', 'VirtualVmxnet']
 
-CONCURRENT_MODIFICATION_TEXT = 'Cannot complete operation due to concurrent ' \
+CONCURRENT_MODIFICATION_TEXT = 'Cannot complete operation due to concurrent '\
                                'modification by another operation.'
 
-LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect " \
+LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect "\
                      "user name or password"
+DELETED_TEXT = "The object has already been deleted or has not been "\
+               "completely created"
 
 
 class DVSController(object):
@@ -111,18 +114,26 @@ class DVSController(object):
 
     def delete_network(self, network):
         name = self._get_net_name(network)
-        try:
-            pg_ref = self._get_pg_by_name(name)
-            pg_delete_task = self.connection.invoke_api(
-                self.connection.vim,
-                'Destroy_Task',
-                pg_ref)
-            self.connection.wait_for_task(pg_delete_task)
-            LOG.info(_LI('Network %(name)s deleted.') % {'name': name})
-        except exceptions.PortGroupNotFound:
-            LOG.debug('Network %s not present in vcenter.' % name)
-        except vmware_exceptions.VimException as e:
-            raise exceptions.wrap_wmvare_vim_exception(e)
+        while True:
+            try:
+                pg_ref = self._get_pg_by_name(name)
+                pg_delete_task = self.connection.invoke_api(
+                    self.connection.vim,
+                    'Destroy_Task',
+                    pg_ref)
+                self.connection.wait_for_task(pg_delete_task)
+                LOG.info(_LI('Network %(name)s deleted.') % {'name': name})
+                break
+            except exceptions.PortGroupNotFound:
+                LOG.debug('Network %s not present in vcenter.' % name)
+                break
+            except vmware_exceptions.VimException as e:
+                raise exceptions.wrap_wmvare_vim_exception(e)
+            except vmware_exceptions.VMwareDriverException as e:
+                if DELETED_TEXT in e.message:
+                    sleep(1)
+                else:
+                    raise
 
     def switch_port_blocked_state(self, port):
         state = not port['admin_state_up']
