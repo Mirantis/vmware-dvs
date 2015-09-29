@@ -197,6 +197,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
 
             for id, port in devices.iteritems():
                 if (port['binding:vif_type'] == self.vif_type and
+                        'dvs_port_key' in port['binding:vif_details'] and
                         sg_to_update & set(port['security_groups'])):
                     ports_to_update.add(id)
 
