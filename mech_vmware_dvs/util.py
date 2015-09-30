@@ -182,7 +182,7 @@ class DVSController(object):
             pg = self._get_pg_by_name(net_name)
             while True:
                 try:
-                    port_info = self._lookup_unbound_port(pg, [])
+                    port_info = self._lookup_unbound_port(pg)
                     break
                 except exceptions.UnboundPortNotFound:
                     self._increase_ports_on_portgroup(pg)
@@ -338,8 +338,7 @@ class DVSController(object):
             vim_util, 'get_object_property',
             self.connection.vim, pg, 'portKeys')[0]
 
-    def _lookup_unbound_port(self, port_group, bound_ports):
-        # TODO(askupien): remove bound_ports param
+    def _lookup_unbound_port(self, port_group):
         builder = SpecBuilder(self.connection.vim.client.factory)
         criteria = builder.port_criteria(port_group_key=port_group.value)
 
