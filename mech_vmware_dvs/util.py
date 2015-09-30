@@ -37,6 +37,8 @@ PROTOCOL = {'icmp': 1,
 
 DVS_PORTGROUP_NAME_MAXLEN = 80
 
+LOGIN_RETRIES = 3
+
 VM_NETWORK_DEVICE_TYPES = [
     'VirtualE1000', 'VirtualE1000e', 'VirtualPCNet32',
     'VirtualSriovEthernetCard', 'VirtualVmxnet']
@@ -46,6 +48,7 @@ CONCURRENT_MODIFICATION_TEXT = 'Cannot complete operation due to concurrent '\
 
 LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect "\
                      "user name or password"
+
 DELETED_TEXT = "The object has already been deleted or has not been "\
                "completely created"
 
@@ -641,6 +644,7 @@ def wrap_retry(func):
     """
     @six.wraps(func)
     def wrapper(*args, **kwargs):
+        login_failures = 0
         while True:
             try:
                 return func(*args, **kwargs)
@@ -648,9 +652,9 @@ def wrap_retry(func):
                     exceptions.VMWareDVSException) as e:
                 if CONCURRENT_MODIFICATION_TEXT in e.message:
                     continue
-                elif LOGIN_PROBLEM_TEXT in getattr(e, 'msg', ''):
-                    #TODO(askupien) what happen
-                    # if credantials ARE wrong for real!
+                elif (LOGIN_PROBLEM_TEXT in getattr(e, 'msg', '')
+                        and login_failures < LOGIN_RETRIES - 1):
+                    login_failures += 1
                     continue
                 else:
                     raise

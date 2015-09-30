@@ -14,7 +14,7 @@
 #    under the License.
 
 
-from novaclient import client as nova_client
+from novaclient import client
 from oslo_config.cfg import NoSuchOptError
 
 from mech_vmware_dvs import exceptions
@@ -37,8 +37,6 @@ def _make_nova_client(cfg):
     if cfg.nova_admin_tenant_id:
         bypass_url = '%s/%s' % (cfg.nova_url,
                                 cfg.nova_admin_tenant_id)
-
-    novaclient_cls = nova_client.get_client_class(NOVA_API_VERSION)
 
     params = dict(
         username=cfg.nova_admin_username,
@@ -63,4 +61,4 @@ def _make_nova_client(cfg):
     except NoSuchOptError:
         pass
 
-    return novaclient_cls(**params)
+    return client.Client(**params)

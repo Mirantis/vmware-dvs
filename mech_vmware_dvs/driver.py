@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import six
+
 from oslo_log import log
 import oslo_messaging
 from neutron.common import constants as n_const
@@ -30,6 +32,29 @@ from mech_vmware_dvs import util
 
 CONF = config.CONF
 LOG = log.getLogger(__name__)
+
+
+def port_belongs_to_vmware(func):
+    @six.wraps(func)
+    def _port_belongs_to_vmware(self, context):
+        port = context.current
+        try:
+            try:
+                host = port['binding:host_id']
+            except KeyError:
+                raise exceptions.HypervisorNotFound
+
+            hypervisor = compute_util.get_hypervisors_by_host(
+                CONF, host)
+
+            # value for field hypervisor_type collected from VMWare itself,
+            # need to make research, about all possible and suitable values
+            if hypervisor.hypervisor_type != 'VMware vCenter Server':
+                raise exceptions.HypervisorNotFound
+        except exceptions.ResourceNotFond:
+            return False
+        return func(self, context)
+    return _port_belongs_to_vmware
 
 
 class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
@@ -93,10 +118,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             dvs.delete_network(context.current)
 
     @util.wrap_retry
+    @port_belongs_to_vmware
     def update_port_postcommit(self, context):
-        if not self._port_belongs_to_vmware(context.current):
-            return
-
         try:
             dvs = self._lookup_dvs_for_context(context.network)
         except exceptions.NotSupportedNetworkType as e:
@@ -116,10 +139,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             self._update_security_groups(dvs, context, force=force)
 
     @util.wrap_retry
+    @port_belongs_to_vmware
     def delete_port_postcommit(self, context):
-        if not self._port_belongs_to_vmware(context.current):
-            return
-
         try:
             dvs = self._lookup_dvs_for_context(context.network)
         except exceptions.NoDVSForPhysicalNetwork:
@@ -132,10 +153,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         dvs.release_port(context.current)
 
     @util.wrap_retry
+    @port_belongs_to_vmware
     def bind_port(self, context):
-        if not self._port_belongs_to_vmware(context.current):
-            return
-
         for segment in context.network.network_segments:
             dvs = self._lookup_dvs_for_context(context.network)
             port_key = dvs.book_port(context.network.current)
@@ -245,23 +264,3 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         else:
             raise exceptions.NotSupportedNetworkType(
                 network_type=segment['network_type'])
-
-    def _port_belongs_to_vmware(self, port):
-        #TODO(askupien): change to decorator
-        try:
-            try:
-                host = port['binding:host_id']
-            except KeyError:
-                raise exceptions.HypervisorNotFound
-
-            hypervisor = compute_util.get_hypervisors_by_host(
-                CONF, host)
-
-            # value for field hypervisor_type collected from VMWare itself,
-            # need to make research, about all possible and suitable values
-            if hypervisor.hypervisor_type != 'VMware vCenter Server':
-                raise exceptions.HypervisorNotFound
-        except exceptions.ResourceNotFond:
-            return False
-
-        return True

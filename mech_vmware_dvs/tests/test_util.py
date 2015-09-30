@@ -115,6 +115,7 @@ fake_security_group = {'description': u'Default security group',
 
 
 class UtilBaseTestCase(base.BaseTestCase):
+
     def _get_factory_mock(self, expected_names):
         def create_side_effect(namespace):
             if namespace in expected_names:
@@ -205,6 +206,7 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
         return mock.Mock(vim=self.vim)
 
     class VirtualE1000(object):
+
         def __init__(self, port_key, switch_uuid):
             self.backing = mock.Mock()
             self.backing.port.portKey = port_key
@@ -212,6 +214,7 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
 
 
 class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
+
     def test_create_network(self):
         try:
             self.controller.create_network(fake_network, fake_segment)
@@ -318,6 +321,7 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
 
 
 class DVSControllerNetworkUpdateTestCase(DVSControllerBaseTestCase):
+
     def test_update_network(self):
         try:
             self.controller.update_network(fake_network)
@@ -430,6 +434,7 @@ class DVSControllerNetworkUpdateTestCase(DVSControllerBaseTestCase):
 
 
 class DVSControllerNetworkDeletionTestCase(DVSControllerBaseTestCase):
+
     def test_delete_network(self):
         try:
             self.controller.delete_network(fake_network)
@@ -608,6 +613,7 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
 
 
 class SpecBuilderTestCase(base.BaseTestCase):
+
     def setUp(self):
         super(SpecBuilderTestCase, self).setUp()
         self.spec = mock.Mock(name='spec')
@@ -713,6 +719,7 @@ class SpecBuilderTestCase(base.BaseTestCase):
 
 
 class TrafficRuleBuilderBaseTestCase(UtilBaseTestCase):
+
     def setUp(self):
         super(TrafficRuleBuilderBaseTestCase, self).setUp()
         self.spec_factory = self._get_factory_mock((
@@ -727,8 +734,10 @@ class TrafficRuleBuilderBaseTestCase(UtilBaseTestCase):
 
 
 class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
+
     def _create_builder(self, ethertype=None, protocol=None, sequence=None):
         class ConcreteTrafficRuleBuilder(util.TrafficRuleBuilder):
+
             def port_range(self, start, end):
                 pass
 
@@ -850,3 +859,20 @@ class UtilTestCase(base.BaseTestCase):
             vmware_conf.vsphere_password,
             vmware_conf.api_retry_count,
             vmware_conf.task_poll_interval)
+
+    def test_wrap_retry_w_login_unsuccessful(self):
+        func = mock.Mock()
+
+        def side_effect(*args, **kwargs):
+            exception = vmware_exceptions.VMwareDriverException()
+            exception.msg = util.LOGIN_PROBLEM_TEXT
+            raise exception
+
+        func.side_effect = side_effect
+
+        def double(*args, **kwargs):
+            return func(*args, **kwargs)
+
+        self.assertRaises(
+            vmware_exceptions.VMwareDriverException, util.wrap_retry(double))
+        self.assertEqual(3, func.call_count)

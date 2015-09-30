@@ -135,25 +135,16 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
 
         self.assertTrue(_update_security_groups.called)
 
-    @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
-                '._port_belongs_to_vmware')
-    def test_update_port_postcommit_invalid_port(self, is_valid_port):
-        is_valid_port.return_value = False
-
-        self.driver.update_port_postcommit(self._create_port_context())
-
-        self.assertTrue(is_valid_port.called)
-        self.assertFalse(self.dvs.switch_port_blocked_state.called)
-
-    @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
-                '._port_belongs_to_vmware')
+    @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
     @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
                 '._lookup_dvs_for_context')
     def test_update_port_postcommit_uncontrolled_dvs(
-            self, is_valid_dvs, is_valid_port):
+            self, is_valid_dvs, hypervisor_by_host):
         is_valid_dvs.side_effect = exceptions.NoDVSForPhysicalNetwork(
             physical_network='_dummy_physical_net_')
-        is_valid_port.return_value = True
+
+        hypervisor_by_host.return_value = mock.Mock(
+            hypervisor_type=VALID_HYPERVISOR_TYPE)
 
         self.assertRaises(
             exceptions.InvalidSystemState, self.driver.update_port_postcommit,
@@ -164,11 +155,13 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
     @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
     def test__port_belongs_to_vmware__unbinded_port(self, get_hypervisor):
         context = self._create_port_context()
-        port = context.current
+        port = context.curren
         port.pop('binding:host_id')
 
-        result = self.driver._port_belongs_to_vmware(context.current)
-        self.assertFalse(result)
+        func = mock.Mock(__name__='dummy_name')
+        decorated = driver.port_belongs_to_vmware(func)
+        self.assertFalse(decorated(None, context))
+        self.assertFalse(func.called)
 
     @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
     def test__port_belongs_to_vmware__invalid_hypervisor(
@@ -177,17 +170,21 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         get_hypervisor.return_value = mock.Mock(
             hypervisor_type=INVALID_HYPERVISOR_TYPE)
 
-        result = self.driver._port_belongs_to_vmware(context.current)
-        self.assertFalse(result)
+        func = mock.Mock(__name__='dummy_name')
+        decorated = driver.port_belongs_to_vmware(func)
+        self.assertFalse(decorated(None, context))
+        self.assertFalse(func.called)
 
     @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
-    def test__is_port_belongs_to_vmware__not_found(self, get_hypervisor):
+    def test__port_belongs_to_vmware__not_found(self, get_hypervisor):
         get_hypervisor.side_effect = exceptions.HypervisorNotFound
         context = self._create_port_context()
 
-        result = self.driver._port_belongs_to_vmware(context.current)
+        func = mock.Mock(__name__='dummy_name', return_value=True)
+        decorated = driver.port_belongs_to_vmware(func)
+        self.assertFalse(decorated(None, context))
+        self.assertFalse(func.called)
         self.assertTrue(get_hypervisor.called)
-        self.assertFalse(result)
 
     @mock.patch('mech_vmware_dvs.driver.VMwareDVSMechanismDriver'
                 '._update_security_groups')
