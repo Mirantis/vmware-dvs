@@ -16,7 +16,7 @@
 import six
 
 from oslo_log import log
-import oslo_messaging
+from oslo import messaging as oslo_messaging
 from neutron.common import constants as n_const
 from neutron.common import rpc as n_rpc
 from neutron.openstack.common.gettextutils import _LI, _
