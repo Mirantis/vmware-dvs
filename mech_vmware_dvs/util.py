@@ -23,7 +23,7 @@ from oslo.vmware import api
 from oslo.vmware import exceptions as vmware_exceptions
 from oslo.vmware import vim_util
 
-from neutron.openstack.common.gettextutils import _LI
+from neutron.i18n import _LI
 
 from mech_vmware_dvs import exceptions
 
