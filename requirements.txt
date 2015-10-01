@@ -11,4 +11,4 @@ oslo.messaging>=1.4.0,<1.5.0
 oslo.config<=1.11.0
 oslo.i18n<2.0.0
 oslo.utils<2.0.0
-oslo.serialization==1.4.0
+oslo.serialization<=1.2.0
