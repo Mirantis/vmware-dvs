@@ -16,7 +16,7 @@
 import six
 
 from oslo_log import log
-import oslo_messaging
+from oslo import messaging as oslo_messaging
 from neutron.common import constants as n_const
 from neutron.common import rpc as n_rpc
 from neutron.i18n import _LI, _
@@ -119,6 +119,12 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
 
     @util.wrap_retry
     @port_belongs_to_vmware
+    def update_port_precommit(self, context):
+        if context.current['binding:vif_type'] == 'unbound':
+            self.bind_port(context)
+
+    @util.wrap_retry
+    @port_belongs_to_vmware
     def update_port_postcommit(self, context):
         try:
             dvs = self._lookup_dvs_for_context(context.network)
@@ -135,8 +141,14 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         else:
             self._update_admin_state_up(dvs, context)
 
-            force = context.original['status'] == 'DOWN'
+            force = context.original['status'] == n_const.PORT_STATUS_DOWN
             self._update_security_groups(dvs, context, force=force)
+            if (context.current['binding:vif_type'] == 'unbound' and
+                context.current['status'] == n_const.PORT_STATUS_DOWN):
+                context._plugin.update_port_status(
+                    context._plugin_context,
+                    context.current['id'],
+                    n_const.PORT_STATUS_ACTIVE)
 
     @util.wrap_retry
     @port_belongs_to_vmware
