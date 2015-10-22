@@ -52,6 +52,56 @@ LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect "\
 DELETED_TEXT = "The object has already been deleted or has not been "\
                "completely created"
 
+from copy import deepcopy
+
+BACKWARD={'port_range_min':'source_port_range_min','port_range_max':'source_port_range_max', 'source_port_range_min':'port_range_min', 'source_port_range_max':'port_range_max'}
+
+def change_portrange_for_egress(rules):
+    r_rules=[]
+    for rule in rules:
+        r_={}
+        if rule['direction']=='egress':
+            for key in rule:
+                if key in BACKWARD:
+                    r_[BACKWARD[key]]=rule[key]
+                else:
+                    r_[key]=rule[key]
+            r_rules.append(r_)
+        else:
+            r_rules.append(rule)
+    return r_rules
+
+def reverse_rules(rules):
+    r_rules=[]
+    for rule in rules:
+        r_rules.append(rule)
+        r_=deepcopy(rule)
+        if r_['direction']=='egress':
+            r_['direction']='ingress'
+        else:
+            r_['direction']='egress'
+        if 'dest_ip_prefix' in rule:
+            r_['source_ip_prefix']=rule['dest_ip_prefix']
+        else:
+            if 'source_ip_prefix' in r_:
+                del r_['source_ip_prefix']
+        if 'source_ip_prefix' in rule:
+            r_['dest_ip_prefix']=rule['source_ip_prefix']
+        else:
+            if 'dest_ip_prefix' in r_:
+                del r_['dest_ip_prefix']
+        r_rules.append(r_)
+    return r_rules
+
+def init_rules():
+    r_rules=[{'dest_ip_prefix': u'169.254.169.254/32', 'direction': 'egress', 'protocol': 'tcp', 
+                    'ethertype': 'IPv4', 'port_range_max': 80, 'port_range_min': 80, 
+                    'source_port_range_min': 32768, 'source_port_range_max': 65535}]
+    r_rules.append({'direction': 'egress', 'protocol': 'udp',
+                    'ethertype': 'IPv4', 'port_range_max': 53, 'port_range_min': 53,
+                    'source_port_range_min': 32768, 'source_port_range_max': 65535})       
+    return r_rules
+
 
 class DVSController(object):
     """Controls one DVS."""
@@ -467,13 +517,19 @@ class SpecBuilder(object):
                 rule_info.get('source_port_range_max')
             )
             cidr = rule_info.get('source_ip_prefix')
+            bcidr = rule_info.get('dest_ip_prefix')
         else:
             rule = EgressRule(**rule_params)
+            rule.dest_port_range(
+                rule_info.get('source_port_range_min'),
+                rule_info.get('source_port_range_max')
+            )
             cidr = rule_info.get('dest_ip_prefix')
-
+            bcidr = rule_info.get('source_ip_prefix')
         rule.port_range(rule_info.get('port_range_min'),
                         rule_info.get('port_range_max'))
         rule.cidr(ip or cidr)
+        rule.bcidr(ip or bcidr)
         return rule.build()
 
     def port_criteria(self, port_key=None, port_group_key=None):
@@ -569,7 +625,7 @@ class TrafficRuleBuilder(object):
     def _has_port(self, min_port):
         if min_port:
             if self.protocol == 'icmp':
-                LOG.info(_LI('Vmware dvs driver does not support '
+                wLOG.info(_LI('Vmware dvs driver does not support '
                              '"type" and "code" for ICMP protocol.'))
                 return False
             else:
@@ -579,6 +635,10 @@ class TrafficRuleBuilder(object):
 
 
 class IngressRule(TrafficRuleBuilder):
+
+    def __init__(self, spec_factory, ethertype, protocol, sequence):
+        super(IngressRule, self).__init__(spec_factory, ethertype, protocol, sequence)
+        self.rule.direction = 'incomingPackets'
 
     def port_range(self, start, end):
         if self._has_port(start):
@@ -593,8 +653,15 @@ class IngressRule(TrafficRuleBuilder):
         if cidr:
             self.ip_qualifier.sourceAddress = self._cidr_spec(cidr)
 
+    def bcidr(self, cidr):
+        if cidr:
+            self.ip_qualifier.destinationAddress = self._cidr_spec(cidr)
 
 class EgressRule(TrafficRuleBuilder):
+
+    def __init__(self, spec_factory, ethertype, protocol, sequence):
+        super(EgressRule, self).__init__(spec_factory, ethertype, protocol, sequence)
+        self.rule.direction = 'outgoingPackets'
 
     def port_range(self, start, end):
         if self._has_port(start):
@@ -602,12 +669,15 @@ class EgressRule(TrafficRuleBuilder):
 
     def dest_port_range(self, start, end):
         if start:
-            self.ip_qualifier.sourceIpPort = self._port_range_spec(start, end)
+            self.ip_qualifier.destinationIpPort = self._port_range_spec(start, end)
 
     def cidr(self, cidr):
         if cidr:
             self.ip_qualifier.destinationAddress = self._cidr_spec(cidr)
 
+    def bcidr(self, cidr):
+        if cidr:
+            self.ip_qualifier.sourceAddress = self._cidr_spec(cidr)
 
 class DropAllRule(TrafficRuleBuilder):
     action = 'ns0:DvsDropNetworkRuleAction'
