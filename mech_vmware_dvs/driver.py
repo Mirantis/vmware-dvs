@@ -144,7 +144,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             force = context.original['status'] == n_const.PORT_STATUS_DOWN
             self._update_security_groups(dvs, context, force=force)
             if (context.current['binding:vif_type'] == 'unbound' and
-                context.current['status'] == n_const.PORT_STATUS_DOWN):
+                    context.current['status'] == n_const.PORT_STATUS_DOWN):
                 context._plugin.update_port_status(
                     context._plugin_context,
                     context.current['id'],
@@ -190,7 +190,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
 
     @util.wrap_retry
     def _update_security_groups(self, dvs, context, force):
-       if not dvs:
+        if not dvs:
             return
         current_sg = set(context.current['security_groups'])
         if force:
@@ -237,7 +237,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                 for port_id in ports_to_update:
                     port = devices[port_id]
                     for r_sp in range(len(port['security_group_rules'])):
-                        port['security_group_rules'][r_sp]['source_ip_prefix']=u'0.0.0.0/0'
+                        port['security_group_rules'][r_sp][
+                            'source_ip_prefix'] = u'0.0.0.0/0'
                     port['security_group_rules'].extend(util.init_rules())
                     for sec_group_id in port['security_groups']:
                         try:
@@ -247,7 +248,9 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                             pass
                         else:
                             port['security_group_rules'].extend(rules)
-                    port['security_group_rules']=util.reverse_rules(util.change_portrange_for_egress(port['security_group_rules']))
+                    port['security_group_rules'] = util.reverse_rules(
+                        util.change_portrange_for_egress(
+                            port['security_group_rules']))
                     ports.append(port)
                 dvs.update_port_rules(ports)
 
