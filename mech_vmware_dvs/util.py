@@ -52,9 +52,12 @@ LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect "\
 DELETED_TEXT = "The object has already been deleted or has not been "\
                "completely created"
 
-#from copy import deepcopy
+# from copy import deepcopy
 
-'''BACKWARD={'port_range_min':'source_port_range_min','port_range_max':'source_port_range_max', 'source_port_range_min':'port_range_min', 'source_port_range_max':'port_range_max'}
+'''BACKWARD={'port_range_min':'source_port_range_min',
+    'port_range_max':'source_port_range_max',
+    'source_port_range_min':'port_range_min',
+    'source_port_range_max':'port_range_max'}
 
 def change_portrange_for_egress(rules):
     r_rules=[]
@@ -95,12 +98,14 @@ def reverse_rules(rules):
 
 
 def init_rules():
-    r_rules=[{'dest_ip_prefix': u'169.254.169.254/32', 'direction': 'egress', 'protocol': 'tcp', 
-                    'ethertype': 'IPv4', 'port_range_max': 80, 'port_range_min': 80, 
-                    'source_port_range_min': 32768, 'source_port_range_max': 65535}]
+    r_rules = [{'dest_ip_prefix': u'169.254.169.254/32', 'direction': 'egress',
+                'protocol': 'tcp', 'ethertype': 'IPv4', 'port_range_max': 80,
+                'port_range_min': 80, 'source_port_range_min': 32768,
+                'source_port_range_max': 65535}]
     r_rules.append({'direction': 'egress', 'protocol': 'udp',
-                    'ethertype': 'IPv4', 'port_range_max': 53, 'port_range_min': 53,
-                    'source_port_range_min': 32768, 'source_port_range_max': 65535})       
+                    'ethertype': 'IPv4', 'port_range_max': 53,
+                    'port_range_min': 53, 'source_port_range_min': 32768,
+                    'source_port_range_max': 65535})
     return r_rules
 
 
@@ -596,6 +601,7 @@ class TrafficRuleBuilder(object):
         if self._has_port(start):
             self.ip_qualifier.destinationIpPort = self._port_range_spec(start,
                                                                         end)
+
     def _port_range_spec(self, start, end):
         if start == end:
             result = self.factory.create('ns0:DvsSingleIpPort')
@@ -633,22 +639,26 @@ class TrafficRuleBuilder(object):
 class IngressRule(TrafficRuleBuilder):
 
     def __init__(self, spec_factory, ethertype, protocol, sequence):
-        super(IngressRule, self).__init__(spec_factory, ethertype, protocol, sequence)
+        super(IngressRule, self).__init__(spec_factory, ethertype,
+                                          protocol, sequence)
         self.rule.direction = 'incomingPackets'
 
     def cidr(self, cidr):
         if cidr:
             self.ip_qualifier.sourceAddress = self._cidr_spec(cidr)
 
+
 class EgressRule(TrafficRuleBuilder):
 
     def __init__(self, spec_factory, ethertype, protocol, sequence):
-        super(EgressRule, self).__init__(spec_factory, ethertype, protocol, sequence)
+        super(EgressRule, self).__init__(spec_factory, ethertype,
+                                         protocol, sequence)
         self.rule.direction = 'outgoingPackets'
 
     def cidr(self, cidr):
         if cidr:
             self.ip_qualifier.destinationAddress = self._cidr_spec(cidr)
+
 
 class DropAllRule(TrafficRuleBuilder):
     action = 'ns0:DvsDropNetworkRuleAction'
@@ -693,8 +703,8 @@ def wrap_retry(func):
                     exceptions.VMWareDVSException) as e:
                 if CONCURRENT_MODIFICATION_TEXT in e.message:
                     continue
-                elif (LOGIN_PROBLEM_TEXT in getattr(e, 'msg', '')
-                        and login_failures < LOGIN_RETRIES - 1):
+                elif (LOGIN_PROBLEM_TEXT in getattr(e, 'msg', '') and
+                      login_failures < LOGIN_RETRIES - 1):
                     login_failures += 1
                     continue
                 else:
