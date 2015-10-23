@@ -52,9 +52,9 @@ LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect "\
 DELETED_TEXT = "The object has already been deleted or has not been "\
                "completely created"
 
-from copy import deepcopy
+#from copy import deepcopy
 
-BACKWARD={'port_range_min':'source_port_range_min','port_range_max':'source_port_range_max', 'source_port_range_min':'port_range_min', 'source_port_range_max':'port_range_max'}
+'''BACKWARD={'port_range_min':'source_port_range_min','port_range_max':'source_port_range_max', 'source_port_range_min':'port_range_min', 'source_port_range_max':'port_range_max'}
 
 def change_portrange_for_egress(rules):
     r_rules=[]
@@ -91,7 +91,8 @@ def reverse_rules(rules):
             if 'dest_ip_prefix' in r_:
                 del r_['dest_ip_prefix']
         r_rules.append(r_)
-    return r_rules
+    return r_rules'''
+
 
 def init_rules():
     r_rules=[{'dest_ip_prefix': u'169.254.169.254/32', 'direction': 'egress', 'protocol': 'tcp', 
@@ -512,24 +513,19 @@ class SpecBuilder(object):
         }
         if rule_info['direction'] == 'ingress':
             rule = IngressRule(**rule_params)
-            rule.source_port_range(
-                rule_info.get('source_port_range_min'),
-                rule_info.get('source_port_range_max')
-            )
             cidr = rule_info.get('source_ip_prefix')
-            bcidr = rule_info.get('dest_ip_prefix')
         else:
             rule = EgressRule(**rule_params)
-            rule.dest_port_range(
-                rule_info.get('source_port_range_min'),
-                rule_info.get('source_port_range_max')
-            )
             cidr = rule_info.get('dest_ip_prefix')
-            bcidr = rule_info.get('source_ip_prefix')
-        rule.port_range(rule_info.get('port_range_min'),
-                        rule_info.get('port_range_max'))
+        rule.source_port_range(
+            rule_info.get('source_port_range_min'),
+            rule_info.get('source_port_range_max')
+        )
+        rule.port_range(
+            rule_info.get('port_range_min'),
+            rule_info.get('port_range_max')
+        )
         rule.cidr(ip or cidr)
-        rule.bcidr(ip or bcidr)
         return rule.build()
 
     def port_criteria(self, port_key=None, port_group_key=None):
@@ -592,14 +588,14 @@ class TrafficRuleBuilder(object):
         self.rule.qualifier = [self.ip_qualifier]
         return self.rule
 
-    @abc.abstractmethod
+    def source_port_range(self, start, end):
+        if start:
+            self.ip_qualifier.sourceIpPort = self._port_range_spec(start, end)
+
     def port_range(self, start, end):
-        pass
-
-    @abc.abstractmethod
-    def cidr(self, cidr):
-        pass
-
+        if self._has_port(start):
+            self.ip_qualifier.destinationIpPort = self._port_range_spec(start,
+                                                                        end)
     def _port_range_spec(self, start, end):
         if start == end:
             result = self.factory.create('ns0:DvsSingleIpPort')
@@ -625,7 +621,7 @@ class TrafficRuleBuilder(object):
     def _has_port(self, min_port):
         if min_port:
             if self.protocol == 'icmp':
-                wLOG.info(_LI('Vmware dvs driver does not support '
+                LOG.info(_LI('Vmware dvs driver does not support '
                              '"type" and "code" for ICMP protocol.'))
                 return False
             else:
@@ -640,22 +636,9 @@ class IngressRule(TrafficRuleBuilder):
         super(IngressRule, self).__init__(spec_factory, ethertype, protocol, sequence)
         self.rule.direction = 'incomingPackets'
 
-    def port_range(self, start, end):
-        if self._has_port(start):
-            self.ip_qualifier.destinationIpPort = self._port_range_spec(start,
-                                                                        end)
-
-    def source_port_range(self, start, end):
-        if start:
-            self.ip_qualifier.sourceIpPort = self._port_range_spec(start, end)
-
     def cidr(self, cidr):
         if cidr:
             self.ip_qualifier.sourceAddress = self._cidr_spec(cidr)
-
-    def bcidr(self, cidr):
-        if cidr:
-            self.ip_qualifier.destinationAddress = self._cidr_spec(cidr)
 
 class EgressRule(TrafficRuleBuilder):
 
@@ -663,21 +646,9 @@ class EgressRule(TrafficRuleBuilder):
         super(EgressRule, self).__init__(spec_factory, ethertype, protocol, sequence)
         self.rule.direction = 'outgoingPackets'
 
-    def port_range(self, start, end):
-        if self._has_port(start):
-            self.ip_qualifier.sourceIpPort = self._port_range_spec(start, end)
-
-    def dest_port_range(self, start, end):
-        if start:
-            self.ip_qualifier.destinationIpPort = self._port_range_spec(start, end)
-
     def cidr(self, cidr):
         if cidr:
             self.ip_qualifier.destinationAddress = self._cidr_spec(cidr)
-
-    def bcidr(self, cidr):
-        if cidr:
-            self.ip_qualifier.sourceAddress = self._cidr_spec(cidr)
 
 class DropAllRule(TrafficRuleBuilder):
     action = 'ns0:DvsDropNetworkRuleAction'
@@ -685,7 +656,7 @@ class DropAllRule(TrafficRuleBuilder):
     def port_range(self, start, end):
         pass
 
-    def dest_port_range(self, start, end):
+    def source_port_range(self, start, end):
         pass
 
     def cidr(self, cidr):

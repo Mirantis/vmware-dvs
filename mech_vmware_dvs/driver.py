@@ -190,7 +190,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
 
     @util.wrap_retry
     def _update_security_groups(self, dvs, context, force):
-       if not dvs:
+        if not dvs:
             return
         current_sg = set(context.current['security_groups'])
         if force:
@@ -247,7 +247,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                             pass
                         else:
                             port['security_group_rules'].extend(rules)
-                    port['security_group_rules']=util.reverse_rules(util.change_portrange_for_egress(port['security_group_rules']))
+                    #port['security_group_rules']=util.reverse_rules(util.change_portrange_for_egress(port['security_group_rules']))
                     ports.append(port)
                 dvs.update_port_rules(ports)
 
