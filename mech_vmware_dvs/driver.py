@@ -237,7 +237,6 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                 for port_id in ports_to_update:
                     port = devices[port_id]
                     for r_sp in range(len(port['security_group_rules'])):
-                        import pdb; pdb.set_trace()
                         port['security_group_rules'][r_sp][
                             'source_ip_prefix'] = u'0.0.0.0/0'
                     port['security_group_rules'].extend(util.init_rules())
