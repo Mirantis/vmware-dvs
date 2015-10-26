@@ -248,6 +248,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                             pass
                         else:
                             port['security_group_rules'].extend(rules)
+                        ports.append(port)
                 dvs.update_port_rules(ports)
 
     def _get_security_group_info(self, context, current_security_group):
