@@ -442,7 +442,7 @@ class SpecBuilder(object):
                 rule = self._create_rule(rule_info)
                 rules.append(rule.build(seq))
                 seq += 10
-                reversed_rules(rule.reverse())
+                reversed_rules.append(rule.reverse())
 
         for r in reversed_rules:
             rules.append(rule.build(seq))
@@ -471,16 +471,16 @@ class SpecBuilder(object):
         if rule_info['direction'] == 'ingress':
             rule = IngressRule(**rule_params)
             rule.backward_port_range = (
-                rule_info.get('backward_port_range_min'),
-                rule_info.get('backward_port_range_max')
+                rule_info.get('source_port_range_min'),
+                rule_info.get('source_port_range_max')
             )
             cidr = rule_info.get('source_ip_prefix')
             backward_cidr = rule_info.get('dest_ip_prefix')
         else:
             rule = EgressRule(**rule_params)
             rule.backward_port_range = (
-                rule_info.get('backward_port_range_min'),
-                rule_info.get('backward_port_range_max')
+                rule_info.get('source_port_range_min'),
+                rule_info.get('source_port_range_max')
             )
             cidr = rule_info.get('dest_ip_prefix')
             backward_cidr = rule_info.get('source_ip_prefix')
@@ -616,32 +616,32 @@ class TrafficRuleBuilder(object):
 class IngressRule(TrafficRuleBuilder):
     direction = 'incomingPackets'
 
-    def __init__(self, spec_factory, ethertype, protocol, sequence):
+    def __init__(self, spec_factory, ethertype, protocol):
         super(IngressRule, self).__init__(
-            spec_factory, ethertype, protocol, sequence)
+            spec_factory, ethertype, protocol)
         self.reverse_class = EgressRule
 
     @TrafficRuleBuilder.port_range.setter
-    def set_port_range(self, range_):
+    def port_range(self, range_):
         begin, end = self._port_range = range_
         if self._has_port(begin):
             self.ip_qualifier.destinationIpPort = self._port_range_spec(begin,
                                                                         end)
 
     @TrafficRuleBuilder.backward_port_range.setter
-    def set_backward_port_range(self, range_):
+    def backward_port_range(self, range_):
         begin, end = self._backward_port_range = range_
         if begin:
             self.ip_qualifier.sourceIpPort = self._port_range_spec(begin, end)
 
     @TrafficRuleBuilder.cidr.setter
-    def set_cidr(self, cidr):
+    def cidr(self, cidr):
         self._cidr = cidr
         if cidr:
             self.ip_qualifier.sourceAddress = self._cidr_spec(cidr)
 
     @TrafficRuleBuilder.backward_cidr.setter
-    def set_backward_cidr(self, cidr):
+    def backward_cidr(self, cidr):
         self._backward_cidr = cidr
         if cidr:
             self.ip_qualifier.destinationAddress = self._cidr_spec(cidr)
@@ -650,32 +650,32 @@ class IngressRule(TrafficRuleBuilder):
 class EgressRule(TrafficRuleBuilder):
     direction = 'outgoingPackets'
 
-    def __init__(self, spec_factory, ethertype, protocol, sequence):
+    def __init__(self, spec_factory, ethertype, protocol):
         super(EgressRule, self).__init__(
-            spec_factory, ethertype, protocol, sequence)
+            spec_factory, ethertype, protocol)
         self.reverse_class = IngressRule
 
     @TrafficRuleBuilder.port_range.setter
-    def set_port_range(self, range_):
+    def port_range(self, range_):
         begin, end = self._port_range = range_
         if self._has_port(begin):
             self.ip_qualifier.sourceIpPort = self._port_range_spec(begin, end)
 
     @TrafficRuleBuilder.backward_port_range.setter
-    def set_backward_port_range(self, range_):
+    def backward_port_range(self, range_):
         begin, end = self._backwar_port_range = range_
         if begin:
             self.ip_qualifier.destinationIpPort = self._port_range_spec(
                 begin, end)
 
     @TrafficRuleBuilder.cidr.setter
-    def set_cidr(self, cidr):
+    def cidr(self, cidr):
         self._cidr = cidr
         if cidr:
             self.ip_qualifier.destinationAddress = self._cidr_spec(cidr)
 
-    @TrafficRuleBuilder.bcdir.setter
-    def set_backward_cidr(self, cidr):
+    @TrafficRuleBuilder.backward_cidr.setter
+    def backward_cidr(self, cidr):
         self._backward_cidr = cidr
         if cidr:
             self.ip_qualifier.sourceAddress = self._cidr_spec(cidr)

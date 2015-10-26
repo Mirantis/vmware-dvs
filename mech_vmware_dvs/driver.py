@@ -239,7 +239,6 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                     for r_sp in range(len(port['security_group_rules'])):
                         port['security_group_rules'][r_sp][
                             'source_ip_prefix'] = u'0.0.0.0/0'
-                    port['security_group_rules'].extend(util.init_rules())
                     for sec_group_id in port['security_groups']:
                         try:
                             rules = security_groups[sec_group_id]
@@ -248,7 +247,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                             pass
                         else:
                             port['security_group_rules'].extend(rules)
-                        ports.append(port)
+                    ports.append(port)
                 dvs.update_port_rules(ports)
 
     def _get_security_group_info(self, context, current_security_group):
