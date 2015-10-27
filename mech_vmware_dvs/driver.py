@@ -236,9 +236,11 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                 ports = []
                 for port_id in ports_to_update:
                     port = devices[port_id]
-                    for r_sp in range(len(port['security_group_rules'])):
-                        port['security_group_rules'][r_sp][
-                            'source_ip_prefix'] = u'0.0.0.0/0'
+                    for r in port['security_group_rules']:
+                        try:
+                            del r['source_ip_prefix']
+                        except KeyError:
+                            pass
                     for sec_group_id in port['security_groups']:
                         try:
                             rules = security_groups[sec_group_id]
