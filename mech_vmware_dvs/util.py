@@ -23,7 +23,7 @@ from oslo.vmware import api
 from oslo.vmware import exceptions as vmware_exceptions
 from oslo.vmware import vim_util
 
-from neutron.i18n import _LI
+from neutron.openstack.common.gettextutils import _LI
 
 from mech_vmware_dvs import exceptions
 
@@ -445,7 +445,7 @@ class SpecBuilder(object):
                 reversed_rules.append(rule.reverse())
 
         for r in reversed_rules:
-            rules.append(rule.build(seq))
+            rules.append(r.build(seq))
             seq += 10
 
         for i, protocol in enumerate(PROTOCOL.values()):
@@ -470,24 +470,27 @@ class SpecBuilder(object):
         }
         if rule_info['direction'] == 'ingress':
             rule = IngressRule(**rule_params)
-            rule.backward_port_range = (
-                rule_info.get('source_port_range_min'),
-                rule_info.get('source_port_range_max')
-            )
             cidr = rule_info.get('source_ip_prefix')
-            backward_cidr = rule_info.get('dest_ip_prefix')
         else:
             rule = EgressRule(**rule_params)
-            rule.backward_port_range = (
-                rule_info.get('source_port_range_min'),
-                rule_info.get('source_port_range_max')
-            )
             cidr = rule_info.get('dest_ip_prefix')
-            backward_cidr = rule_info.get('source_ip_prefix')
         rule.port_range = (rule_info.get('port_range_min'),
                            rule_info.get('port_range_max'))
+        if (rule_info.get('protocol') == 'tcp' or
+                rule_info.get('protocol') == 'udp'):
+            if rule_info.get('source_port_range_min'):
+                spr_min = rule_info.get('source_port_range_min')
+            else:
+                spr_min = 32768
+            if rule_info.get('source_port_range_max'):
+                spr_max = rule_info.get('source_port_range_max')
+            else:
+                spr_max = 65535
+            rule.backward_port_range = (spr_min, spr_max)
+        else:
+            rule.backward_port_range = (rule_info.get('source_port_range_min'),
+                                        rule_info.get('source_port_range_max'))
         rule.cidr = ip or cidr
-        rule.backward_cidr = ip or backward_cidr
         return rule
 
     def port_criteria(self, port_key=None, port_group_key=None):
@@ -551,10 +554,9 @@ class TrafficRuleBuilder(object):
         """Returns reversed rule"""
         rule = self.reverse_class(self.factory, self.ethertype,
                                   self.protocol)
-        rule.cidr = self.backward_cidr
         rule.cidr = self.cidr
-        rule.port_range = self.port_range
-        # TODO: What to do with backward_port_range
+        rule.port_range = self.backward_port_range
+        rule.backward_port_range = self.port_range
         return rule
 
     def build(self, sequence):
@@ -575,17 +577,13 @@ class TrafficRuleBuilder(object):
     def cidr(self):
         return self._cidr
 
-    @property
-    def backward_cidr(self):
-        return self._backward_cidr
-
     def _port_range_spec(self, begin, end):
         if begin == end:
             result = self.factory.create('ns0:DvsSingleIpPort')
             result.portNumber = begin
         else:
             result = self.factory.create('ns0:DvsIpPortRange')
-            result.beginPortNumber = begin
+            result.startPortNumber = begin
             result.endPortNumber = end
         return result
 
@@ -624,7 +622,7 @@ class IngressRule(TrafficRuleBuilder):
     @TrafficRuleBuilder.port_range.setter
     def port_range(self, range_):
         begin, end = self._port_range = range_
-        if self._has_port(begin):
+        if begin:
             self.ip_qualifier.destinationIpPort = self._port_range_spec(begin,
                                                                         end)
 
@@ -640,12 +638,6 @@ class IngressRule(TrafficRuleBuilder):
         if cidr:
             self.ip_qualifier.sourceAddress = self._cidr_spec(cidr)
 
-    @TrafficRuleBuilder.backward_cidr.setter
-    def backward_cidr(self, cidr):
-        self._backward_cidr = cidr
-        if cidr:
-            self.ip_qualifier.destinationAddress = self._cidr_spec(cidr)
-
 
 class EgressRule(TrafficRuleBuilder):
     direction = 'outgoingPackets'
@@ -658,14 +650,15 @@ class EgressRule(TrafficRuleBuilder):
     @TrafficRuleBuilder.port_range.setter
     def port_range(self, range_):
         begin, end = self._port_range = range_
-        if self._has_port(begin):
-            self.ip_qualifier.sourceIpPort = self._port_range_spec(begin, end)
+        if begin:
+            self.ip_qualifier.destinationIpPort = self._port_range_spec(
+                begin, end)
 
     @TrafficRuleBuilder.backward_port_range.setter
     def backward_port_range(self, range_):
-        begin, end = self._backwar_port_range = range_
+        begin, end = self._backward_port_range = range_
         if begin:
-            self.ip_qualifier.destinationIpPort = self._port_range_spec(
+            self.ip_qualifier.sourceIpPort = self._port_range_spec(
                 begin, end)
 
     @TrafficRuleBuilder.cidr.setter
@@ -673,12 +666,6 @@ class EgressRule(TrafficRuleBuilder):
         self._cidr = cidr
         if cidr:
             self.ip_qualifier.destinationAddress = self._cidr_spec(cidr)
-
-    @TrafficRuleBuilder.backward_cidr.setter
-    def backward_cidr(self, cidr):
-        self._backward_cidr = cidr
-        if cidr:
-            self.ip_qualifier.sourceAddress = self._cidr_spec(cidr)
 
 
 class DropAllRule(TrafficRuleBuilder):
