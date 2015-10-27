@@ -23,7 +23,7 @@ from oslo.vmware import api
 from oslo.vmware import exceptions as vmware_exceptions
 from oslo.vmware import vim_util
 
-from neutron.openstack.common.gettextutils import _LI
+from neutron.i18n import _LI
 
 from mech_vmware_dvs import exceptions
 
@@ -434,12 +434,13 @@ class SpecBuilder(object):
         for rule_info in sg_rules:
             if 'ip_set' in rule_info:
                 for ip in rule_info['ip_set']:
-                    rule = self._create_rule(rule_info, ip)
+                    rule = self._create_rule(rule_info, ip,
+                                             name='remote security group')
                     rules.append(rule.build(seq))
                     seq += 10
                     reversed_rules.append(rule.reverse())
             else:
-                rule = self._create_rule(rule_info)
+                rule = self._create_rule(rule_info, name='regural')
                 rules.append(rule.build(seq))
                 seq += 10
                 reversed_rules.append(rule.reverse())
@@ -449,8 +450,9 @@ class SpecBuilder(object):
             seq += 10
 
         for i, protocol in enumerate(PROTOCOL.values()):
-            rules.append(DropAllRule(self.factory, None,
-                                     protocol).build(seq + i * 10))
+            rules.append(
+                DropAllRule(self.factory, None, protocol,
+                            name='drop all').build(seq + i * 10))
 
         filter_policy = self.filter_policy(rules)
         setting = self.port_setting()
@@ -462,11 +464,12 @@ class SpecBuilder(object):
         spec.key = port_key
         return spec
 
-    def _create_rule(self, rule_info, ip=None):
+    def _create_rule(self, rule_info, ip=None, name=None):
         rule_params = {
             'spec_factory': self.factory,
             'ethertype': rule_info['ethertype'],
             'protocol': rule_info.get('protocol'),
+            'name': name
         }
         if rule_info['direction'] == 'ingress':
             rule = IngressRule(**rule_params)
@@ -474,23 +477,14 @@ class SpecBuilder(object):
         else:
             rule = EgressRule(**rule_params)
             cidr = rule_info.get('dest_ip_prefix')
-        rule.port_range = (rule_info.get('port_range_min'),
-                           rule_info.get('port_range_max'))
-        if (rule_info.get('protocol') == 'tcp' or
-                rule_info.get('protocol') == 'udp'):
-            if rule_info.get('source_port_range_min'):
-                spr_min = rule_info.get('source_port_range_min')
-            else:
-                spr_min = 32768
-            if rule_info.get('source_port_range_max'):
-                spr_max = rule_info.get('source_port_range_max')
-            else:
-                spr_max = 65535
-            rule.backward_port_range = (spr_min, spr_max)
-        else:
-            rule.backward_port_range = (rule_info.get('source_port_range_min'),
-                                        rule_info.get('source_port_range_max'))
         rule.cidr = ip or cidr
+
+        if rule_info.get('protocol') in ('tcp', 'udp'):
+            rule.port_range = (rule_info.get('port_range_min'),
+                               rule_info.get('port_range_max'))
+            rule.backward_port_range = (
+                    rule_info.get('source_port_range_min') or 32768,
+                    rule_info.get('source_port_range_max') or 65535)
         return rule
 
     def port_criteria(self, port_key=None, port_group_key=None):
@@ -527,8 +521,10 @@ class TrafficRuleBuilder(object):
     action = 'ns0:DvsAcceptNetworkRuleAction'
     direction = 'both'
     reverse_class = None
+    _backward_port_range = (None, None)
+    _port_range = (None, None)
 
-    def __init__(self, spec_factory, ethertype, protocol):
+    def __init__(self, spec_factory, ethertype, protocol, name=None):
         self.factory = spec_factory
 
         self.rule = self.factory.create('ns0:DvsTrafficRule')
@@ -550,10 +546,13 @@ class TrafficRuleBuilder(object):
             int_exp.negate = 'false'
             self.ip_qualifier.protocol = int_exp
 
+        self.name = name
+
     def reverse(self):
         """Returns reversed rule"""
+        name = 'reversed' + ' ' + (self.name or '')
         rule = self.reverse_class(self.factory, self.ethertype,
-                                  self.protocol)
+                                  self.protocol, name=name.strip())
         rule.cidr = self.cidr
         rule.port_range = self.backward_port_range
         rule.backward_port_range = self.port_range
@@ -563,6 +562,9 @@ class TrafficRuleBuilder(object):
         self.rule.qualifier = [self.ip_qualifier]
         self.rule.direction = self.direction
         self.rule.sequence = sequence
+        self.name = str(sequence) + '. ' + (self.name or '')
+        self.name = self.name.strip()
+        self.rule.description = self.name.strip()
         return self.rule
 
     @property
@@ -614,9 +616,9 @@ class TrafficRuleBuilder(object):
 class IngressRule(TrafficRuleBuilder):
     direction = 'incomingPackets'
 
-    def __init__(self, spec_factory, ethertype, protocol):
+    def __init__(self, spec_factory, ethertype, protocol, name=None):
         super(IngressRule, self).__init__(
-            spec_factory, ethertype, protocol)
+            spec_factory, ethertype, protocol, name)
         self.reverse_class = EgressRule
 
     @TrafficRuleBuilder.port_range.setter
@@ -642,9 +644,9 @@ class IngressRule(TrafficRuleBuilder):
 class EgressRule(TrafficRuleBuilder):
     direction = 'outgoingPackets'
 
-    def __init__(self, spec_factory, ethertype, protocol):
+    def __init__(self, spec_factory, ethertype, protocol, name=None):
         super(EgressRule, self).__init__(
-            spec_factory, ethertype, protocol)
+            spec_factory, ethertype, protocol, name)
         self.reverse_class = IngressRule
 
     @TrafficRuleBuilder.port_range.setter

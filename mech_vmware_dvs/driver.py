@@ -19,7 +19,7 @@ from oslo_log import log
 from oslo import messaging as oslo_messaging
 from neutron.common import constants as n_const
 from neutron.common import rpc as n_rpc
-from neutron.openstack.common.gettextutils import _LI, _
+from neutron.i18n import _LI, _
 from neutron.extensions import portbindings
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api
