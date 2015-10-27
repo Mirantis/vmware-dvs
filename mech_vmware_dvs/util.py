@@ -476,7 +476,8 @@ class SpecBuilder(object):
             cidr = rule_info.get('dest_ip_prefix')
         rule.port_range = (rule_info.get('port_range_min'),
                            rule_info.get('port_range_max'))
-        if rule_info.get('protocol') == 'tcp' or rule_info.get('protocol') == 'udp':
+        if (rule_info.get('protocol') == 'tcp' or
+                rule_info.get('protocol') == 'udp'):
             if rule_info.get('source_port_range_min'):
                 spr_min = rule_info.get('source_port_range_min')
             else:
@@ -487,7 +488,8 @@ class SpecBuilder(object):
                 spr_max = 65535
             rule.backward_port_range = (spr_min, spr_max)
         else:
-            rule.backward_port_range = (rule_info.get('source_port_range_min'), rule_info.get('source_port_range_max'))
+            rule.backward_port_range = (rule_info.get('source_port_range_min'),
+                                        rule_info.get('source_port_range_max'))
         rule.cidr = ip or cidr
         return rule
 
@@ -552,7 +554,6 @@ class TrafficRuleBuilder(object):
         """Returns reversed rule"""
         rule = self.reverse_class(self.factory, self.ethertype,
                                   self.protocol)
-        #rule.cidr = self.backward_cidr
         rule.cidr = self.cidr
         rule.port_range = self.backward_port_range
         rule.backward_port_range = self.port_range
@@ -651,7 +652,8 @@ class EgressRule(TrafficRuleBuilder):
     def port_range(self, range_):
         begin, end = self._port_range = range_
         if begin:
-            self.ip_qualifier.destinationIpPort = self._port_range_spec(begin, end)
+            self.ip_qualifier.destinationIpPort = self._port_range_spec(
+                begin, end)
 
     @TrafficRuleBuilder.backward_port_range.setter
     def backward_port_range(self, range_):
@@ -665,7 +667,6 @@ class EgressRule(TrafficRuleBuilder):
         self._cidr = cidr
         if cidr:
             self.ip_qualifier.destinationAddress = self._cidr_spec(cidr)
-
 
 
 class DropAllRule(TrafficRuleBuilder):
