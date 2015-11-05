@@ -35,9 +35,6 @@ PROTOCOL = {'icmp': 1,
             'tcp': 6,
             'udp': 17}
 
-# RFC 3168
-TCP_FLAGS = {'SYN': int('00000010', 2)}
-
 DVS_PORTGROUP_NAME_MAXLEN = 80
 
 LOGIN_RETRIES = 3
@@ -442,12 +439,12 @@ class SpecBuilder(object):
                                              name='remote security group')
                     rules.append(rule.build(seq))
                     seq += 10
-                    reversed_rules.extend(rule.reverse())'''
+                    reversed_rules.append(rule.reverse())'''
             else:
                 rule = self._create_rule(rule_info, name='regural')
                 rules.append(rule.build(seq))
                 seq += 10
-                reversed_rules.extend(rule.reverse())
+                reversed_rules.append(rule.reverse())
 
         for r in reversed_rules:
             rules.append(r.build(seq))
@@ -487,8 +484,8 @@ class SpecBuilder(object):
             rule.port_range = (rule_info.get('port_range_min'),
                                rule_info.get('port_range_max'))
             rule.backward_port_range = (
-                rule_info.get('source_port_range_min') or 32768,
-                rule_info.get('source_port_range_max') or 65535)
+                    rule_info.get('source_port_range_min') or 32768,
+                    rule_info.get('source_port_range_max') or 65535)
         return rule
 
     def port_criteria(self, port_key=None, port_group_key=None):
@@ -527,12 +524,12 @@ class TrafficRuleBuilder(object):
     reverse_class = None
     _backward_port_range = (None, None)
     _port_range = (None, None)
-    tcp_flags = None
 
     def __init__(self, spec_factory, ethertype, protocol, name=None):
         self.factory = spec_factory
 
         self.rule = self.factory.create('ns0:DvsTrafficRule')
+        self.rule.action = self.factory.create(self.action)
 
         self.ip_qualifier = self.factory.create(
             'ns0:DvsIpNetworkRuleQualifier'
@@ -545,60 +542,30 @@ class TrafficRuleBuilder(object):
 
         self.protocol = protocol
         if protocol:
-            self.ip_qualifier.protocol = self._int_exp(
-                PROTOCOL.get(protocol, protocol))
+            int_exp = self.factory.create('ns0:IntExpression')
+            int_exp.value = PROTOCOL.get(protocol, protocol)
+            int_exp.negate = 'false'
+            self.ip_qualifier.protocol = int_exp
 
         self.name = name
 
-    def _int_exp(self, value):
-        result = self.factory.create('ns0:IntExpression')
-        result.value = value
-        result.negate = 'false'
-        return result
-
     def reverse(self):
-        """Returns tuple of rules that reverse this one"""
-
-        def _reverse(name, protocol=None):
-            r = self.reverse_class(self.factory, self.ethertype,
-                                   protocol or self.protocol, name=name)
-            r.cidr = self.cidr
-            r.port_range = self.backward_port_range
-            r.backward_port_range = self.port_range
-            return [r]
-
-        def _reverse_tcp(name):
-            rules = _reverse(name, 'tcp')
-            name = name + ' ' + '(drop SYN)'
-            drop_syn = _reverse(name, 'tcp')[0]
-            drop_syn.action = 'ns0:DvsDropNetworkRuleAction'
-            drop_syn.tcp_flags = TCP_FLAGS['SYN']
-            return [drop_syn] + rules
-
-        def _reverse_any(name):
-            tcp = _reverse_tcp(name + ' [tcp]')
-            icmp = _reverse(name + ' [icmp]', 'icmp')
-            udp = _reverse(name + ' [udp]', 'udp')
-            return tcp + icmp + udp
-
-        name = ('reversed' + ' ' + (self.name or '')).strip()
-        if self.protocol == 'tcp':
-            return _reverse_tcp(name)
-        elif not self.protocol:
-            return _reverse_any(name)
-        else:
-            return _reverse(name)
+        """Returns reversed rule"""
+        name = 'reversed' + ' ' + (self.name or '')
+        rule = self.reverse_class(self.factory, self.ethertype,
+                                  self.protocol, name=name.strip())
+        rule.cidr = self.cidr
+        rule.port_range = self.backward_port_range
+        rule.backward_port_range = self.port_range
+        return rule
 
     def build(self, sequence):
-        self.rule.action = self.factory.create(self.action)
-        if self.tcp_flags:
-            self.ip_qualifier.tcpFlags = self._int_exp(self.tcp_flags)
         self.rule.qualifier = [self.ip_qualifier]
         self.rule.direction = self.direction
         self.rule.sequence = sequence
         self.name = str(sequence) + '. ' + (self.name or '')
         self.name = self.name.strip()
-        self.rule.description = self.name
+        self.rule.description = self.name.strip()
         return self.rule
 
     @property
