@@ -640,35 +640,29 @@ class SpecBuilderTestCase(base.BaseTestCase):
 
     def test__create_rule_egress(self):
         rule = self._create_rule(direction='egress')
-        self.assertEqual(rule.direction, 'both')
+        self.assertEqual(rule.direction, 'outgoingPackets')
 
     def test__create_rule_ingress(self):
         rule = self._create_rule(direction='ingress')
-        self.assertEqual(rule.direction, 'both')
-
-    def test__create_rule_ingress_source_port_range(self):
-        rule = self._create_rule(direction='ingress',
-                                 source_port_range_min=22,
-                                 source_port_range_max=23)
-        qualifier = rule.qualifier[0]
-        self.assertIn('sourceIpPort', dir(qualifier))
-        self.assertNotIn('destinationIpPort', dir(qualifier))
+        self.assertEqual(rule.direction, 'incomingPackets')
 
     def test__create_rule_ingress_port_range(self):
         rule = self._create_rule(direction='ingress',
                                  port_range_min=22,
                                  port_range_max=23)
         qualifier = rule.qualifier[0]
-        self.assertIn('destinationIpPort', dir(qualifier))
-        self.assertNotIn('sourceIpPort', dir(qualifier))
+        self.assertEqual(qualifier.sourceIpPort.startPortNumber, 32768)
+        self.assertEqual(qualifier.sourceIpPort.endPortNumber, 65535)
+        self.assertEqual(qualifier.destinationIpPort.startPortNumber, 22)
+        self.assertEqual(qualifier.destinationIpPort.endPortNumber, 23)
 
     def test__create_rule_egress_port_range(self):
         rule = self._create_rule(direction='egress',
                                  port_range_min=22,
                                  port_range_max=23)
         qualifier = rule.qualifier[0]
-        self.assertNotIn('destinationIpPort', dir(qualifier))
-        self.assertIn('sourceIpPort', dir(qualifier))
+        self.assertEqual(qualifier.destinationIpPort.startPortNumber, 22)
+        self.assertEqual(qualifier.destinationIpPort.endPortNumber, 23)
 
     def test__create_rule_ingress_cidr(self):
         rule = self._create_rule(direction='ingress',
@@ -710,12 +704,13 @@ class SpecBuilderTestCase(base.BaseTestCase):
         self.factory.create.side_effect = side_effect
 
         rule_info = {'direction': 'egress',
+                     'protocol': 'tcp',
                      'ethertype': 'IPv4'}
         rule_info.update(kwargs)
-        sequence = 25
-        rule = self.builder._create_rule(rule_info, sequence, ip)
-        self.assertEqual(rule.sequence, sequence)
-        return rule
+        rule = self.builder._create_rule(rule_info, ip)
+        result = rule.build(25)
+        self.assertEqual(result.sequence, 25)
+        return result
 
 
 class TrafficRuleBuilderBaseTestCase(UtilBaseTestCase):
@@ -735,7 +730,7 @@ class TrafficRuleBuilderBaseTestCase(UtilBaseTestCase):
 
 class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
 
-    def _create_builder(self, ethertype=None, protocol=None, sequence=None):
+    def _create_builder(self, ethertype=None, protocol=None, name=None):
         class ConcreteTrafficRuleBuilder(util.TrafficRuleBuilder):
 
             def port_range(self, start, end):
@@ -745,16 +740,16 @@ class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
                 pass
 
         return ConcreteTrafficRuleBuilder(
-            self.spec_factory, ethertype, protocol, sequence)
+            self.spec_factory, ethertype, protocol, name)
 
-    def test_build_sequence(self):
-        builder = self._create_builder(sequence='_sequence_')
-        rule = builder.build()
-        self.assertEqual('_sequence_', rule.sequence)
+    def test_build_name(self):
+        builder = self._create_builder(name='_name_')
+        rule = builder.build(20)
+        self.assertEqual('20. _name_', rule.description)
 
     def test_build_ethertype_IPv4(self):
         builder = self._create_builder(ethertype='IPv4')
-        rule = builder.build()
+        rule = builder.build(20)
         qualifier = rule.qualifier[0]
         self.assertEqual('0.0.0.0', qualifier.sourceAddress.addressPrefix)
         self.assertEqual('0', qualifier.sourceAddress.prefixLength)
@@ -763,7 +758,7 @@ class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
 
     def test_build_ethertype_IPv6(self):
         builder = self._create_builder(ethertype='IPv6')
-        rule = builder.build()
+        rule = builder.build(20)
         qualifier = rule.qualifier[0]
         self.assertEqual('::', qualifier.sourceAddress.addressPrefix)
         self.assertEqual('0', qualifier.sourceAddress.prefixLength)
@@ -773,14 +768,14 @@ class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
     def test_build_ethertype_protocol(self):
         for name, rfc in util.PROTOCOL.iteritems():
             builder = self._create_builder(protocol=name)
-            rule = builder.build()
+            rule = builder.build(20)
             qualifier = rule.qualifier[0]
             self.assertEqual(rfc,
                              qualifier.protocol.value,
                              'Wrong value for %s protocol' % name)
 
         builder = self._create_builder(protocol='not_described')
-        rule = builder.build()
+        rule = builder.build(20)
         qualifier = rule.qualifier[0]
         self.assertEqual('not_described',
                          qualifier.protocol.value)
