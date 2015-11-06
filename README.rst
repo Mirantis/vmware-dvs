@@ -1,3 +1,10 @@
+Travis CI status for branches:
+
+- sg_new_engine: |sg_new_engine|
+
+.. |sg_new_engine| image:: https://travis-ci.org/Mirantis/vmware-dvs.svg?branch=sg_new_engine
+   :target: https://travis-ci.org/Mirantis/vmware-dvs
+
 Goal
 ====
 There is requests from openstack users to have ability to build hybrid
