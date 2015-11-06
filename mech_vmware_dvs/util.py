@@ -438,19 +438,18 @@ class SpecBuilder(object):
         reversed_rules = []
         seq = 0
         for rule_info in sg_rules:
-            if 'ip_set' in rule_info:
-                pass
-                '''for ip in rule_info['ip_set']:
-                    rule = self._create_rule(rule_info, ip,
-                                             name='remote security group')
-                    rules.append(rule.build(seq))
-                    seq += 10
-                    reversed_rules.append(rule.reverse())'''
-            else:
-                rule = self._create_rule(rule_info, name='regural')
-                rules.append(rule.build(seq))
-                seq += 10
-                reversed_rules.append(rule.reverse())
+            # if 'ip_set' in rule_info:
+            #     for ip in rule_info['ip_set']:
+            #         rule = self._create_rule(rule_info, ip,
+            #                                  name='remote security group')
+            #         rules.append(rule.build(seq))
+            #         seq += 10
+            #         reversed_rules.append(rule.reverse())
+            # else:
+            rule = self._create_rule(rule_info, name='regural')
+            rules.append(rule.build(seq))
+            seq += 10
+            reversed_rules.append(rule.reverse())
 
         for r in reversed_rules:
             rules.append(r.build(seq))
