@@ -83,7 +83,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                 exceptions.NotSupportedNetworkType) as e:
             LOG.info(_LI('Network %(id)s not created. Reason: %(reason)s') % {
                 'id': context.current['id'],
-                'reason': e.message})
+                'reason': six.text_type(e)})
         except exceptions.InvalidNetwork:
             pass
         else:
@@ -97,7 +97,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                 exceptions.NotSupportedNetworkType) as e:
             LOG.info(_LI('Network %(id)s not updated. Reason: %(reason)s') % {
                 'id': context.current['id'],
-                'reason': e.message})
+                'reason': six.text_type(e)})
         except exceptions.InvalidNetwork:
             pass
         else:
@@ -111,7 +111,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
                 exceptions.NotSupportedNetworkType) as e:
             LOG.info(_LI('Network %(id)s not deleted. Reason: %(reason)s') % {
                 'id': context.current['id'],
-                'reason': e.message})
+                'reason': six.text_type(e)})
         except exceptions.InvalidNetwork:
             pass
         else:
@@ -131,7 +131,7 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
         except exceptions.NotSupportedNetworkType as e:
             LOG.info(_LI('Port %(id)s not updated. Reason: %(reason)s') % {
                 'id': context.current['id'],
-                'reason': e.message})
+                'reason': six.text_type(e)})
         except exceptions.NoDVSForPhysicalNetwork:
             raise exceptions.InvalidSystemState(details=_(
                 'Port %(port_id)s belong to VMWare VM, but there is no '
