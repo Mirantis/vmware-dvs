@@ -188,8 +188,14 @@ class DVSController(object):
                     port_info = self._lookup_unbound_port(pg)
                     break
                 except exceptions.UnboundPortNotFound:
-                    self._increase_ports_on_portgroup(pg)
-
+                    try:
+                        self._increase_ports_on_portgroup(pg)
+                    except (vmware_exceptions.VMwareDriverException,
+                            exceptions.VMWareDVSException) as e:
+                        if CONCURRENT_MODIFICATION_TEXT in e.message:
+                            LOG.info(_LI('Concurent modification on \
+                                     increase port group.'))
+                            continue
             builder = SpecBuilder(self.connection.vim.client.factory)
             port_settings = builder.port_setting()
             port_settings.blocked = builder.blocked(False)
