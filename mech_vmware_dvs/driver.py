@@ -16,7 +16,7 @@
 import six
 
 from oslo_log import log
-from oslo import messaging as oslo_messaging
+import oslo_messaging
 from neutron.common import constants as n_const
 from neutron.common import rpc as n_rpc
 from neutron.i18n import _LI, _
@@ -60,7 +60,7 @@ def port_belongs_to_vmware(func):
 class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
     """Ml2 Mechanism driver for vmware dvs."""
 
-    vif_type = portbindings.VIF_TYPE_DVS
+    vif_type = 'dvs'
     vif_details = {
         portbindings.CAP_PORT_FILTER: False}
 
