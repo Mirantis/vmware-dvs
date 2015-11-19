@@ -16,6 +16,8 @@
 
 from oslo.config import cfg
 
+from neutron.agent.common import config
+
 vmware_opts = [
     cfg.StrOpt(
         'vsphere_hostname',
@@ -45,5 +47,18 @@ vmware_opts = [
         help=_('The mappings between physical networks and dvs'))
 ]
 
-cfg.CONF.register_opts(vmware_opts, group='ml2_vmware')
+agent_opts = [
+    cfg.IntOpt('polling_interval', default=2,
+               help=_("The number of seconds the agent will wait between "
+                      "polling for local device changes.")),
+    cfg.IntOpt('quitting_rpc_timeout', default=10,
+               help=_("Set new timeout in seconds for new rpc calls after "
+                      "agent receives SIGTERM. If value is set to 0, rpc "
+                      "timeout won't be changed"))
+]
+
+
+cfg.CONF.register_opts(vmware_opts, 'ml2_vmware')
+cfg.CONF.register_opts(agent_opts, 'AGENT')
+config.register_agent_state_opts_helper(cfg.CONF)
 CONF = cfg.CONF
