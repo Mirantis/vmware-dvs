@@ -39,10 +39,10 @@ def _make_nova_client(cfg):
                                 cfg.nova_admin_tenant_id)
 
     params = dict(
-        username=cfg.nova_admin_username,
-        api_key=cfg.nova_admin_password,
-        tenant_id=cfg.nova_admin_tenant_id,
-        auth_url=cfg.nova_admin_auth_url,
+        username=cfg.nova.username,
+        api_key=cfg.nova.password,
+        project_id=cfg.nova.tenant_name,
+        auth_url=cfg.nova.auth_url+"v2.0/",
         bypass_url=bypass_url,
     )
 
