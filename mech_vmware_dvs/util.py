@@ -308,28 +308,8 @@ class DVSController(object):
     def _get_net_name(network):
         # TODO(dbogun): check network['bridge'] generation algorithm our
         # must match it
-        suffix = network['id']
 
-        name = network.get('name')
-        if not name:
-            return suffix
-
-        suffix = '-' + suffix
-        if DVS_PORTGROUP_NAME_MAXLEN < len(name) + len(suffix):
-            raise exceptions.InvalidNetworkName(
-                name=name,
-                reason=_('name length %(length)s, while allowed length is '
-                         '%(max_length)d') % {
-                    'length': len(name),
-                    'max_length': DVS_PORTGROUP_NAME_MAXLEN - len(suffix)})
-
-        if not re.match(r'^[\w-]+$', name):
-            raise exceptions.InvalidNetworkName(
-                name=name,
-                reason=_('name contains illegal symbols. Only alphanumeric, '
-                         'underscore and hyphen are allowed.'))
-
-        return name + suffix
+        return network['id']
 
     @staticmethod
     def _get_object_by_type(results, type_value):
