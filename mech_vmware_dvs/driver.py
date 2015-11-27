@@ -23,6 +23,8 @@ from neutron.i18n import _LI, _
 from neutron.extensions import portbindings
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api
+from neutron.plugins.ml2.drivers import mech_agent
+from neutron.agent import securitygroups_rpc
 
 from mech_vmware_dvs import endpoints
 from mech_vmware_dvs import compute_util
@@ -57,12 +59,31 @@ def port_belongs_to_vmware(func):
     return _port_belongs_to_vmware
 
 
-class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
+#class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
+class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
     """Ml2 Mechanism driver for vmware dvs."""
 
-    vif_type = 'dvs'
+    def __init__(self):
+        self.vif_type = 'dvs' #portbindings.VIF_TYPE_DVS
+        self.vif_details = {portbindings.CAP_PORT_FILTER: False}
+        sg_enabled = securitygroups_rpc.is_firewall_enabled()
+        super(VMwareDVSMechanismDriver, self).__init__(
+            util.AGENT_TYPE_DVS,
+            self.vif_type,
+            self.vif_details)
+
+    def get_allowed_network_types(self, agent):
+        return (agent['configurations'].get('tunnel_types', []) +
+                [constants.TYPE_VLAN])
+
+    def get_mappings(self, agent):
+        return agent['configurations'].get('bridge_mappings', {})
+
+    """Ml2 Mechanism driver for vmware dvs."""
+
+    '''vif_type = 'dvs'
     vif_details = {
-        portbindings.CAP_PORT_FILTER: False}
+        portbindings.CAP_PORT_FILTER: False}'''
 
     def initialize(self):
         self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)

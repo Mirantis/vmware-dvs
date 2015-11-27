@@ -53,6 +53,8 @@ DELETED_TEXT = "The object has already been deleted or has not been "\
                "completely created"
 
 
+AGENT_TYPE_DVS = 'DVS agent'
+
 class DVSController(object):
     """Controls one DVS."""
 
