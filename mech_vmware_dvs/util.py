@@ -450,26 +450,26 @@ class SpecBuilder(object):
         return spec
 
     def _create_rule(self, rule_info, ip=None, name=None):
-        rule_params = {
-            'spec_factory': self.factory,
-            'ethertype': rule_info['ethertype'],
-            'protocol': rule_info.get('protocol'),
-            'name': name
-        }
         if rule_info['direction'] == 'ingress':
-            rule = IngressRule(**rule_params)
+            rule_class = IngressRule
             cidr = rule_info.get('source_ip_prefix')
         else:
-            rule = EgressRule(**rule_params)
+            rule_class = EgressRule
             cidr = rule_info.get('dest_ip_prefix')
+        rule = rule_class(
+            spec_factory=self.factory,
+            ethertype=rule_info['ethertype'],
+            protocol=rule_info.get('protocol'),
+            name=name
+        )
         rule.cidr = ip or cidr
 
         if rule_info.get('protocol') in ('tcp', 'udp'):
             rule.port_range = (rule_info.get('port_range_min'),
                                rule_info.get('port_range_max'))
             rule.backward_port_range = (
-                    rule_info.get('source_port_range_min') or 32768,
-                    rule_info.get('source_port_range_max') or 65535)
+                rule_info.get('source_port_range_min') or 32768,
+                rule_info.get('source_port_range_max') or 65535)
         return rule
 
     def port_criteria(self, port_key=None, port_group_key=None):
