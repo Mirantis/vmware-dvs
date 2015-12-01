@@ -51,6 +51,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         self.driver = driver.VMwareDVSMechanismDriver()
         self.driver._bound_ports = set()
         self.dvs = mock.Mock()
+        self.dvs_notifier = mock.Mock()
         self.driver.network_map = {'physnet1': self.dvs}
 
     @mock.patch('neutron.db.api.get_session')
@@ -65,9 +66,8 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
     def test_create_network_precommit(self):
         context = self._create_network_context()
         self.driver.create_network_precommit(context)
-        self.dvs.create_network.assert_called_once_with(
-            context.current,
-            context.network_segments[0])
+        self.dvs_notifier.create_network_cast.assert_called_once_with(
+                          context.current, context.network_segments[0])
 
     def test_create_network_precommit_dont_support_other_network_type(self):
         for type_ in NOT_SUPPORTED_TYPES:
@@ -86,8 +86,8 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
     def test_update_network_precommit(self):
         context = self._create_network_context()
         self.driver.update_network_precommit(context)
-        self.dvs.update_network.assert_called_once_with(context.current,
-                                                        context.original)
+        self.dvs_notifier.update_network_cast.assert_called_once_with(
+                          context.current, context.original)
 
     def test_update_network_precommit_when_network_not_mapped(self):
         context = self._create_network_context()

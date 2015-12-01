@@ -13,7 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import string
+# import string
 
 import mock
 from oslo_vmware import exceptions as vmware_exceptions
@@ -165,42 +165,8 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
         self.assertIs(self.connection, self.controller.connection)
 
     def test__get_net_name(self):
-        expect = fake_network['name'] + '-' + fake_network['id']
+        expect = self.dvs_name + fake_network['id']
         self.assertEqual(expect, self.controller._get_net_name(fake_network))
-
-    def test__get_net_name_without_name(self):
-        net = fake_network.copy()
-        net.pop('name')
-        self.assertEqual(net['id'], self.controller._get_net_name(net))
-
-    def test__get_net_name_illegal_characters(self):
-        illegal_chars = {chr(code) for code in range(128)}
-        illegal_chars -= set(string.letters)
-        illegal_chars -= set(string.digits)
-        illegal_chars.discard('-')
-        illegal_chars.discard('_')
-
-        for char in illegal_chars:
-            net = fake_network.copy()
-            net['name'] = char
-            self.assertRaises(
-                exceptions.InvalidNetworkName,
-                self.controller._get_net_name, net)
-
-    def test__get_net_name_too_long(self):
-        net = fake_network.copy()
-        max_len = max(0, 80 - len(net['id']) - 1)
-        net['name'] = 'x' * max_len
-        try:
-            self.controller._get_net_name(net)
-        except exceptions.InvalidNetworkName:
-            self.fail((
-                'Invalid maximum name limit. %d chars should still be '
-                'allowed') % max_len)
-
-        net['name'] += 'A'
-        self.assertRaises(
-            exceptions.InvalidNetworkName, self.controller._get_net_name, net)
 
     def _get_connection_mock(self, dvs_name):
         return mock.Mock(vim=self.vim)
@@ -827,7 +793,7 @@ class UtilTestCase(base.BaseTestCase):
 
     def setUp(self):
         super(UtilTestCase, self).setUp()
-        patch = mock.patch('oslo.vmware.api.VMwareAPISession',
+        patch = mock.patch('oslo_vmware.api.VMwareAPISession',
                            return_value='session')
         self.session_mock = patch.start()
         self.addCleanup(patch.stop)

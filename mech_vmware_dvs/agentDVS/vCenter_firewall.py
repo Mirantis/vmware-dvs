@@ -25,27 +25,21 @@ LOG = logging.getLogger(__name__)
 class vCenterFirewallDriver(firewall.FirewallDriver):
 
     def prepare_port_filter(self, port):
-        print 'prepare_port_filter'
         pass
 
     def apply_port_filter(self, port):
-        print 'apply_port_filter'
         pass
 
     def update_port_filter(self, port):
-        print 'update_port_filter'
         pass
 
     def remove_port_filter(self, port):
-        print 'remove_port_filter'
         pass
 
     def filter_defer_apply_on(self):
-        print 'filter_defer_apply_on'
         pass
 
     def filter_defer_apply_off(self):
-        print 'filter_defer_apply_off'
         pass
 
     @property
@@ -53,14 +47,11 @@ class vCenterFirewallDriver(firewall.FirewallDriver):
         return {}
 
     def update_security_group_members(self, sg_id, ips):
-        print 'update_security_group_members'
         pass
 
     def update_security_group_rules(self, sg_id, rules):
-        print 'pdate_security_group_rules'
         pass
 
     def security_group_updated(self, action_type, sec_group_ids,
                                device_id=None):
-        print 'security_group_updated'
         pass

@@ -18,9 +18,9 @@ from neutron.common import constants as q_const
 from neutron.agent import rpc as agent_rpc
 from neutron.agent.common import polling
 #from neutron.openstack.common import loopingcall
-from oslo_service import loopingcall
 from neutron import context
 from neutron.plugins.common import constants
+from oslo_service import loopingcall
 
 from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util

@@ -15,20 +15,17 @@
 
 import abc
 from time import sleep
-
 import six
+import oslo_messaging
 from oslo_log import log
+
+from neutron.common import rpc as n_rpc
+from neutron.common import topics
+from neutron.i18n import _LI
 from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
-
-from neutron.i18n import _LI
-
 from mech_vmware_dvs import exceptions
-
-import oslo_messaging
-from neutron.common import rpc as n_rpc
-from neutron.common import topics
 
 LOG = log.getLogger(__name__)
 
@@ -472,28 +469,28 @@ class SpecBuilder(object):
         spec.key = port_key
         return spec
 
-    def _create_rule(self, rule_info, sequence, ip=None):
-        rule_params = {
-            'spec_factory': self.factory,
-            'ethertype': rule_info['ethertype'],
-            'protocol': rule_info.get('protocol'),
-            'sequence': sequence
-        }
+    def _create_rule(self, rule_info, ip=None, name=None):
         if rule_info['direction'] == 'ingress':
-            rule = IngressRule(**rule_params)
-            rule.source_port_range(
-                rule_info.get('source_port_range_min'),
-                rule_info.get('source_port_range_max')
-            )
+            rule_class = IngressRule
             cidr = rule_info.get('source_ip_prefix')
         else:
-            rule = EgressRule(**rule_params)
+            rule_class = EgressRule
             cidr = rule_info.get('dest_ip_prefix')
+        rule = rule_class(
+            spec_factory=self.factory,
+            ethertype=rule_info['ethertype'],
+            protocol=rule_info.get('protocol'),
+            name=name
+        )
+        rule.cidr = ip or cidr
 
-        rule.port_range(rule_info.get('port_range_min'),
-                        rule_info.get('port_range_max'))
-        rule.cidr(ip or cidr)
-        return rule.build()
+        if rule_info.get('protocol') in ('tcp', 'udp'):
+            rule.port_range = (rule_info.get('port_range_min'),
+                               rule_info.get('port_range_max'))
+            rule.backward_port_range = (
+                rule_info.get('source_port_range_min') or 32768,
+                rule_info.get('source_port_range_max') or 65535)
+        return rule
 
     def port_criteria(self, port_key=None, port_group_key=None):
         criteria = self.factory.create(
