@@ -30,6 +30,7 @@ from mech_vmware_dvs import exceptions
 LOG = log.getLogger(__name__)
 
 
+AGENT_TYPE_DVS = 'DVS agent'
 # protocol number according to RFC 1700
 PROTOCOL = {'icmp': 1,
             'tcp': 6,
