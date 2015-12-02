@@ -25,14 +25,18 @@ from neutron import context
 from neutron.agent import rpc as agent_rpc
 from neutron.agent import securitygroups_rpc as sg_rpc
 from neutron.agent.common import config
+from neutron.agent.common import polling
+from neutron.common import constants as q_const
 from neutron.common import config as common_config
 from neutron.common import utils as q_utils
 from neutron.common import topics
 from neutron.i18n import _LE
 from neutron.i18n import _LI
+from neutron.openstack.common import loopingcall
 
 LOG = logging.getLogger(__name__)
 cfg.CONF.import_group('AGENT', 'mech_vmware_dvs.config')
+cfg.CONF.import_group('ml2_vmware', 'mech_vmware_dvs.config')
 
 
 class DVSPluginApi(agent_rpc.PluginApi):
@@ -41,29 +45,61 @@ class DVSPluginApi(agent_rpc.PluginApi):
 
 class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
 
-    def __init__(self, polling_interval=None, quitting_rpc_timeout=None):
+    def __init__(self, vsphere_hostname, vsphere_login, vsphere_password,
+                 polling_interval, bridge_mappings,
+                 quitting_rpc_timeout=None):
         """Constructor.
 
         :param polling_interval: interval (secs) to poll.
         """
         super(DVSNeutronAgent, self).__init__()
-
         self.polling_interval = polling_interval
+        self.agent_state = {
+            'bridge_mappings': bridge_mappings,
+            'binary': 'neutron-dvs-agent',
+            'host': cfg.CONF.host,
+            'topic': q_const.L2_AGENT_TOPIC,
+            'configurations': {'vsphere_hostname': vsphere_hostname},
+            'agent_type': 'DVS agent',
+            'start_flag': True}
 
         self.setup_rpc()
-
+        report_interval = cfg.CONF.AGENT.report_interval
+        if report_interval:
+            heartbeat = loopingcall.FixedIntervalLoopingCall(
+                self._report_state)
+            heartbeat.start(interval=report_interval)
         self.iter_num = 0
         self.run_daemon_loop = True
-
+        # Security group agent support
+        self.sg_agent = sg_rpc.SecurityGroupAgentRpc(self.context,
+                self.sg_plugin_rpc, defer_refresh_firewall=True)
+        self.iter_num = 0
+        self.run_daemon_loop = True
+        self.fullsync = True
         # The initialization is complete; we can start receiving messages
         self.connection.consume_in_threads()
 
         self.quitting_rpc_timeout = quitting_rpc_timeout
 
+    def _report_state(self):
+        try:
+            agent_status = self.state_rpc.report_state(self.context,
+                                                       self.agent_state,
+                                                       True)
+            if agent_status == q_const.AGENT_REVIVED:
+                LOG.info(_LI('Agent has just revived. Do a full sync.'))
+                self.fullsync = True
+            self.agent_state.pop('start_flag', None)
+        except Exception:
+            LOG.exception(_LE("Failed reporting state!"))
+
     def setup_rpc(self):
+        self.agent_id = 'dvs-agent-%s' % cfg.CONF.host
+        self.topic = topics.AGENT
         self.plugin_rpc = DVSPluginApi(topics.PLUGIN)
         self.sg_plugin_rpc = sg_rpc.SecurityGroupServerRpcApi(topics.PLUGIN)
-        self.topic = topics.AGENT
+        self.state_rpc = agent_rpc.PluginReportStateAPI(topics.REPORTS)
 
         consumers = [
             [topics.PORT, topics.CREATE],
@@ -74,26 +110,34 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
             [topics.NETWORK, topics.DELETE],
             [topics.SECURITY_GROUP, topics.UPDATE],
         ]
-
-        self.context = context.get_admin_context_without_session()
-
         self.endpoints = [self]
-
+        self.context = context.get_admin_context_without_session()
         self.connection = agent_rpc.create_consumers(self.endpoints,
                                                      self.topic,
                                                      consumers,
                                                      start_listening=False)
 
-        self.sg_agent = sg_rpc.SecurityGroupAgentRpc(
-            self.context,
-            self.sg_plugin_rpc,
-            defer_refresh_firewall=False)
-
     def daemon_loop(self):
+        with polling.get_polling_manager() as pm:
+            self.rpc_loop(polling_manager=pm)
+
+    def rpc_loop(self, polling_manager=None):
+        if not polling_manager:
+            polling_manager = polling.get_polling_manager(
+                    minimize_polling=False)
         while self.run_daemon_loop:
             start = time.time()
-            #TODO: write body of loop
+            if self.fullsync:
+                LOG.info(_LI("Agent out of sync with plugin!"))
+                self.fullsync = False
+                polling_manager.force_polling()
+            if self._agent_has_updates(polling_manager):
+                LOG.debug("Agent rpc_loop - update")
             self.loop_count_and_wait(start)
+
+    def _agent_has_updates(self, polling_manager):
+        return (polling_manager.is_polling_required or
+                self.sg_agent.firewall_refresh_needed())
 
     def loop_count_and_wait(self, start_time, port_stats=None):
         # sleep till end of polling interval
@@ -125,9 +169,19 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
 
 
 def create_agent_config_map(config):
+    try:
+        bridge_mappings = q_utils.parse_mappings(
+            config.ML2_VMWARE.network_maps)
+    except ValueError as e:
+        raise ValueError(_("Parsing network_maps failed: %s.") % e)
+
     kwargs = dict(
+        bridge_mappings=bridge_mappings,
         polling_interval=config.AGENT.polling_interval,
-        quitting_rpc_timeout=config.AGENT.quitting_rpc_timeout
+        quitting_rpc_timeout=config.AGENT.quitting_rpc_timeout,
+        vsphere_hostname=config.ml2_vmware.vsphere_hostname,
+        vsphere_login=config.ml2_vmware.vsphere_login,
+        vsphere_password=config.ml2_vmware.vsphere_password,
     )
     return kwargs
 
