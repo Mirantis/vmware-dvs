@@ -179,7 +179,7 @@ class DVSController(object):
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
-    def book_port(self, network):
+    def book_port(self, network, port_name):
         try:
             net_name = self._get_net_name(network)
             pg = self._get_pg_by_name(net_name)
@@ -200,7 +200,7 @@ class DVSController(object):
             port_settings = builder.port_setting()
             port_settings.blocked = builder.blocked(False)
             update_spec = builder.port_config_spec(
-                port_info.config.configVersion, port_settings, name='bound')
+                port_info.config.configVersion, port_settings, name=port_name)
             update_spec.key = port_info.key
             update_task = self.connection.invoke_api(
                 self.connection.vim, 'ReconfigureDVPort_Task',
