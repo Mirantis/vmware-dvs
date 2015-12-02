@@ -52,7 +52,6 @@ LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect "\
 DELETED_TEXT = "The object has already been deleted or has not been "\
                "completely created"
 
-
 AGENT_TYPE_DVS = 'DVS agent'
 
 class DVSController(object):
@@ -304,7 +303,6 @@ class DVSController(object):
     def _get_net_name(network):
         # TODO(dbogun): check network['bridge'] generation algorithm our
         # must match it
-
         return network['id']
 
     @staticmethod
