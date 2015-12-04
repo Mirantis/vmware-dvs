@@ -19,13 +19,14 @@ from oslo_log import log
 import oslo_messaging
 from neutron.common import constants as n_const
 from neutron.common import rpc as n_rpc
+from neutron.common import topics
 from neutron.i18n import _LI, _
 from neutron.extensions import portbindings
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api
 from neutron.plugins.ml2.drivers import mech_agent
 from neutron.agent import securitygroups_rpc
-
+from neutron import context
 from mech_vmware_dvs import endpoints
 from mech_vmware_dvs import compute_util
 from mech_vmware_dvs import config
@@ -35,6 +36,21 @@ from mech_vmware_dvs import util
 CONF = config.CONF
 LOG = log.getLogger(__name__)
 
+
+class ClientAPI(object):
+    """Client side RPC interface definition."""
+
+
+    def __init__(self, topic, context):
+        target = oslo_messaging.Target(topic=topic, version='1.0')
+        self.client = n_rpc.get_client(target)
+        self.context = context
+
+    def test_device_details(self, name):
+        LOG.info(_LI('DVS_notifier test_device_details called'))
+        cctxt = self.client.prepare()
+        LOG.info(_LI('DVS_notifier test_device_details client prepared'))
+        return cctxt.call(self.context, 'test_device_details', name=name)
 
 def port_belongs_to_vmware(func):
     @six.wraps(func)
@@ -67,6 +83,9 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.vif_type = 'dvs' #portbindings.VIF_TYPE_DVS
         self.vif_details = {portbindings.CAP_PORT_FILTER: False}
         sg_enabled = securitygroups_rpc.is_firewall_enabled()
+        self.context = context.get_admin_context_without_session()
+        self.dvs_notifier = ClientAPI('q-agent-notifier-dvs-update', self.context)
+        LOG.info(_LI('DVS_notifier'))
         super(VMwareDVSMechanismDriver, self).__init__(
             util.AGENT_TYPE_DVS,
             self.vif_type,
@@ -197,6 +216,12 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 segment[driver_api.ID],
                 self.vif_type, vif_details,
                 status=n_const.PORT_STATUS_ACTIVE)
+            try:
+                LOG.info(_LI('DVS_notifier test_device_details'))
+                res = self.dvs_notifier.test_device_details("test")
+                LOG.info(_LI('DVS_notifier test_device_details success'))
+            except:
+                LOG.info(_LI('DVS_notifier test_device_details failed'))
 
     def _update_admin_state_up(self, dvs, context):
         try:

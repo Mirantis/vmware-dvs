@@ -7,6 +7,7 @@ from oslo_log import log as logging
 import oslo_messaging
 #from six import moves
 
+from neutron.common import topics
 from neutron.common import utils
 from neutron.common import config as common_config
 from neutron.i18n import _LE, _LI, _LW
@@ -21,13 +22,28 @@ from neutron.agent.common import polling
 from oslo_service import loopingcall
 from neutron import context
 
+from mech_vmware_dvs import exceptions
+from mech_vmware_dvs import util
+
 LOG = logging.getLogger(__name__)
 cfg.CONF.import_group('AGENT', 'neutron.cmd.eventlet.plugins.vmware_conf')
+
+class ExtendAPI(object):
+
+    #target = oslo_messaging.Target(version='1.1')
+
+    def my_remote_method(self, context, arg1, arg2):
+        print 'my_remote_method'
+        return 'foo'
+
+    def test_device_details(self, context, name):
+        print 'test_device_details' + name
+        return 'bar'
 
 class DVSPluginApi(agent_rpc.PluginApi):
     pass
 
-class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
+class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
 
     target = oslo_messaging.Target(version='1.2')
 
@@ -87,6 +103,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
         self.agent_id = 'dvs-agent-%s' % cfg.CONF.host
         self.topic = topics.AGENT
         self.plugin_rpc = DVSPluginApi(topics.PLUGIN)
+        # self.agentside_rpc = ServerAPI()
         self.sg_plugin_rpc = sg_rpc.SecurityGroupServerRpcApi(topics.PLUGIN)
         self.state_rpc = agent_rpc.PluginReportStateAPI(topics.REPORTS)
 
@@ -98,7 +115,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
         consumers = [[topics.PORT, topics.UPDATE],
                      [topics.PORT, topics.DELETE],
                      [topics.NETWORK, topics.DELETE],
-                     [topics.SECURITY_GROUP, topics.UPDATE]]
+                     [topics.SECURITY_GROUP, topics.UPDATE],
+                     [topics.DVS, topics.UPDATE]]
         self.connection = agent_rpc.create_consumers(self.endpoints,
                                                      self.topic,
                                                      consumers,
@@ -130,8 +148,6 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
 
 
     def _agent_has_updates(self, polling_manager):
-        print self.sg_agent.firewall_refresh_needed()
-        print "_agent_has_updates"
         return (self.sg_agent.firewall_refresh_needed())                
 
     def loop_count_and_wait(self, start_time):
