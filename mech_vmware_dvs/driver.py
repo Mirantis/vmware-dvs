@@ -32,6 +32,7 @@ from mech_vmware_dvs import compute_util
 from mech_vmware_dvs import config
 from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util
+#from mech_vmware_dvs import dvs_api
 
 CONF = config.CONF
 LOG = log.getLogger(__name__)
@@ -39,18 +40,24 @@ LOG = log.getLogger(__name__)
 
 class ClientAPI(object):
     """Client side RPC interface definition."""
-
+    ver='1.1'
 
     def __init__(self, topic, context):
         target = oslo_messaging.Target(topic=topic, version='1.0')
         self.client = n_rpc.get_client(target)
         self.context = context
 
-    def test_device_details(self, name):
+    '''def test_call(self, name):
         LOG.info(_LI('DVS_notifier test_device_details called'))
         cctxt = self.client.prepare()
         LOG.info(_LI('DVS_notifier test_device_details client prepared'))
-        return cctxt.call(self.context, 'test_device_details', name=name)
+        return cctxt.call(self.context, 'test_device_details', name=name)'''
+
+    def test_cast(self, name):
+        LOG.info(_LI('DVS_notifier test_device_details called'))
+        cctxt = self.client.prepare(version=self.ver, topic='q-agent-notifier-dvs-update', fanout=True)
+        LOG.info(_LI('DVS_notifier test_device_details client prepared'))
+        return cctxt.cast(self.context, 'test_device_details', name=name)
 
 def port_belongs_to_vmware(func):
     @six.wraps(func)
@@ -84,7 +91,9 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.vif_details = {portbindings.CAP_PORT_FILTER: False}
         sg_enabled = securitygroups_rpc.is_firewall_enabled()
         self.context = context.get_admin_context_without_session()
-        self.dvs_notifier = ClientAPI('q-agent-notifier-dvs-update', self.context)
+        # self.dvs_notifier = ClientAPI('q-agent-notifier-dvs-update.vcenter-wwer', self.context)
+        # self.dvs_notifier = ClientAPI('q-agent-notifier-dvs-update_fanout', self.context)
+        self.dvs_notifier = util.DVSClientAPI(self.context)
         LOG.info(_LI('DVS_notifier'))
         super(VMwareDVSMechanismDriver, self).__init__(
             util.AGENT_TYPE_DVS,
@@ -106,7 +115,6 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     def initialize(self):
         self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)
-
         listener = oslo_messaging.get_notification_listener(
             n_rpc.TRANSPORT,
             targets=[oslo_messaging.Target(topic='vmware_dvs')],
@@ -117,7 +125,8 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     @util.wrap_retry
     def create_network_precommit(self, context):
-        try:
+        res = self.dvs_notifier.create_network_cast(context.current, context.network_segments[0])
+        '''try:
             dvs = self._lookup_dvs_for_context(context)
         except (exceptions.NoDVSForPhysicalNetwork,
                 exceptions.NotSupportedNetworkType) as e:
@@ -127,7 +136,7 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         except exceptions.InvalidNetwork:
             pass
         else:
-            dvs.create_network(context.current, context.network_segments[0])
+            dvs.create_network(context.current, context.network_segments[0])'''
 
     @util.wrap_retry
     def update_network_precommit(self, context):
@@ -218,7 +227,7 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 status=n_const.PORT_STATUS_ACTIVE)
             try:
                 LOG.info(_LI('DVS_notifier test_device_details'))
-                res = self.dvs_notifier.test_device_details("test")
+                res = self.dvs_notifier.test_cast("test")
                 LOG.info(_LI('DVS_notifier test_device_details success'))
             except:
                 LOG.info(_LI('DVS_notifier test_device_details failed'))

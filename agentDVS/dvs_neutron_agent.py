@@ -21,6 +21,7 @@ from neutron.agent.common import polling
 #from neutron.openstack.common import loopingcall
 from oslo_service import loopingcall
 from neutron import context
+from neutron.plugins.common import constants
 
 from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util
@@ -30,15 +31,9 @@ cfg.CONF.import_group('AGENT', 'neutron.cmd.eventlet.plugins.vmware_conf')
 
 class ExtendAPI(object):
 
-    #target = oslo_messaging.Target(version='1.1')
-
-    def my_remote_method(self, context, arg1, arg2):
-        print 'my_remote_method'
-        return 'foo'
-
-    def test_device_details(self, context, name):
-        print 'test_device_details' + name
-        return 'bar'
+    def create_network(self, context, net, subnet):
+        self.create_network_precommit(net, subnet)
+        return 'Ok'
 
 class DVSPluginApi(agent_rpc.PluginApi):
     pass
@@ -85,6 +80,38 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
         self.connection.consume_in_threads()
 
         self.quitting_rpc_timeout = quitting_rpc_timeout
+        self.network_map = util.create_network_map_from_config(cfg.CONF.ML2_VMWARE)
+        print self.network_map
+
+
+    def create_network_precommit(self, net, subnet):
+        print "Context.current", net, subnet
+        try:
+            dvs = self._lookup_dvs_for_context(subnet)
+            print dvs
+        except (exceptions.NoDVSForPhysicalNetwork,
+                exceptions.NotSupportedNetworkType) as e:
+            LOG.info(_LI('Network %(id)s not created. Reason: %(reason)s') % {
+                'id': context.current['id'],
+                'reason': e.message})
+        except exceptions.InvalidNetwork:
+            pass
+        else:
+            dvs.create_network(net, subnet)
+
+    def _lookup_dvs_for_context(self, segment):
+        if segment['network_type'] == constants.TYPE_VLAN:
+            physical_network = segment['physical_network']
+            try:
+                return self.network_map[physical_network]
+            except KeyError:
+                LOG.debug('No dvs mapped for physical '
+                          'network: %s' % physical_network)
+                raise exceptions.NoDVSForPhysicalNetwork(
+                    physical_network=physical_network)
+        else:
+            raise exceptions.NotSupportedNetworkType(
+                network_type=segment['network_type'])
 
     def _report_state(self):
 

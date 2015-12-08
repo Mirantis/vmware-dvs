@@ -23,11 +23,40 @@ from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
 
-from neutron.i18n import _LI
+from neutron.i18n import _LI, _LW
 
 from mech_vmware_dvs import exceptions
 
+import oslo_messaging
+from neutron.common import rpc as n_rpc
+from neutron.common import topics
+
 LOG = log.getLogger(__name__)
+
+DVS='dvs'
+
+class DVSClientAPI(object):
+    """Client side RPC interface definition."""
+    ver='1.1'
+
+    def __init__(self, context):
+        target = oslo_messaging.Target(topic=DVS, version='1.0')
+        self.client = n_rpc.get_client(target)
+        self.context = context
+
+
+    def _get_security_group_topic(self, host=None):
+        return topics.get_topic_name(topics.AGENT,
+                                     DVS,
+                                     topics.UPDATE, host)
+
+    def test_cast(self, name):
+        cctxt = self.client.prepare(version=self.ver, topic=self._get_security_group_topic(), fanout=True)
+        return cctxt.cast(self.context, 'test_device_details', name=name)
+
+    def create_network_cast(self, arg1, arg2):
+        cctxt = self.client.prepare(version=self.ver, topic=self._get_security_group_topic(), fanout=True)
+        return cctxt.cast(self.context, 'create_network', net=arg1, subnet=arg2)
 
 
 # protocol number according to RFC 1700
@@ -190,7 +219,6 @@ class DVSController(object):
                     break
                 except exceptions.UnboundPortNotFound:
                     self._increase_ports_on_portgroup(pg)
-
             builder = SpecBuilder(self.connection.vim.client.factory)
             port_settings = builder.port_setting()
             port_settings.blocked = builder.blocked(False)
