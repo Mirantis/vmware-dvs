@@ -31,9 +31,14 @@ cfg.CONF.import_group('AGENT', 'neutron.cmd.eventlet.plugins.vmware_conf')
 
 class ExtendAPI(object):
 
-    def create_network(self, context, net, subnet):
-        self.create_network_precommit(net, subnet)
-        return 'Ok'
+    def create_network(self, context, current, segment):
+        self.create_network_precommit(current, segment)
+
+    def delete_network(self, context, current, segment):
+        self.delete_network_postcommit(current, segment)
+
+    def update_network(self, context, current, segment, original):
+        self.update_network_precommit(current, segment, original)
 
 class DVSPluginApi(agent_rpc.PluginApi):
     pass
@@ -81,14 +86,13 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
 
         self.quitting_rpc_timeout = quitting_rpc_timeout
         self.network_map = util.create_network_map_from_config(cfg.CONF.ML2_VMWARE)
+        print cfg.CONF.host
         print self.network_map
 
-
-    def create_network_precommit(self, net, subnet):
-        print "Context.current", net, subnet
+    @util.wrap_retry
+    def create_network_precommit(self, current, segment):
         try:
-            dvs = self._lookup_dvs_for_context(subnet)
-            print dvs
+            dvs = self._lookup_dvs_for_context(segment)
         except (exceptions.NoDVSForPhysicalNetwork,
                 exceptions.NotSupportedNetworkType) as e:
             LOG.info(_LI('Network %(id)s not created. Reason: %(reason)s') % {
@@ -97,7 +101,35 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
         except exceptions.InvalidNetwork:
             pass
         else:
-            dvs.create_network(net, subnet)
+            dvs.create_network(current, segment)
+
+    @util.wrap_retry
+    def delete_network_postcommit(self, current, segment):
+        try:
+            dvs = self._lookup_dvs_for_context(segment)
+        except (exceptions.NoDVSForPhysicalNetwork,
+                exceptions.NotSupportedNetworkType) as e:
+            LOG.info(_LI('Network %(id)s not deleted. Reason: %(reason)s') % {
+                'id': context.current['id'],
+                'reason': e.message})
+        except exceptions.InvalidNetwork:
+            pass
+        else:
+            dvs.delete_network(current)
+
+    @util.wrap_retry
+    def update_network_precommit(self, current, segment, original):
+        try:
+            dvs = self._lookup_dvs_for_context(segment)
+        except (exceptions.NoDVSForPhysicalNetwork,
+                exceptions.NotSupportedNetworkType) as e:
+            LOG.info(_LI('Network %(id)s not updated. Reason: %(reason)s') % {
+                'id': context.current['id'],
+                'reason': e.message})
+        except exceptions.InvalidNetwork:
+            pass
+        else:
+            dvs.update_network(current, original)
 
     def _lookup_dvs_for_context(self, segment):
         if segment['network_type'] == constants.TYPE_VLAN:

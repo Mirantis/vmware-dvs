@@ -37,28 +37,6 @@ from mech_vmware_dvs import util
 CONF = config.CONF
 LOG = log.getLogger(__name__)
 
-
-class ClientAPI(object):
-    """Client side RPC interface definition."""
-    ver='1.1'
-
-    def __init__(self, topic, context):
-        target = oslo_messaging.Target(topic=topic, version='1.0')
-        self.client = n_rpc.get_client(target)
-        self.context = context
-
-    '''def test_call(self, name):
-        LOG.info(_LI('DVS_notifier test_device_details called'))
-        cctxt = self.client.prepare()
-        LOG.info(_LI('DVS_notifier test_device_details client prepared'))
-        return cctxt.call(self.context, 'test_device_details', name=name)'''
-
-    def test_cast(self, name):
-        LOG.info(_LI('DVS_notifier test_device_details called'))
-        cctxt = self.client.prepare(version=self.ver, topic='q-agent-notifier-dvs-update', fanout=True)
-        LOG.info(_LI('DVS_notifier test_device_details client prepared'))
-        return cctxt.cast(self.context, 'test_device_details', name=name)
-
 def port_belongs_to_vmware(func):
     @six.wraps(func)
     def _port_belongs_to_vmware(self, context):
@@ -91,8 +69,6 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.vif_details = {portbindings.CAP_PORT_FILTER: False}
         sg_enabled = securitygroups_rpc.is_firewall_enabled()
         self.context = context.get_admin_context_without_session()
-        # self.dvs_notifier = ClientAPI('q-agent-notifier-dvs-update.vcenter-wwer', self.context)
-        # self.dvs_notifier = ClientAPI('q-agent-notifier-dvs-update_fanout', self.context)
         self.dvs_notifier = util.DVSClientAPI(self.context)
         LOG.info(_LI('DVS_notifier'))
         super(VMwareDVSMechanismDriver, self).__init__(
@@ -123,24 +99,12 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             executor='eventlet')
         listener.start()
 
-    @util.wrap_retry
     def create_network_precommit(self, context):
         res = self.dvs_notifier.create_network_cast(context.current, context.network_segments[0])
-        '''try:
-            dvs = self._lookup_dvs_for_context(context)
-        except (exceptions.NoDVSForPhysicalNetwork,
-                exceptions.NotSupportedNetworkType) as e:
-            LOG.info(_LI('Network %(id)s not created. Reason: %(reason)s') % {
-                'id': context.current['id'],
-                'reason': e.message})
-        except exceptions.InvalidNetwork:
-            pass
-        else:
-            dvs.create_network(context.current, context.network_segments[0])'''
 
-    @util.wrap_retry
     def update_network_precommit(self, context):
-        try:
+        res = self.dvs_notifier.update_network_cast(context.current, context.network_segments[0], context.original)
+        '''try:
             dvs = self._lookup_dvs_for_context(context)
         except (exceptions.NoDVSForPhysicalNetwork,
                 exceptions.NotSupportedNetworkType) as e:
@@ -150,21 +114,10 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         except exceptions.InvalidNetwork:
             pass
         else:
-            dvs.update_network(context.current, context.original)
+            dvs.update_network(context.current, context.original)'''
 
-    @util.wrap_retry
     def delete_network_postcommit(self, context):
-        try:
-            dvs = self._lookup_dvs_for_context(context)
-        except (exceptions.NoDVSForPhysicalNetwork,
-                exceptions.NotSupportedNetworkType) as e:
-            LOG.info(_LI('Network %(id)s not deleted. Reason: %(reason)s') % {
-                'id': context.current['id'],
-                'reason': e.message})
-        except exceptions.InvalidNetwork:
-            pass
-        else:
-            dvs.delete_network(context.current)
+        res = self.dvs_notifier.delete_network_cast(context.current, context.network_segments[0])
 
     @util.wrap_retry
     @port_belongs_to_vmware

@@ -44,19 +44,22 @@ class DVSClientAPI(object):
         self.client = n_rpc.get_client(target)
         self.context = context
 
-
     def _get_security_group_topic(self, host=None):
         return topics.get_topic_name(topics.AGENT,
                                      DVS,
                                      topics.UPDATE, host)
 
-    def test_cast(self, name):
-        cctxt = self.client.prepare(version=self.ver, topic=self._get_security_group_topic(), fanout=True)
-        return cctxt.cast(self.context, 'test_device_details', name=name)
-
     def create_network_cast(self, arg1, arg2):
         cctxt = self.client.prepare(version=self.ver, topic=self._get_security_group_topic(), fanout=True)
-        return cctxt.cast(self.context, 'create_network', net=arg1, subnet=arg2)
+        return cctxt.cast(self.context, 'create_network', current=arg1, segment=arg2)
+
+    def delete_network_cast(self, arg1, arg2):
+        cctxt = self.client.prepare(version=self.ver, topic=self._get_security_group_topic(), fanout=True)
+        return cctxt.cast(self.context, 'delete_network', current=arg1, segment=arg2)
+
+    def update_network_cast(self, arg1, arg2, arg3):
+        cctxt = self.client.prepare(version=self.ver, topic=self._get_security_group_topic(), fanout=True)
+        return cctxt.cast(self.context, 'update_network', current=arg1, segment=arg2, original=arg3)
 
 
 # protocol number according to RFC 1700
@@ -91,13 +94,15 @@ class DVSController(object):
         try:
             self._datacenter = self._get_datacenter(connection)
             self._dvs = self._get_dvs(dvs_name, connection, self._datacenter)
+            self.dvs_name = dvs_name
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
     def create_network(self, network, segment):
+        
+        print self.dvs_name
         name = self._get_net_name(network)
         blocked = not network['admin_state_up']
-
         try:
             pg_spec = self._build_pg_create_spec(
                 name,
@@ -327,11 +332,11 @@ class DVSController(object):
             vim_util, 'get_object_property',
             self.connection.vim, ref, 'config')
 
-    @staticmethod
-    def _get_net_name(network):
+    #@staticmethod
+    def _get_net_name(self, network):
         # TODO(dbogun): check network['bridge'] generation algorithm our
         # must match it
-        return network['id']
+        return self.dvs_name+network['id']
 
     @staticmethod
     def _get_object_by_type(results, type_value):
