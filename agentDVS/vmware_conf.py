@@ -58,6 +58,15 @@ agent_opts = [
 ]
 
 vmware_opts = [
+    cfg.FloatOpt(
+        'task_poll_interval',
+        default=2,
+        help=_('The interval of task polling in seconds.')),
+    cfg.IntOpt(
+        'api_retry_count',
+        default=10,
+        help=_('number of times an API must be retried upon '
+               'session/connection related errors')),
     cfg.StrOpt('vsphere_login', default='administrator',
                help=_("Vsphere login.")),
     cfg.ListOpt('network_maps',
