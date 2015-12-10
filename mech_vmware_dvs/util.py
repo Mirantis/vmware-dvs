@@ -16,6 +16,7 @@
 import re
 import abc
 from time import sleep
+import uuid
 
 import six
 from oslo_log import log
@@ -23,7 +24,7 @@ from oslo.vmware import api
 from oslo.vmware import exceptions as vmware_exceptions
 from oslo.vmware import vim_util
 
-from neutron.i18n import _LI
+from neutron.i18n import _LI, _LW
 
 from mech_vmware_dvs import exceptions
 
@@ -142,8 +143,7 @@ class DVSController(object):
     def switch_port_blocked_state(self, port):
         state = not port['admin_state_up']
 
-        port_info = self._get_port_info(
-            port['binding:vif_details']['dvs_port_key'])
+        port_info = self._get_port_info_by_name(port['id'])
 
         builder = SpecBuilder(self.connection.vim.client.factory)
         port_settings = builder.port_setting()
@@ -162,10 +162,9 @@ class DVSController(object):
             builder = SpecBuilder(self.connection.vim.client.factory)
             port_config_list = []
             for port in ports:
-                port_key = port['binding:vif_details']['dvs_port_key']
-                port_info = self._get_port_info(port_key)
+                port_info = self._get_port_info_by_name(port['id'])
                 port_config = builder.port_config(
-                    str(port_key),
+                    str(port_info['key']),
                     port['security_group_rules']
                 )
                 port_config.configVersion = port_info['config'][
@@ -180,7 +179,7 @@ class DVSController(object):
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
-    def book_port(self, network):
+    def book_port(self, network, port_name):
         try:
             net_name = self._get_net_name(network)
             pg = self._get_pg_by_name(net_name)
@@ -201,19 +200,17 @@ class DVSController(object):
             port_settings = builder.port_setting()
             port_settings.blocked = builder.blocked(False)
             update_spec = builder.port_config_spec(
-                port_info.config.configVersion, port_settings, name='bound')
+                port_info.config.configVersion, port_settings, name=port_name)
             update_spec.key = port_info.key
             update_task = self.connection.invoke_api(
                 self.connection.vim, 'ReconfigureDVPort_Task',
                 self._dvs, port=[update_spec])
             self.connection.wait_for_task(update_task)
-            return port_info.key
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
     def release_port(self, port):
-        port_key = port['binding:vif_details']['dvs_port_key']
-        port_info = self._get_port_info(port_key)
+        port_info = self._get_port_info_by_name(port['id'])
         builder = SpecBuilder(self.connection.vim.client.factory)
         update_spec = builder.port_config_spec(
             port_info.config.configVersion, name='')
@@ -372,7 +369,7 @@ class DVSController(object):
             port_group, spec=pg_spec)
         self.connection.wait_for_task(pg_update_task)
 
-    def _get_port_info(self, port_key):
+    def _get_port_info_by_portkey(self, port_key):
         """pg - ManagedObjectReference of Port Group"""
         builder = SpecBuilder(self.connection.vim.client.factory)
         criteria = builder.port_criteria(port_key=port_key)
@@ -380,6 +377,49 @@ class DVSController(object):
             self.connection.vim,
             'FetchDVPorts',
             self._dvs, criteria=criteria)[0]
+
+    def _get_port_info_by_name(self, name):
+        ports = [port for port in self._get_ports()
+                 if port.config.name == name]
+        if not ports:
+            raise exceptions.PortNotFound
+        else:
+            if len(ports) > 1:
+                LOG.warn(_LW("Multiple ports found for name %s."), name)
+        return ports[0]
+
+    def _get_ports(self):
+        ports = []
+        net_list = self.connection.invoke_api(
+            vim_util, 'get_object_property', self.connection.vim,
+            self._datacenter, 'network').ManagedObjectReference
+        type_value = 'DistributedVirtualPortgroup'
+        pg_list = self._get_object_by_type(net_list, type_value)
+        port_keys = []
+        for pg in pg_list:
+            pk = self.connection.invoke_api(vim_util,
+                                            'get_object_property',
+                                            self.connection.vim, pg,
+                                            'portKeys')
+            if not isinstance(pk, basestring):
+                port_keys.append(pk[0])
+
+        for port_key in port_keys:
+            port = self._get_port_info_by_portkey(port_key)
+            if (getattr(port.config, 'name', None) is not None
+                    and self._valid_uuid(port.config.name)):
+                ports.append(port)
+        return ports
+
+    def _get_ports_ids(self):
+        return [port.config.name for port in self._get_ports()]
+
+    def _valid_uuid(self, name):
+        try:
+            uuid.UUID(name, version=4)
+        except ValueError:
+            return False
+        return True
 
 
 class SpecBuilder(object):

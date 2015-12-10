@@ -37,7 +37,7 @@ fake_port = {
     'device_id': '_dummy_server_id_',
     'security_group_rules': [{'ethertype': 'IPv4',
                               'direction': 'ingress'}],
-    'binding:vif_details': {'dvs_port_key': '_dvs_port_key_'}}
+}
 
 fake_security_group = {'description': u'Default security group',
                        'id': u'9961d207-c96c-4907-be9e-d979d5353885',
@@ -512,7 +512,7 @@ class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
         dvs_port.config.setting.blocked.value = True
 
         with mock.patch.object(
-                self.controller, '_get_port_info',
+                self.controller, '_get_port_info_by_name',
                 return_value=dvs_port):
 
             self.controller.switch_port_blocked_state(fake_port)
@@ -546,9 +546,10 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
 
     def test_update_port_rules(self):
         ports = [fake_port]
-        port_info = {'config': {'configVersion': '_config_version_'}}
+        port_info = {'config': {'configVersion': '_config_version_'},
+                     'key': '_dvs_port_key_'}
         self.use_patch('mech_vmware_dvs.util.DVSController'
-                       '._get_port_info', return_value=port_info)
+                       '._get_port_info_by_name', return_value=port_info)
         self.controller.update_port_rules(ports)
         self.assertTrue(self.connection.invoke_api.called)
         args, kwargs = self.connection.invoke_api.call_args
