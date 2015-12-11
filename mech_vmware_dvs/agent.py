@@ -20,6 +20,7 @@ import time
 
 from oslo_config import cfg
 from oslo_log import log as logging
+import oslo_messaging
 
 from neutron import context
 from neutron.agent import rpc as agent_rpc
@@ -34,6 +35,8 @@ from neutron.i18n import _LE
 from neutron.i18n import _LI
 from neutron.openstack.common import loopingcall
 
+from mech_vmware_dvs import util
+
 LOG = logging.getLogger(__name__)
 cfg.CONF.import_group('AGENT', 'mech_vmware_dvs.config')
 cfg.CONF.import_group('ml2_vmware', 'mech_vmware_dvs.config')
@@ -44,6 +47,8 @@ class DVSPluginApi(agent_rpc.PluginApi):
 
 
 class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
+
+    target = oslo_messaging.Target(version='1.2')
 
     def __init__(self, vsphere_hostname, vsphere_login, vsphere_password,
                  polling_interval, bridge_mappings,
@@ -79,8 +84,11 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
         self.fullsync = True
         # The initialization is complete; we can start receiving messages
         self.connection.consume_in_threads()
-
         self.quitting_rpc_timeout = quitting_rpc_timeout
+        self.updated_ports = set()
+        self.deleted_ports = set()
+        self.network_map = util.create_network_map_from_config(
+            cfg.CONF.ml2_vmware)
 
     def _report_state(self):
         try:
@@ -133,6 +141,8 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
                 polling_manager.force_polling()
             if self._agent_has_updates(polling_manager):
                 LOG.debug("Agent rpc_loop - update")
+                self.process_ports()
+
             self.loop_count_and_wait(start)
 
     def _agent_has_updates(self, polling_manager):
@@ -167,11 +177,34 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
         for rpc_api in (self.plugin_rpc, self.sg_plugin_rpc):
             rpc_api.client.timeout = timeout
 
+    def process_ports(self):
+        self.added_ports = self._get_dvs_ports()
+        LOG.info(_LI("Added ports %s"), self.added_ports)
+        self.sg_agent.setup_port_filters(self.added_ports, self.updated_ports)
+
+    def port_update(self, context, **kwargs):
+        port = kwargs.get('port')
+        self.updated_ports.add(port['id'])
+        LOG.debug("port_update message processed for port %s", port['id'])
+
+    def port_delete(self, context, **kwargs):
+        port_id = kwargs.get('port_id')
+        self.deleted_ports.add(port_id)
+        self.updated_ports.discard(port_id)
+        LOG.debug("port_delete message processed for port %s", port_id)
+
+    def _get_dvs_ports(self):
+        ports = set()
+        dvs_list = self.network_map.values()
+        for dvs in dvs_list:
+            ports.update(dvs._get_ports_ids())
+        return ports
+
 
 def create_agent_config_map(config):
     try:
         bridge_mappings = q_utils.parse_mappings(
-            config.ML2_VMWARE.network_maps)
+            config.ml2_vmware.network_maps)
     except ValueError as e:
         raise ValueError(_("Parsing network_maps failed: %s.") % e)
 
