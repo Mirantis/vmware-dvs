@@ -27,7 +27,7 @@ from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util
 
 LOG = logging.getLogger(__name__)
-cfg.CONF.import_group('AGENT', 'neutron.cmd.eventlet.plugins.vmware_conf')
+cfg.CONF.import_group('AGENT', 'mech_vmware_dvs.agentDVS.vmware_conf')
 
 class ExtendAPI(object):
 
@@ -175,7 +175,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
                      [topics.PORT, topics.DELETE],
                      [topics.NETWORK, topics.DELETE],
                      [topics.SECURITY_GROUP, topics.UPDATE],
-                     [topics.DVS, topics.UPDATE]]
+                     [util.DVS, topics.UPDATE]]
         self.connection = agent_rpc.create_consumers(self.endpoints,
                                                      self.topic,
                                                      consumers,
