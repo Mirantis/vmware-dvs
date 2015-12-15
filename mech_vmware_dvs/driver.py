@@ -18,7 +18,7 @@ from oslo_log import log
 
 from neutron.common import constants as n_const
 from neutron.extensions import portbindings
-from neutron.i18n import _LI
+from neutron.i18n import _LI, _
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api
 from neutron.plugins.ml2.drivers import mech_agent
@@ -76,7 +76,47 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
     def get_mappings(self, agent):
         return agent['configurations'].get('bridge_mappings', {})
 
-    # Return this methods for sometime
+    def create_network_precommit(self, context):
+        try:
+            dvs = self._lookup_dvs_for_context(context)
+        except (exceptions.NoDVSForPhysicalNetwork,
+                exceptions.NotSupportedNetworkType) as e:
+            LOG.info(_LI('Network %(id)s not created. Reason: %(reason)s') % {
+                'id': context.current['id'],
+                'reason': e.message})
+        except exceptions.InvalidNetwork:
+            pass
+        else:
+            dvs.create_network(context.current, context.network_segments[0])
+
+    @util.wrap_retry
+    def update_network_precommit(self, context):
+        try:
+            dvs = self._lookup_dvs_for_context(context)
+        except (exceptions.NoDVSForPhysicalNetwork,
+                exceptions.NotSupportedNetworkType) as e:
+            LOG.info(_LI('Network %(id)s not updated. Reason: %(reason)s') % {
+                'id': context.current['id'],
+                'reason': e.message})
+        except exceptions.InvalidNetwork:
+            pass
+        else:
+            dvs.update_network(context.current, context.original)
+
+    @util.wrap_retry
+    def delete_network_postcommit(self, context):
+        try:
+            dvs = self._lookup_dvs_for_context(context)
+        except (exceptions.NoDVSForPhysicalNetwork,
+                exceptions.NotSupportedNetworkType) as e:
+            LOG.info(_LI('Network %(id)s not deleted. Reason: %(reason)s') % {
+                'id': context.current['id'],
+                'reason': e.message})
+        except exceptions.InvalidNetwork:
+            pass
+        else:
+            dvs.delete_network(context.current)
+
     @util.wrap_retry
     @port_belongs_to_vmware
     def update_port_precommit(self, context):
@@ -100,9 +140,6 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                     'net_id': context.network.current['id']})
         else:
             self._update_admin_state_up(dvs, context)
-
-            force = context.original['status'] == n_const.PORT_STATUS_DOWN
-            self._update_security_groups(dvs, context, force=force)
             if (context.current['binding:vif_type'] == 'unbound' and
                 context.current['status'] == n_const.PORT_STATUS_DOWN):
                 context._plugin.update_port_status(
@@ -121,7 +158,6 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 'mapping from network %(net_id)s to DVS.') % {
                     'port_id': context.current['id'],
                     'net_id': context.network.current['id']})
-        self._update_security_groups(dvs, context, force=True)
         dvs.release_port(context.current)
 
     @util.wrap_retry
@@ -146,3 +182,18 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             perform = current_admin_state_up != original_admin_state_up
             if perform:
                 dvs.switch_port_blocked_state(context.current)
+
+    def _lookup_dvs_for_context(self, network_context):
+        segment = network_context.network_segments[0]
+        if segment['network_type'] == constants.TYPE_VLAN:
+            physical_network = segment['physical_network']
+            try:
+                return self.network_map[physical_network]
+            except KeyError:
+                LOG.debug('No dvs mapped for physical '
+                          'network: %s' % physical_network)
+                raise exceptions.NoDVSForPhysicalNetwork(
+                    physical_network=physical_network)
+        else:
+            raise exceptions.NotSupportedNetworkType(
+                network_type=segment['network_type'])

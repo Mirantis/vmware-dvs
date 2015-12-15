@@ -550,6 +550,8 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
                      'key': '_dvs_port_key_'}
         self.use_patch('mech_vmware_dvs.util.DVSController'
                        '._get_port_info_by_name', return_value=port_info)
+        self.use_patch('mech_vmware_dvs.util.DVSController'
+                       '._get_ports', return_value=ports)
         self.controller.update_port_rules(ports)
         self.assertTrue(self.connection.invoke_api.called)
         args, kwargs = self.connection.invoke_api.call_args

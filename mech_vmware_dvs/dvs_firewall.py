@@ -30,21 +30,25 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         self.networking_map = util.create_network_map_from_config(
             CONF.ml2_vmware)
         self.dvs_ports = {}
+        self.sg_rules = {}
 
     def prepare_port_filter(self, port):
         LOG.info(_LI("Called prepare_port_filter"))
-        self.dvs_ports.update(port)
+        self.dvs_ports[port['device']] = port
+        self._apply_sg_rules_for_ports(port)
 
     def apply_port_filter(self, port):
         LOG.info(_LI("Called apply_port_filter"))
-        self.dvs_ports.update(port)
+        self.dvs_ports[port['device']] = port
 
     def update_port_filter(self, port):
         LOG.info(_LI("Called update_port_filter"))
-        self.dvs_ports.update(port)
+        self.dvs_ports[port['device']] = port
+        self._apply_sg_rules_for_ports(port)
 
     def remove_port_filter(self, port):
         LOG.info(_LI("Called remove_port_filter"))
+        self.dvs_ports.pop(port['device'], None)
 
     def filter_defer_apply_on(self):
         LOG.info(_LI("Called filter_defer_apply_on"))
@@ -56,12 +60,47 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     def ports(self):
         return self.dvs_ports
 
-    def security_group_updated(self, action_type, sec_group_ids,
-                               device_ids=None):
-        LOG.debug("Update rules of security group (%s)", sec_group_ids)
-
     def update_security_group_rules(self, sg_id, sg_rules):
+        if sg_id in sg_rules and self.sg_rules[sg_id] == sg_rules:
+            return
+        self.sg_rules[sg_id] = sg_rules
+        self._update_sg_rules_for_ports(sg_id)
         LOG.debug("Update rules of security group (%s)", sg_id)
 
     def update_security_group_members(self, sg_id, sg_members):
+        for sg, rules in self.sg_rules.items():
+            for rule in rules:
+                if (rule.get('remote_group_id') and
+                        rule['remote_group_id'] == sg_id):
+                    rule['ip_set'] = sg_members[rule['ethertype']]
+        self._update_sg_rules_for_ports(sg_id)
         LOG.debug("Update members of security group (%s)", sg_id)
+
+    def _apply_sg_rules_for_ports(self, port):
+        for sg in port['security_groups']:
+            if sg in self.sg_rules.keys():
+                port['security_group_rules'] = self.sg_rules[sg]
+                dvs = self._get_dvs_for_port_id(port['id'])
+                dvs.update_port_rules([port])
+
+    def _get_dvs_for_port_id(self, port_id):
+        port_map = util.create_port_map(self.networking_map.values())
+        for dvs, port_list in port_map.iteritems():
+            if port_id in port_list:
+                return dvs
+
+    def _update_sg_rules_for_ports(self, sg_id):
+        ports_to_update = []
+        for port in self.dvs_ports.values():
+            if sg_id in port['security_groups']:
+                port['security_group_rules'] = self.sg_rules[sg_id]
+                ports_to_update.append(port)
+        port_map = util.create_port_map(self.networking_map.values())
+        port_ids = {p['id']: p for p in ports_to_update}
+        for dvs, port_list in port_map.iteritems():
+            ids = [e for e in port_list if e in port_ids.keys()]
+            p = []
+            for id in ids:
+                p.append(port_ids[id])
+            if p:
+                dvs.update_port_rules(p)

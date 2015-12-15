@@ -87,6 +87,8 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
         self.quitting_rpc_timeout = quitting_rpc_timeout
         self.updated_ports = set()
         self.deleted_ports = set()
+        self.known_ports = set()
+        self.added_ports = set()
         self.network_map = util.create_network_map_from_config(
             cfg.CONF.ml2_vmware)
 
@@ -142,12 +144,14 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
             if self._agent_has_updates(polling_manager):
                 LOG.debug("Agent rpc_loop - update")
                 self.process_ports()
+                polling_manager.polling_completed()
 
             self.loop_count_and_wait(start)
 
     def _agent_has_updates(self, polling_manager):
         return (polling_manager.is_polling_required or
-                self.sg_agent.firewall_refresh_needed())
+                self.sg_agent.firewall_refresh_needed() or
+                self.updated_ports or self.deleted_ports)
 
     def loop_count_and_wait(self, start_time, port_stats=None):
         # sleep till end of polling interval
@@ -178,7 +182,10 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
             rpc_api.client.timeout = timeout
 
     def process_ports(self):
-        self.added_ports = self._get_dvs_ports()
+        LOG.debug("Process deleted ports")
+        self.sg_agent.remove_devices_filter(self.deleted_ports)
+        self.known_ports |= self.added_ports
+        self.added_ports = self._get_dvs_ports() - self.known_ports
         LOG.info(_LI("Added ports %s"), self.added_ports)
         self.sg_agent.setup_port_filters(self.added_ports, self.updated_ports)
 
@@ -190,7 +197,6 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
     def port_delete(self, context, **kwargs):
         port_id = kwargs.get('port_id')
         self.deleted_ports.add(port_id)
-        self.updated_ports.discard(port_id)
         LOG.debug("port_delete message processed for port %s", port_id)
 
     def _get_dvs_ports(self):
