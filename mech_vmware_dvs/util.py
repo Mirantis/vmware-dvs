@@ -158,11 +158,12 @@ class DVSController(object):
         self.connection.wait_for_task(update_task)
 
     def update_port_rules(self, ports):
+        list_ports = self._get_ports()
         try:
             builder = SpecBuilder(self.connection.vim.client.factory)
             port_config_list = []
             for port in ports:
-                port_info = self._get_port_info_by_name(port['id'])
+                port_info = self._get_port_info_by_name(port['id'], list_ports)
                 port_config = builder.port_config(
                     str(port_info['key']),
                     port['security_group_rules']
@@ -378,8 +379,10 @@ class DVSController(object):
             'FetchDVPorts',
             self._dvs, criteria=criteria)[0]
 
-    def _get_port_info_by_name(self, name):
-        ports = [port for port in self._get_ports()
+    def _get_port_info_by_name(self, name, port_list=None):
+        if port_list is None:
+            port_list = self._get_ports()
+        ports = [port for port in port_list
                  if port.config.name == name]
         if not ports:
             raise exceptions.PortNotFound
@@ -402,7 +405,7 @@ class DVSController(object):
                                             self.connection.vim, pg,
                                             'portKeys')
             if not isinstance(pk, basestring):
-                port_keys.append(pk[0])
+                port_keys = port_keys + pk[0]
 
         for port_key in port_keys:
             port = self._get_port_info_by_portkey(port_key)
@@ -734,6 +737,14 @@ def create_network_map_from_config(config):
         network, dvs = pair.split(':')
         network_map[network] = DVSController(dvs, connection)
     return network_map
+
+
+def create_port_map(dvs_list):
+    port_map = {}
+    for dvs in dvs_list:
+        port_map[dvs] = dvs._get_ports_ids()
+
+    return port_map
 
 
 def wrap_retry(func):
