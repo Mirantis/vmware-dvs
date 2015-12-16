@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import re
 import abc
 from time import sleep
 
@@ -23,7 +22,7 @@ from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
 
-from neutron.i18n import _LI, _LW
+from neutron.i18n import _LI
 
 from mech_vmware_dvs import exceptions
 
@@ -33,11 +32,12 @@ from neutron.common import topics
 
 LOG = log.getLogger(__name__)
 
-DVS='dvs'
+DVS = 'dvs'
+
 
 class DVSClientAPI(object):
     """Client side RPC interface definition."""
-    ver='1.1'
+    ver = '1.1'
 
     def __init__(self, context):
         target = oslo_messaging.Target(topic=DVS, version='1.0')
@@ -50,16 +50,22 @@ class DVSClientAPI(object):
                                      topics.UPDATE, host)
 
     def create_network_cast(self, arg1, arg2):
-        cctxt = self.client.prepare(version=self.ver, topic=self._get_security_group_topic(), fanout=True)
-        return cctxt.cast(self.context, 'create_network', current=arg1, segment=arg2)
+        cctxt = self.client.prepare(version=self.ver,
+                     topic=self._get_security_group_topic(), fanout=True)
+        return cctxt.cast(self.context, 'create_network', current=arg1,
+                     segment=arg2)
 
     def delete_network_cast(self, arg1, arg2):
-        cctxt = self.client.prepare(version=self.ver, topic=self._get_security_group_topic(), fanout=True)
-        return cctxt.cast(self.context, 'delete_network', current=arg1, segment=arg2)
+        cctxt = self.client.prepare(version=self.ver,
+                     topic=self._get_security_group_topic(), fanout=True)
+        return cctxt.cast(self.context, 'delete_network', current=arg1,
+                     segment=arg2)
 
     def update_network_cast(self, arg1, arg2, arg3):
-        cctxt = self.client.prepare(version=self.ver, topic=self._get_security_group_topic(), fanout=True)
-        return cctxt.cast(self.context, 'update_network', current=arg1, segment=arg2, original=arg3)
+        cctxt = self.client.prepare(version=self.ver,
+                     topic=self._get_security_group_topic(), fanout=True)
+        return cctxt.cast(self.context, 'update_network', current=arg1,
+                     segment=arg2, original=arg3)
 
 
 # protocol number according to RFC 1700
@@ -86,6 +92,7 @@ DELETED_TEXT = "The object has already been deleted or has not been "\
 
 AGENT_TYPE_DVS = 'DVS agent'
 
+
 class DVSController(object):
     """Controls one DVS."""
 
@@ -99,7 +106,7 @@ class DVSController(object):
             raise exceptions.wrap_wmvare_vim_exception(e)
 
     def create_network(self, network, segment):
-        
+
         print self.dvs_name
         name = self._get_net_name(network)
         blocked = not network['admin_state_up']
@@ -332,11 +339,10 @@ class DVSController(object):
             vim_util, 'get_object_property',
             self.connection.vim, ref, 'config')
 
-    #@staticmethod
     def _get_net_name(self, network):
         # TODO(dbogun): check network['bridge'] generation algorithm our
         # must match it
-        return self.dvs_name+network['id']
+        return self.dvs_name + network['id']
 
     @staticmethod
     def _get_object_by_type(results, type_value):

@@ -19,7 +19,6 @@ from oslo_log import log
 import oslo_messaging
 from neutron.common import constants as n_const
 from neutron.common import rpc as n_rpc
-from neutron.common import topics
 from neutron.i18n import _LI, _
 from neutron.extensions import portbindings
 from neutron.plugins.common import constants
@@ -32,10 +31,10 @@ from mech_vmware_dvs import compute_util
 from mech_vmware_dvs import config
 from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util
-#from mech_vmware_dvs import dvs_api
 
 CONF = config.CONF
 LOG = log.getLogger(__name__)
+
 
 def port_belongs_to_vmware(func):
     @six.wraps(func)
@@ -60,14 +59,14 @@ def port_belongs_to_vmware(func):
     return _port_belongs_to_vmware
 
 
-#class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
 class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
     """Ml2 Mechanism driver for vmware dvs."""
 
     def __init__(self):
-        self.vif_type = 'dvs' #portbindings.VIF_TYPE_DVS
-        self.vif_details = {portbindings.CAP_PORT_FILTER: False}
+        self.vif_type = util.DVS
         sg_enabled = securitygroups_rpc.is_firewall_enabled()
+        self.vif_details = {portbindings.CAP_PORT_FILTER: sg_enabled,
+                       portbindings.OVS_HYBRID_PLUG: sg_enabled}
         self.context = context.get_admin_context_without_session()
         self.dvs_notifier = util.DVSClientAPI(self.context)
         LOG.info(_LI('DVS_notifier'))
@@ -83,12 +82,6 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
     def get_mappings(self, agent):
         return agent['configurations'].get('bridge_mappings', {})
 
-    """Ml2 Mechanism driver for vmware dvs."""
-
-    '''vif_type = 'dvs'
-    vif_details = {
-        portbindings.CAP_PORT_FILTER: False}'''
-
     def initialize(self):
         self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)
         listener = oslo_messaging.get_notification_listener(
@@ -100,24 +93,16 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         listener.start()
 
     def create_network_precommit(self, context):
-        res = self.dvs_notifier.create_network_cast(context.current, context.network_segments[0])
+        self.dvs_notifier.create_network_cast(context.current,
+                          context.network_segments[0])
 
     def update_network_precommit(self, context):
-        res = self.dvs_notifier.update_network_cast(context.current, context.network_segments[0], context.original)
-        '''try:
-            dvs = self._lookup_dvs_for_context(context)
-        except (exceptions.NoDVSForPhysicalNetwork,
-                exceptions.NotSupportedNetworkType) as e:
-            LOG.info(_LI('Network %(id)s not updated. Reason: %(reason)s') % {
-                'id': context.current['id'],
-                'reason': e.message})
-        except exceptions.InvalidNetwork:
-            pass
-        else:
-            dvs.update_network(context.current, context.original)'''
+        self.dvs_notifier.update_network_cast(context.current,
+                          context.network_segments[0], context.original)
 
     def delete_network_postcommit(self, context):
-        res = self.dvs_notifier.delete_network_cast(context.current, context.network_segments[0])
+        self.dvs_notifier.delete_network_cast(context.current,
+                          context.network_segments[0])
 
     @util.wrap_retry
     @port_belongs_to_vmware
@@ -171,19 +156,14 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
     def bind_port(self, context):
         for segment in context.network.network_segments:
             dvs = self._lookup_dvs_for_context(context.network)
-            port_key = dvs.book_port(context.network.current, context.current['id'])
+            port_key = dvs.book_port(context.network.current,
+                           context.current['id'])
             vif_details = dict(self.vif_details)
             vif_details['dvs_port_key'] = port_key
             context.set_binding(
                 segment[driver_api.ID],
                 self.vif_type, vif_details,
                 status=n_const.PORT_STATUS_ACTIVE)
-            try:
-                LOG.info(_LI('DVS_notifier test_device_details'))
-                res = self.dvs_notifier.test_cast("test")
-                LOG.info(_LI('DVS_notifier test_device_details success'))
-            except:
-                LOG.info(_LI('DVS_notifier test_device_details failed'))
 
     def _update_admin_state_up(self, dvs, context):
         try:
