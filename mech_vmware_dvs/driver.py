@@ -26,7 +26,6 @@ from neutron.plugins.ml2.drivers import mech_agent
 from mech_vmware_dvs import compute_util
 from mech_vmware_dvs import config
 from mech_vmware_dvs import exceptions
-
 from mech_vmware_dvs import util
 
 LOG = log.getLogger(__name__)
@@ -64,10 +63,14 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
     def __init__(self):
         self.vif_type = 'dvs'
         self.vif_details = {portbindings.CAP_PORT_FILTER: False}
+
         super(VMwareDVSMechanismDriver, self).__init__(
             util.AGENT_TYPE_DVS,
             self.vif_type,
             self.vif_details)
+
+    def initialize(self):
+        self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)
 
     def get_allowed_network_types(self, agent):
         return (agent['configurations'].get('tunnel_types', []) +

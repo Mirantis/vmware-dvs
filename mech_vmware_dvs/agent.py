@@ -197,6 +197,7 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
     def port_delete(self, context, **kwargs):
         port_id = kwargs.get('port_id')
         self.deleted_ports.add(port_id)
+        self.known_ports.discard(port_id)
         LOG.debug("port_delete message processed for port %s", port_id)
 
     def _get_dvs_ports(self):
