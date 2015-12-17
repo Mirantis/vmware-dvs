@@ -32,22 +32,22 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         self.dvs_ports = {}
         self.sg_rules = {}
 
+    @util.wrap_retry
     def prepare_port_filter(self, port):
-        LOG.info(_LI("Called prepare_port_filter"))
         self.dvs_ports[port['device']] = port
         self._apply_sg_rules_for_ports(port)
+        LOG.info(_LI("Applied security group rules for port %s"), port['id'])
 
     def apply_port_filter(self, port):
-        LOG.info(_LI("Called apply_port_filter"))
         self.dvs_ports[port['device']] = port
 
+    @util.wrap_retry
     def update_port_filter(self, port):
-        LOG.info(_LI("Called update_port_filter"))
         self.dvs_ports[port['device']] = port
         self._apply_sg_rules_for_ports(port)
+        LOG.info(_LI("Updated security group rules for port %s"), port['id'])
 
     def remove_port_filter(self, port):
-        LOG.info(_LI("Called remove_port_filter"))
         self.dvs_ports.pop(port['device'], None)
 
     def filter_defer_apply_on(self):
@@ -60,6 +60,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     def ports(self):
         return self.dvs_ports
 
+    @util.wrap_retry
     def update_security_group_rules(self, sg_id, sg_rules):
         if sg_id in sg_rules and self.sg_rules[sg_id] == sg_rules:
             return
@@ -67,13 +68,19 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         self._update_sg_rules_for_ports(sg_id)
         LOG.debug("Update rules of security group (%s)", sg_id)
 
+    @util.wrap_retry
     def update_security_group_members(self, sg_id, sg_members):
+        updated = False
         for sg, rules in self.sg_rules.items():
             for rule in rules:
-                if (rule.get('remote_group_id') and
-                        rule['remote_group_id'] == sg_id):
-                    rule['ip_set'] = sg_members[rule['ethertype']]
-        self._update_sg_rules_for_ports(sg_id)
+                if rule.get('remote_group_id') == sg_id:
+                    ethertype = rule['ethertype']
+                    if (sg_members.get(ethertype)
+                            and rule.get('ip_set') != sg_members[ethertype]):
+                        rule['ip_set'] = sg_members[rule['ethertype']]
+                        updated = True
+        if updated:
+            self._update_sg_rules_for_ports(sg_id)
         LOG.debug("Update members of security group (%s)", sg_id)
 
     def _apply_sg_rules_for_ports(self, port):
