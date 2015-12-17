@@ -16,8 +16,8 @@
 import string
 
 import mock
-from oslo.vmware import exceptions as vmware_exceptions
-from oslo.vmware import vim_util
+from oslo_vmware import exceptions as vmware_exceptions
+from oslo_vmware import vim_util
 from neutron.tests import base
 
 from mech_vmware_dvs import config
