@@ -15,8 +15,8 @@
 
 
 from neutron.agent import firewall
-from neutron.i18n import _LI
-from oslo_config import cfg
+#from neutron.i18n import _LI
+#from oslo_config import cfg
 from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)

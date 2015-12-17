@@ -10,12 +10,11 @@ import oslo_messaging
 from neutron.common import topics
 from neutron.common import utils
 from neutron.common import config as common_config
-from neutron.i18n import _LE, _LI, _LW
+from neutron.i18n import _LE, _LI
 from neutron.agent import securitygroups_rpc as sg_rpc
 from neutron.agent.linux import ip_lib
 #from neutron.agent.common import config as agent_conf
 from neutron.common import constants as q_const
-from neutron.common import topics
 from neutron.agent import rpc as agent_rpc
 from neutron.agent.common import polling
 #from neutron.openstack.common import loopingcall
@@ -29,6 +28,7 @@ from mech_vmware_dvs import util
 LOG = logging.getLogger(__name__)
 cfg.CONF.import_group('AGENT', 'mech_vmware_dvs.agentDVS.vmware_conf')
 
+
 class ExtendAPI(object):
 
     def create_network(self, context, current, segment):
@@ -40,8 +40,10 @@ class ExtendAPI(object):
     def update_network(self, context, current, segment, original):
         self.update_network_precommit(current, segment, original)
 
+
 class DVSPluginApi(agent_rpc.PluginApi):
     pass
+
 
 class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
 
@@ -85,7 +87,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
         self.connection.consume_in_threads()
 
         self.quitting_rpc_timeout = quitting_rpc_timeout
-        self.network_map = util.create_network_map_from_config(cfg.CONF.ML2_VMWARE)
+        self.network_map = util.create_network_map_from_config(
+                           cfg.CONF.ml2_wmware)
         print cfg.CONF.host
         print self.network_map
 
@@ -205,9 +208,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
                 LOG.debug("Agent rpc_loop - update")
             self.loop_count_and_wait(start)
 
-
     def _agent_has_updates(self, polling_manager):
-        return (self.sg_agent.firewall_refresh_needed())                
+        return (self.sg_agent.firewall_refresh_needed())
 
     def loop_count_and_wait(self, start_time):
         # sleep till end of polling interval
@@ -224,6 +226,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
                       {'polling_interval': self.polling_interval,
                        'elapsed': elapsed})
         self.iter_num = self.iter_num + 1
+
 
 def create_agent_config_map(config):
     """Create a map of agent config parameters.
