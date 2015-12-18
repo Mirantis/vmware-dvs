@@ -169,7 +169,8 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
     def bind_port(self, context):
         for segment in context.network.network_segments:
             dvs = self._lookup_dvs_for_context(context.network)
-            port_key = dvs.book_port(context.network.current, context.current['id'])
+            port_key = dvs.book_port(context.network.current,
+                                     context.current['id'])
             vif_details = dict(self.vif_details)
             vif_details['dvs_port_key'] = port_key
             context.set_binding(
