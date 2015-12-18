@@ -15,16 +15,18 @@
 
 import abc
 from time import sleep
-
+import uuid
 import six
+
 import oslo_messaging
 from oslo_log import log
+
+from neutron.common import rpc as n_rpc
+from neutron.common import topics
+from neutron.i18n import _LI, _LW
 from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
-from neutron.common import rpc as n_rpc
-from neutron.common import topics
-from neutron.i18n import _LI
 
 from mech_vmware_dvs import exceptions
 
@@ -70,23 +72,39 @@ class DVSClientAPI(object):
                                      DVS,
                                      topics.UPDATE, host)
 
-    def create_network_cast(self, arg1, arg2):
-        cctxt = self.client.prepare(version=self.ver,
-                     topic=self._get_security_group_topic(), fanout=True)
-        return cctxt.cast(self.context, 'create_network', current=arg1,
-                     segment=arg2)
+    def _get_cctxt(self):
+        return self.client.prepare(version=self.ver,
+                                   topic=self._get_security_group_topic(),
+                                   fanout=True)
 
-    def delete_network_cast(self, arg1, arg2):
-        cctxt = self.client.prepare(version=self.ver,
-                     topic=self._get_security_group_topic(), fanout=True)
-        return cctxt.cast(self.context, 'delete_network', current=arg1,
-                     segment=arg2)
+    def create_network_cast(self, current, segment):
+        return self._get_cctxt().cast(self.context, 'create_network',
+                                      current=current, segment=segment)
 
-    def update_network_cast(self, arg1, arg2, arg3):
-        cctxt = self.client.prepare(version=self.ver,
-                     topic=self._get_security_group_topic(), fanout=True)
-        return cctxt.cast(self.context, 'update_network', current=arg1,
-                     segment=arg2, original=arg3)
+    def delete_network_cast(self, current, segment):
+        return self._get_cctxt().cast(self.context, 'delete_network',
+                                      current=current, segment=segment)
+
+    def update_network_cast(self, current, segment, original):
+        return self._get_cctxt().cast(self.context, 'update_network',
+                                      current=current, segment=segment,
+                                      original=original)
+
+    def bind_port_cast(self, network_segments, network_current, current):
+        return self._get_cctxt().cast(self.context, 'bind_port',
+                                      network_segments=network_segments,
+                                      network_current=network_current,
+                                      current=current)
+
+    def update_postcommit_port_cast(self, current, original, segment, sg_info):
+        return self._get_cctxt().cast(self.context, 'post_update_port',
+                                      current=current, original=original,
+                                      segment=segment, sg_info=sg_info)
+
+    def delete_port_cast(self, current, original, segment, sg_info):
+        return self._get_cctxt().cast(self.context, 'delete_port',
+                                      current=current, original=original,
+                                      segment=segment, sg_info=sg_info)
 
 
 class DVSController(object):
@@ -178,8 +196,7 @@ class DVSController(object):
     def switch_port_blocked_state(self, port):
         state = not port['admin_state_up']
 
-        port_info = self._get_port_info(
-            port['binding:vif_details']['dvs_port_key'])
+        port_info = self._get_port_info_by_name(port['id'])
 
         builder = SpecBuilder(self.connection.vim.client.factory)
         port_settings = builder.port_setting()
@@ -194,14 +211,14 @@ class DVSController(object):
         self.connection.wait_for_task(update_task)
 
     def update_port_rules(self, ports):
+        list_ports = self._get_ports()
         try:
             builder = SpecBuilder(self.connection.vim.client.factory)
             port_config_list = []
             for port in ports:
-                port_key = port['binding:vif_details']['dvs_port_key']
-                port_info = self._get_port_info(port_key)
+                port_info = self._get_port_info_by_name(port['id'], list_ports)
                 port_config = builder.port_config(
-                    str(port_key),
+                    str(port_info['key']),
                     port['security_group_rules']
                 )
                 port_config.configVersion = port_info['config'][
@@ -248,8 +265,7 @@ class DVSController(object):
             raise exceptions.wrap_wmvare_vim_exception(e)
 
     def release_port(self, port):
-        port_key = port['binding:vif_details']['dvs_port_key']
-        port_info = self._get_port_info(port_key)
+        port_info = self._get_port_info_by_name(port['id'])
         builder = SpecBuilder(self.connection.vim.client.factory)
         update_spec = builder.port_config_spec(
             port_info.config.configVersion, name='')
@@ -396,6 +412,56 @@ class DVSController(object):
             self.connection.vim,
             'FetchDVPorts',
             self._dvs, criteria=criteria)[0]
+
+    def _get_port_info_by_portkey(self, port_key):
+        """pg - ManagedObjectReference of Port Group"""
+        builder = SpecBuilder(self.connection.vim.client.factory)
+        criteria = builder.port_criteria(port_key=port_key)
+        return self.connection.invoke_api(
+            self.connection.vim,
+            'FetchDVPorts',
+            self._dvs, criteria=criteria)[0]
+
+    def _get_port_info_by_name(self, name, port_list=None):
+        if port_list is None:
+            port_list = self._get_ports()
+        ports = [port for port in port_list if port.config.name == name]
+        if not ports:
+            raise exceptions.PortNotFound()
+        else:
+            if len(ports) > 1:
+                LOG.warn(_LW("Multiple ports found for name %s."), name)
+        return ports[0]
+
+    def _get_ports(self):
+        ports = []
+        net_list = self.connection.invoke_api(
+            vim_util, 'get_object_property', self.connection.vim,
+            self._datacenter, 'network').ManagedObjectReference
+        type_value = 'DistributedVirtualPortgroup'
+        pg_list = self._get_object_by_type(net_list, type_value)
+        port_keys = []
+        for pg in pg_list:
+            pk = self.connection.invoke_api(vim_util,
+                                            'get_object_property',
+                                            self.connection.vim, pg,
+                                            'portKeys')
+            if not isinstance(pk, basestring):
+                port_keys = port_keys + pk[0]
+
+        for port_key in port_keys:
+            port = self._get_port_info_by_portkey(port_key)
+            if (getattr(port.config, 'name', None) is not None and
+                    self._valid_uuid(port.config.name)):
+                ports.append(port)
+        return ports
+
+    def _valid_uuid(self, name):
+        try:
+            uuid.UUID(name, version=4)
+        except ValueError:
+            return False
+        return True
 
 
 class SpecBuilder(object):
