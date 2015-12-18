@@ -17,17 +17,21 @@ import abc
 from time import sleep
 
 import six
+import oslo_messaging
 from oslo_log import log
 from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
-
+from neutron.common import rpc as n_rpc
+from neutron.common import topics
 from neutron.i18n import _LI
 
 from mech_vmware_dvs import exceptions
 
 LOG = log.getLogger(__name__)
 
+DVS = 'dvs'
+AGENT_TYPE_DVS = 'DVS agent'
 
 # protocol number according to RFC 1700
 PROTOCOL = {'icmp': 1,
@@ -52,6 +56,39 @@ DELETED_TEXT = "The object has already been deleted or has not been "\
                "completely created"
 
 
+class DVSClientAPI(object):
+    """Client side RPC interface definition."""
+    ver = '1.1'
+
+    def __init__(self, context):
+        target = oslo_messaging.Target(topic=DVS, version='1.0')
+        self.client = n_rpc.get_client(target)
+        self.context = context
+
+    def _get_security_group_topic(self, host=None):
+        return topics.get_topic_name(topics.AGENT,
+                                     DVS,
+                                     topics.UPDATE, host)
+
+    def create_network_cast(self, arg1, arg2):
+        cctxt = self.client.prepare(version=self.ver,
+                     topic=self._get_security_group_topic(), fanout=True)
+        return cctxt.cast(self.context, 'create_network', current=arg1,
+                     segment=arg2)
+
+    def delete_network_cast(self, arg1, arg2):
+        cctxt = self.client.prepare(version=self.ver,
+                     topic=self._get_security_group_topic(), fanout=True)
+        return cctxt.cast(self.context, 'delete_network', current=arg1,
+                     segment=arg2)
+
+    def update_network_cast(self, arg1, arg2, arg3):
+        cctxt = self.client.prepare(version=self.ver,
+                     topic=self._get_security_group_topic(), fanout=True)
+        return cctxt.cast(self.context, 'update_network', current=arg1,
+                     segment=arg2, original=arg3)
+
+
 class DVSController(object):
     """Controls one DVS."""
 
@@ -59,6 +96,7 @@ class DVSController(object):
         self.connection = connection
         try:
             self._datacenter = self._get_datacenter(connection)
+            self.dvs_name = dvs_name
             self._dvs = self._get_dvs(dvs_name, connection, self._datacenter)
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
@@ -303,12 +341,11 @@ class DVSController(object):
             vim_util, 'get_object_property',
             self.connection.vim, ref, 'config')
 
-    @staticmethod
-    def _get_net_name(network):
+    def _get_net_name(self, network):
         # TODO(dbogun): check network['bridge'] generation algorithm our
         # must match it
 
-        return network['id']
+        return self.dvs_name + network['id']
 
     @staticmethod
     def _get_object_by_type(results, type_value):
