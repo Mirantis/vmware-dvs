@@ -102,7 +102,7 @@ class DVSController(object):
             raise exceptions.wrap_wmvare_vim_exception(e)
 
     def create_network(self, network, segment):
-        name = self._get_net_name(network)
+        name = self._get_net_name(self.dvs_name, network)
         blocked = not network['admin_state_up']
 
         try:
@@ -125,9 +125,9 @@ class DVSController(object):
 
     def update_network(self, network, original=None):
         if original:
-            name = self._get_net_name(original)
+            name = self._get_net_name(self.dvs_name, original)
         else:
-            name = self._get_net_name(network)
+            name = self._get_net_name(self.dvs_name, network)
         blocked = not network['admin_state_up']
         try:
             pg_ref = self._get_pg_by_name(name)
@@ -141,7 +141,7 @@ class DVSController(object):
                 pg_spec = self._build_pg_update_spec(
                     pg_config_info.configVersion,
                     blocked=blocked)
-                pg_spec.name = self._get_net_name(network)
+                pg_spec.name = self._get_net_name(self.dvs_name, network)
                 pg_update_task = self.connection.invoke_api(
                     self.connection.vim,
                     'ReconfigureDVPortgroup_Task',
@@ -153,7 +153,7 @@ class DVSController(object):
             raise exceptions.wrap_wmvare_vim_exception(e)
 
     def delete_network(self, network):
-        name = self._get_net_name(network)
+        name = self._get_net_name(self.dvs_name, network)
         while True:
             try:
                 pg_ref = self._get_pg_by_name(name)
@@ -218,7 +218,7 @@ class DVSController(object):
 
     def book_port(self, network, port_name):
         try:
-            net_name = self._get_net_name(network)
+            net_name = self._get_net_name(self.dvs_name, network)
             pg = self._get_pg_by_name(net_name)
             while True:
                 try:
@@ -341,11 +341,12 @@ class DVSController(object):
             vim_util, 'get_object_property',
             self.connection.vim, ref, 'config')
 
-    def _get_net_name(self, network):
+    @staticmethod
+    def _get_net_name(dvs_name, network):
         # TODO(dbogun): check network['bridge'] generation algorithm our
         # must match it
 
-        return self.dvs_name + network['id']
+        return dvs_name + network['id']
 
     @staticmethod
     def _get_object_by_type(results, type_value):

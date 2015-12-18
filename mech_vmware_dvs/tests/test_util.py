@@ -166,7 +166,8 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
 
     def test__get_net_name(self):
         expect = self.dvs_name + fake_network['id']
-        self.assertEqual(expect, self.controller._get_net_name(fake_network))
+        self.assertEqual(expect, self.controller._get_net_name(self.dvs_name,
+                                 fake_network))
 
     def _get_connection_mock(self, dvs_name):
         return mock.Mock(vim=self.vim)
@@ -373,7 +374,8 @@ class DVSControllerNetworkUpdateTestCase(DVSControllerBaseTestCase):
                     elif args == (vim, wrong_pg, 'name'):
                         return 'wrong_pg'
                     elif args == (vim, pg_to_update, 'name'):
-                        return util.DVSController._get_net_name(fake_network)
+                        return util.DVSController._get_net_name(self.dvs_name,
+                                    fake_network)
                     elif args == (vim, not_pg, 'name'):
                         self.fail('Called with not pg')
                     elif args == (vim, pg_to_update, 'config'):

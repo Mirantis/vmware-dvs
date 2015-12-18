@@ -77,14 +77,6 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         except Exception:
             self.fail('Should not throw any exceptions')
 
-    def test_update_network_precommit_when_network_not_mapped(self):
-        context = self._create_network_context()
-        self.driver.network_map = {}
-        try:
-            self.driver.update_network_precommit(context)
-        except Exception:
-            self.fail('Should not throw any exceptions')
-
     def test_update_network_precommit_dont_support_other_network_type(self):
         '''for type_ in NOT_SUPPORTED_TYPES:
             context = self._create_network_context(type_)
