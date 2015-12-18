@@ -15,54 +15,18 @@
 
 import abc
 from time import sleep
-import six
-import oslo_messaging
-from oslo_log import log
 
-from neutron.common import rpc as n_rpc
-from neutron.common import topics
-from neutron.i18n import _LI
+import six
+from oslo_log import log
 from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
+
+from neutron.i18n import _LI
+
 from mech_vmware_dvs import exceptions
 
 LOG = log.getLogger(__name__)
-
-DVS = 'dvs'
-
-
-class DVSClientAPI(object):
-    """Client side RPC interface definition."""
-    ver = '1.1'
-
-    def __init__(self, context):
-        target = oslo_messaging.Target(topic=DVS, version='1.0')
-        self.client = n_rpc.get_client(target)
-        self.context = context
-
-    def _get_security_group_topic(self, host=None):
-        return topics.get_topic_name(topics.AGENT,
-                                     DVS,
-                                     topics.UPDATE, host)
-
-    def create_network_cast(self, arg1, arg2):
-        cctxt = self.client.prepare(version=self.ver,
-                     topic=self._get_security_group_topic(), fanout=True)
-        return cctxt.cast(self.context, 'create_network', current=arg1,
-                     segment=arg2)
-
-    def delete_network_cast(self, arg1, arg2):
-        cctxt = self.client.prepare(version=self.ver,
-                     topic=self._get_security_group_topic(), fanout=True)
-        return cctxt.cast(self.context, 'delete_network', current=arg1,
-                     segment=arg2)
-
-    def update_network_cast(self, arg1, arg2, arg3):
-        cctxt = self.client.prepare(version=self.ver,
-                     topic=self._get_security_group_topic(), fanout=True)
-        return cctxt.cast(self.context, 'update_network', current=arg1,
-                     segment=arg2, original=arg3)
 
 
 # protocol number according to RFC 1700
@@ -87,8 +51,6 @@ LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect "\
 DELETED_TEXT = "The object has already been deleted or has not been "\
                "completely created"
 
-AGENT_TYPE_DVS = 'DVS agent'
-
 
 class DVSController(object):
     """Controls one DVS."""
@@ -98,15 +60,13 @@ class DVSController(object):
         try:
             self._datacenter = self._get_datacenter(connection)
             self._dvs = self._get_dvs(dvs_name, connection, self._datacenter)
-            self.dvs_name = dvs_name
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
     def create_network(self, network, segment):
-
-        print self.dvs_name
         name = self._get_net_name(network)
         blocked = not network['admin_state_up']
+
         try:
             pg_spec = self._build_pg_create_spec(
                 name,
@@ -227,7 +187,14 @@ class DVSController(object):
                     port_info = self._lookup_unbound_port(pg)
                     break
                 except exceptions.UnboundPortNotFound:
-                    self._increase_ports_on_portgroup(pg)
+                    try:
+                        self._increase_ports_on_portgroup(pg)
+                    except (vmware_exceptions.VMwareDriverException,
+                            exceptions.VMWareDVSException) as e:
+                        if CONCURRENT_MODIFICATION_TEXT in e.message:
+                            LOG.info(_LI('Concurent modification on'
+                                     ' increase port group.'))
+                            continue
             builder = SpecBuilder(self.connection.vim.client.factory)
             port_settings = builder.port_setting()
             port_settings.blocked = builder.blocked(False)
@@ -336,10 +303,12 @@ class DVSController(object):
             vim_util, 'get_object_property',
             self.connection.vim, ref, 'config')
 
-    def _get_net_name(self, network):
+    @staticmethod
+    def _get_net_name(network):
         # TODO(dbogun): check network['bridge'] generation algorithm our
         # must match it
-        return self.dvs_name + network['id']
+
+        return network['id']
 
     @staticmethod
     def _get_object_by_type(results, type_value):
@@ -445,19 +414,30 @@ class SpecBuilder(object):
 
     def port_config(self, port_key, sg_rules):
         rules = []
+        reversed_rules = []
         seq = 0
         for rule_info in sg_rules:
-            if 'ip_set' in rule_info:
-                for ip in rule_info['ip_set']:
-                    rules.append(self._create_rule(rule_info, seq, ip))
-                    seq += 10
-            else:
-                rules.append(self._create_rule(rule_info, seq))
-                seq += 10
+            # if 'ip_set' in rule_info:
+            #     for ip in rule_info['ip_set']:
+            #         rule = self._create_rule(rule_info, ip,
+            #                                  name='remote security group')
+            #         rules.append(rule.build(seq))
+            #         seq += 10
+            #         reversed_rules.append(rule.reverse())
+            # else:
+            rule = self._create_rule(rule_info, name='regural')
+            rules.append(rule.build(seq))
+            seq += 10
+            reversed_rules.append(rule.reverse())
+
+        for r in reversed_rules:
+            rules.append(r.build(seq))
+            seq += 10
 
         for i, protocol in enumerate(PROTOCOL.values()):
-            rules.append(DropAllRule(self.factory, None,
-                                     protocol, seq + i * 10).build())
+            rules.append(
+                DropAllRule(self.factory, None, protocol,
+                            name='drop all').build(seq + i * 10))
 
         filter_policy = self.filter_policy(rules)
         setting = self.port_setting()
@@ -470,26 +450,26 @@ class SpecBuilder(object):
         return spec
 
     def _create_rule(self, rule_info, ip=None, name=None):
+        rule_params = {
+            'spec_factory': self.factory,
+            'ethertype': rule_info['ethertype'],
+            'protocol': rule_info.get('protocol'),
+            'name': name
+        }
         if rule_info['direction'] == 'ingress':
-            rule_class = IngressRule
+            rule = IngressRule(**rule_params)
             cidr = rule_info.get('source_ip_prefix')
         else:
-            rule_class = EgressRule
+            rule = EgressRule(**rule_params)
             cidr = rule_info.get('dest_ip_prefix')
-        rule = rule_class(
-            spec_factory=self.factory,
-            ethertype=rule_info['ethertype'],
-            protocol=rule_info.get('protocol'),
-            name=name
-        )
         rule.cidr = ip or cidr
 
         if rule_info.get('protocol') in ('tcp', 'udp'):
             rule.port_range = (rule_info.get('port_range_min'),
                                rule_info.get('port_range_max'))
             rule.backward_port_range = (
-                rule_info.get('source_port_range_min') or 32768,
-                rule_info.get('source_port_range_max') or 65535)
+                    rule_info.get('source_port_range_min') or 32768,
+                    rule_info.get('source_port_range_max') or 65535)
         return rule
 
     def port_criteria(self, port_key=None, port_group_key=None):
@@ -524,18 +504,21 @@ class SpecBuilder(object):
 @six.add_metaclass(abc.ABCMeta)
 class TrafficRuleBuilder(object):
     action = 'ns0:DvsAcceptNetworkRuleAction'
+    direction = 'both'
+    reverse_class = None
+    _backward_port_range = (None, None)
+    _port_range = (None, None)
 
-    def __init__(self, spec_factory, ethertype, protocol, sequence):
+    def __init__(self, spec_factory, ethertype, protocol, name=None):
         self.factory = spec_factory
 
         self.rule = self.factory.create('ns0:DvsTrafficRule')
-        self.rule.sequence = sequence
         self.rule.action = self.factory.create(self.action)
-        self.rule.direction = 'both'
 
         self.ip_qualifier = self.factory.create(
             'ns0:DvsIpNetworkRuleQualifier'
         )
+        self.ethertype = ethertype
         if ethertype:
             any_ip = '0.0.0.0/0' if ethertype == 'IPv4' else '::/0'
             self.ip_qualifier.sourceAddress = self._cidr_spec(any_ip)
@@ -548,25 +531,46 @@ class TrafficRuleBuilder(object):
             int_exp.negate = 'false'
             self.ip_qualifier.protocol = int_exp
 
-    def build(self):
+        self.name = name
+
+    def reverse(self):
+        """Returns reversed rule"""
+        name = 'reversed' + ' ' + (self.name or '')
+        rule = self.reverse_class(self.factory, self.ethertype,
+                                  self.protocol, name=name.strip())
+        rule.cidr = self.cidr
+        rule.port_range = self.backward_port_range
+        rule.backward_port_range = self.port_range
+        return rule
+
+    def build(self, sequence):
         self.rule.qualifier = [self.ip_qualifier]
+        self.rule.direction = self.direction
+        self.rule.sequence = sequence
+        self.name = str(sequence) + '. ' + (self.name or '')
+        self.name = self.name.strip()
+        self.rule.description = self.name.strip()
         return self.rule
 
-    @abc.abstractmethod
-    def port_range(self, start, end):
-        pass
+    @property
+    def port_range(self):
+        return self._port_range
 
-    @abc.abstractmethod
-    def cidr(self, cidr):
-        pass
+    @property
+    def backward_port_range(self):
+        return self._backward_port_range
 
-    def _port_range_spec(self, start, end):
-        if start == end:
+    @property
+    def cidr(self):
+        return self._cidr
+
+    def _port_range_spec(self, begin, end):
+        if begin == end:
             result = self.factory.create('ns0:DvsSingleIpPort')
-            result.portNumber = start
+            result.portNumber = begin
         else:
             result = self.factory.create('ns0:DvsIpPortRange')
-            result.startPortNumber = start
+            result.startPortNumber = begin
             result.endPortNumber = end
         return result
 
@@ -595,47 +599,64 @@ class TrafficRuleBuilder(object):
 
 
 class IngressRule(TrafficRuleBuilder):
+    direction = 'incomingPackets'
 
-    def port_range(self, start, end):
-        if self._has_port(start):
-            self.ip_qualifier.destinationIpPort = self._port_range_spec(start,
+    def __init__(self, spec_factory, ethertype, protocol, name=None):
+        super(IngressRule, self).__init__(
+            spec_factory, ethertype, protocol, name)
+        self.reverse_class = EgressRule
+
+    @TrafficRuleBuilder.port_range.setter
+    def port_range(self, range_):
+        begin, end = self._port_range = range_
+        if begin:
+            self.ip_qualifier.destinationIpPort = self._port_range_spec(begin,
                                                                         end)
 
-    def source_port_range(self, start, end):
-        if start:
-            self.ip_qualifier.sourceIpPort = self._port_range_spec(start, end)
+    @TrafficRuleBuilder.backward_port_range.setter
+    def backward_port_range(self, range_):
+        begin, end = self._backward_port_range = range_
+        if begin:
+            self.ip_qualifier.sourceIpPort = self._port_range_spec(begin, end)
 
+    @TrafficRuleBuilder.cidr.setter
     def cidr(self, cidr):
+        self._cidr = cidr
         if cidr:
             self.ip_qualifier.sourceAddress = self._cidr_spec(cidr)
 
 
 class EgressRule(TrafficRuleBuilder):
+    direction = 'outgoingPackets'
 
-    def port_range(self, start, end):
-        if self._has_port(start):
-            self.ip_qualifier.sourceIpPort = self._port_range_spec(start, end)
+    def __init__(self, spec_factory, ethertype, protocol, name=None):
+        super(EgressRule, self).__init__(
+            spec_factory, ethertype, protocol, name)
+        self.reverse_class = IngressRule
 
-    def dest_port_range(self, start, end):
-        if start:
-            self.ip_qualifier.sourceIpPort = self._port_range_spec(start, end)
+    @TrafficRuleBuilder.port_range.setter
+    def port_range(self, range_):
+        begin, end = self._port_range = range_
+        if begin:
+            self.ip_qualifier.destinationIpPort = self._port_range_spec(
+                begin, end)
 
+    @TrafficRuleBuilder.backward_port_range.setter
+    def backward_port_range(self, range_):
+        begin, end = self._backward_port_range = range_
+        if begin:
+            self.ip_qualifier.sourceIpPort = self._port_range_spec(
+                begin, end)
+
+    @TrafficRuleBuilder.cidr.setter
     def cidr(self, cidr):
+        self._cidr = cidr
         if cidr:
             self.ip_qualifier.destinationAddress = self._cidr_spec(cidr)
 
 
 class DropAllRule(TrafficRuleBuilder):
     action = 'ns0:DvsDropNetworkRuleAction'
-
-    def port_range(self, start, end):
-        pass
-
-    def dest_port_range(self, start, end):
-        pass
-
-    def cidr(self, cidr):
-        pass
 
 
 def create_network_map_from_config(config):
