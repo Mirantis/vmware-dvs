@@ -12,11 +12,16 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+import collections
+
 from neutron.agent import firewall
+from neutron.common import constants
 from neutron.i18n import _LI
 from oslo_log import log as logging
+from oslo.vmware import exceptions as vmware_exceptions
 
 from mech_vmware_dvs import config
+from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util
 LOG = logging.getLogger(__name__)
 
@@ -31,6 +36,11 @@ class DVSFirewallDriver(firewall.FirewallDriver):
             CONF.ml2_vmware)
         self.dvs_ports = {}
         self.sg_rules = {}
+        self.sg_members = {}
+        self._pre_defer_filtered_ports = None
+        self.pre_sg_rules = None
+        self.pre_sg_members = None
+        self._defer_apply = False
         # Map for known port and dvs it is connected to.
         self.dvs_port_map = {}
 
@@ -54,12 +64,6 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     def remove_port_filter(self, port):
         self.dvs_ports.pop(port['device'], None)
 
-    def filter_defer_apply_on(self):
-        LOG.info(_LI("Called filter_defer_apply_on"))
-
-    def filter_defer_apply_off(self):
-        LOG.info(_LI("Called filter_defer_apply_off"))
-
     @property
     def ports(self):
         return self.dvs_ports
@@ -79,12 +83,13 @@ class DVSFirewallDriver(firewall.FirewallDriver):
             for rule in rules:
                 if rule.get('remote_group_id') == sg_id:
                     ethertype = rule['ethertype']
-                    if (sg_members.get(ethertype)
-                            and rule.get('ip_set') != sg_members[ethertype]):
+                    if (sg_members.get(ethertype) and
+                            rule.get('ip_set') != sg_members[ethertype]):
                         rule['ip_set'] = sg_members[rule['ethertype']]
                         updated = True
         if updated:
             self._update_sg_rules_for_ports(sg_id)
+        self.sg_members[sg_id] = collections.defaultdict(list, sg_members)
         LOG.debug("Update members of security group (%s)", sg_id)
 
     def _apply_sg_rules_for_ports(self, port):
@@ -92,11 +97,12 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         sg_rules = 'security_group_rules'
         for sg in port['security_groups']:
             if sg in self.sg_rules.keys():
-                if (port['id'] not in self.dvs_port_map.keys()
-                        or self.dvs_ports[dev][sg_rules] != self.sg_rules[sg]):
+                if (port['id'] not in self.dvs_port_map.keys() or
+                        self.dvs_ports[dev][sg_rules] != self.sg_rules[sg]):
                     port['security_group_rules'] = self.sg_rules[sg]
-                    dvs = self._get_dvs_for_port_id(port['id'])
-                    dvs.update_port_rules([port])
+
+        dvs = self._get_dvs_for_port_id(port['id'])
+        self.update_port_rules(dvs, [port])
 
     def _get_dvs_for_port_id(self, port_id):
         if port_id not in self.dvs_port_map.keys():
@@ -123,4 +129,129 @@ class DVSFirewallDriver(firewall.FirewallDriver):
             for id in ids:
                 p.append(port_ids[id])
             if p:
-                dvs.update_port_rules(p)
+                self.update_port_rules(dvs, p)
+
+    def filter_defer_apply_on(self):
+        if not self._defer_apply:
+            self._pre_defer_filtered_ports = dict(self.dvs_ports)
+            self.pre_sg_members = dict(self.sg_members)
+            self.pre_sg_rules = dict(self.sg_rules)
+            self._defer_apply = True
+
+    def _remove_unused_security_group_info(self):
+        """Remove any unnecessary local security group info or unused ipsets.
+
+        This function has to be called after applying the last iptables
+        rules, so we're in a point where no iptable rule depends
+        on an ipset we're going to delete.
+        """
+        filtered_ports = self.dvs_ports.values()
+
+        remote_sgs_to_remove = self._determine_remote_sgs_to_remove(
+            filtered_ports)
+
+        for ip_version, remote_sg_ids in remote_sgs_to_remove.iteritems():
+            self._clear_sg_members(ip_version, remote_sg_ids)
+
+        self._remove_unused_sg_members()
+
+        # Remove unused security group rules
+        for remove_group_id in self._determine_sg_rules_to_remove(
+                filtered_ports):
+            self.sg_rules.pop(remove_group_id, None)
+
+    def _determine_remote_sgs_to_remove(self, filtered_ports):
+        """Calculate which remote security groups we don't need anymore.
+
+        We do the calculation for each ip_version.
+        """
+        sgs_to_remove_per_ipversion = {constants.IPv4: set(),
+                                       constants.IPv6: set()}
+        remote_group_id_sets = self._get_remote_sg_ids_sets_by_ipversion(
+            filtered_ports)
+        for ip_version, remote_group_id_set in (
+                remote_group_id_sets.iteritems()):
+            sgs_to_remove_per_ipversion[ip_version].update(
+                set(self.pre_sg_members) - remote_group_id_set)
+        return sgs_to_remove_per_ipversion
+
+    def _get_remote_sg_ids_sets_by_ipversion(self, filtered_ports):
+        """Given a port, calculates the remote sg references by ip_version."""
+        remote_group_id_sets = {constants.IPv4: set(),
+                                constants.IPv6: set()}
+        for port in filtered_ports:
+            remote_sg_ids = self._get_remote_sg_ids(port)
+            for ip_version in (constants.IPv4, constants.IPv6):
+                remote_group_id_sets[ip_version] |= remote_sg_ids[ip_version]
+        return remote_group_id_sets
+
+    def _determine_sg_rules_to_remove(self, filtered_ports):
+        """Calculate which security groups need to be removed.
+
+        We find out by subtracting our previous sg group ids,
+        with the security groups associated to a set of ports.
+        """
+        port_group_ids = self._get_sg_ids_set_for_ports(filtered_ports)
+        return set(self.pre_sg_rules) - port_group_ids
+
+    def _get_sg_ids_set_for_ports(self, filtered_ports):
+        """Get the port security group ids as a set."""
+        port_group_ids = set()
+        for port in filtered_ports:
+            port_group_ids.update(port.get('security_groups', []))
+        return port_group_ids
+
+    def _clear_sg_members(self, ip_version, remote_sg_ids):
+        """Clear our internal cache of sg members matching the parameters."""
+        for remote_sg_id in remote_sg_ids:
+            if self.sg_members[remote_sg_id][ip_version]:
+                self.sg_members[remote_sg_id][ip_version] = []
+
+    def _remove_unused_sg_members(self):
+        """Remove sg_member entries where no IPv4 or IPv6 is associated."""
+        for sg_id in self.sg_members.keys():
+            sg_has_members = (self.sg_members[sg_id][constants.IPv4] or
+                              self.sg_members[sg_id][constants.IPv6])
+            if not sg_has_members:
+                del self.sg_members[sg_id]
+
+    def _get_remote_sg_ids(self, port, direction=None):
+        sg_ids = port.get('security_groups', [])
+        remote_sg_ids = {constants.IPv4: set(), constants.IPv6: set()}
+        for sg_id in sg_ids:
+            for rule in self.sg_rules.get(sg_id, []):
+                if not direction or rule['direction'] == direction:
+                    remote_sg_id = rule.get('remote_group_id')
+                    ether_type = rule.get('ethertype')
+                    if remote_sg_id and ether_type:
+                        remote_sg_ids[ether_type].add(remote_sg_id)
+        return remote_sg_ids
+
+    def filter_defer_apply_off(self):
+        if self._defer_apply:
+            self._defer_apply = False
+            self._remove_unused_security_group_info()
+            self._pre_defer_filtered_ports = None
+
+    def update_port_rules(self, dvs, ports):
+        list_ports = dvs._get_ports()
+        try:
+            builder = util.SpecBuilder(dvs.connection.vim.client.factory)
+            port_config_list = []
+            for port in ports:
+                port_info = dvs._get_port_info_by_name(port['id'], list_ports)
+                port_config = builder.port_config(
+                    str(port_info['key']),
+                    port['security_group_rules']
+                )
+                port_config.configVersion = port_info['config'][
+                    'configVersion']
+                port_config_list.append(port_config)
+            task = dvs.connection.invoke_api(
+                dvs.connection.vim,
+                'ReconfigureDVPort_Task',
+                dvs._dvs, port=port_config_list
+            )
+            return dvs.connection.wait_for_task(task)
+        except vmware_exceptions.VimException as e:
+            raise exceptions.wrap_wmvare_vim_exception(e)

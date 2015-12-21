@@ -137,6 +137,9 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
                     minimize_polling=False)
         while self.run_daemon_loop:
             start = time.time()
+            port_stats = {'regular': {'added': 0,
+                                      'updated': 0,
+                                      'removed': 0}}
             if self.fullsync:
                 LOG.info(_LI("Agent out of sync with plugin!"))
                 self.fullsync = False
@@ -144,9 +147,12 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
             if self._agent_has_updates(polling_manager):
                 LOG.debug("Agent rpc_loop - update")
                 self.process_ports()
+                port_stats['regular']['added'] = len(self.added_ports)
+                port_stats['regular']['updated'] = len(self.updated_ports)
+                port_stats['regular']['removed'] = len(self.deleted_ports)
                 polling_manager.polling_completed()
 
-            self.loop_count_and_wait(start)
+            self.loop_count_and_wait(start, port_stats)
 
     def _agent_has_updates(self, polling_manager):
         return (polling_manager.is_polling_required or
@@ -198,6 +204,8 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
         port_id = kwargs.get('port_id')
         self.deleted_ports.add(port_id)
         self.known_ports.discard(port_id)
+        if port_id in self.added_ports:
+            self.added_ports.discard(port_id)
         LOG.debug("port_delete message processed for port %s", port_id)
 
     def _get_dvs_ports(self):
