@@ -1,5 +1,5 @@
-# Copyright 2015 Mirantis, Inc.
-# All Rights Reserved.
+#    Copyright 2015 Mirantis, Inc.
+#    All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -109,9 +109,9 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     @port_belongs_to_vmware
     def bind_port(self, context):
-        self.dvs_notifier.bind_port_cast(context.network.current,
+        self.dvs_notifier.bind_port_cast(context.current,
                                          context.network.network_segments,
-                                         context.current)
+                                         context.network.current)
         # TODO(ekosareva): currently a hack, need to check results from agent
         #                  and store port_key
         for segment in context.network.network_segments:
@@ -150,7 +150,7 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                                            security_group_info)
 
     def _get_security_group_info(self, context):
-        current_security_group = set(context.current['security_groups'])
+        current_security_group = list(set(context.current['security_groups']))
         ports = context._plugin.get_ports(context._plugin_context)
         for p in ports:
             if 'security_group_rules' not in p:

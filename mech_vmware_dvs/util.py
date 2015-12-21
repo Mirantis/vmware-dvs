@@ -1,9 +1,9 @@
-# Copyright 2015 Mirantis, Inc.
-# All Rights Reserved.
+#    Copyright 2015 Mirantis, Inc.
+#    All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License"); you may
-# not use this file except in compliance with the License. You may obtain
-# a copy of the License at
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
 #
 #         http://www.apache.org/licenses/LICENSE-2.0
 #
@@ -90,7 +90,7 @@ class DVSClientAPI(object):
                                       current=current, segment=segment,
                                       original=original)
 
-    def bind_port_cast(self, network_segments, network_current, current):
+    def bind_port_cast(self, current, network_segments, network_current):
         return self._get_cctxt().cast(self.context, 'bind_port',
                                       network_segments=network_segments,
                                       network_current=network_current,
@@ -404,14 +404,14 @@ class DVSController(object):
             port_group, spec=pg_spec)
         self.connection.wait_for_task(pg_update_task)
 
-    def _get_port_info(self, port_key):
-        """pg - ManagedObjectReference of Port Group"""
-        builder = SpecBuilder(self.connection.vim.client.factory)
-        criteria = builder.port_criteria(port_key=port_key)
-        return self.connection.invoke_api(
-            self.connection.vim,
-            'FetchDVPorts',
-            self._dvs, criteria=criteria)[0]
+    # def _get_port_info(self, port_key):
+    #     """pg - ManagedObjectReference of Port Group"""
+    #     builder = SpecBuilder(self.connection.vim.client.factory)
+    #     criteria = builder.port_criteria(port_key=port_key)
+    #     return self.connection.invoke_api(
+    #         self.connection.vim,
+    #         'FetchDVPorts',
+    #         self._dvs, criteria=criteria)[0]
 
     def _get_port_info_by_portkey(self, port_key):
         """pg - ManagedObjectReference of Port Group"""
@@ -428,9 +428,8 @@ class DVSController(object):
         ports = [port for port in port_list if port.config.name == name]
         if not ports:
             raise exceptions.PortNotFound()
-        else:
-            if len(ports) > 1:
-                LOG.warn(_LW("Multiple ports found for name %s."), name)
+        if len(ports) > 1:
+            LOG.warn(_LW("Multiple ports found for name %s."), name)
         return ports[0]
 
     def _get_ports(self):
@@ -651,9 +650,8 @@ class TrafficRuleBuilder(object):
         self.rule.qualifier = [self.ip_qualifier]
         self.rule.direction = self.direction
         self.rule.sequence = sequence
-        self.name = str(sequence) + '. ' + (self.name or '')
-        self.name = self.name.strip()
-        self.rule.description = self.name.strip()
+        self.name = (str(sequence) + '. ' + (self.name or '')).strip()
+        self.rule.description = self.name
         return self.rule
 
     @property

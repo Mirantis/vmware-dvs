@@ -62,8 +62,7 @@ class EndPointBaseTestCase(base.BaseTestCase):
 
         self.endpoint = ConcreteEndPoint(self.driver)
 
-    @mock.patch('neutron.policy.get_admin_roles')
-    def test_update_security_group(self, get_admin_roles):
+    def test_update_security_group(self):
         def PortContext(plugin, plugin_context, port, network, binding,
                         binding_levels, original_port=None):
             expected = Context.from_dict(fake_endpoint_context)
@@ -129,6 +128,5 @@ class SecurityGroupRuleDeleteEndPointTestCase(base.BaseTestCase):
         self.endpoint.info(fake_endpoint_context, '_publisher_id_',
                            'security_group_rule.delete.end',
                            self.payload, '_metadata_')
-        update_security_group.assert_called_once_with(
-            fake_endpoint_context,
-            'id1', 'id2')
+        update_security_group.assert_called_once_with(fake_endpoint_context,
+                                                      'id1', 'id2')

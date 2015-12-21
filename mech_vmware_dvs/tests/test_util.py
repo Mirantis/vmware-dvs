@@ -1,7 +1,7 @@
-# Copyright 2015 Mirantis, Inc.
-# All Rights Reserved.
+#    Copyright 2015 Mirantis, Inc.
+#    All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
 #    a copy of the License at
 #
@@ -12,8 +12,6 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
-# import string
 
 import mock
 from oslo_vmware import exceptions as vmware_exceptions
@@ -36,8 +34,8 @@ fake_port = {
     'admin_state_up': True,
     'device_id': '_dummy_server_id_',
     'security_group_rules': [{'ethertype': 'IPv4',
-                              'direction': 'ingress'}],
-    'binding:vif_details': {'dvs_port_key': '_dvs_port_key_'}}
+                              'direction': 'ingress'}]
+}
 
 fake_security_group = {'description': u'Default security group',
                        'id': u'9961d207-c96c-4907-be9e-d979d5353885',
@@ -138,14 +136,13 @@ class DVSControllerBaseTestCase(UtilBaseTestCase):
         self.connection = self._get_connection_mock(self.dvs_name)
 
         self.datacenter = 'datacenter1'
-        self.use_patch('mech_vmware_dvs.util.DVSController'
-                       '._get_datacenter', return_value=self.datacenter)
+        self.use_patch('mech_vmware_dvs.util.DVSController._get_datacenter',
+                       return_value=self.datacenter)
         self.dvs = mock.Mock()
-        self.use_patch('mech_vmware_dvs.util.DVSController'
-                       '._get_dvs', return_value=self.dvs)
+        self.use_patch('mech_vmware_dvs.util.DVSController._get_dvs',
+                       return_value=self.dvs)
 
-        self.controller = util.DVSController(self.dvs_name,
-                                             self.connection)
+        self.controller = util.DVSController(self.dvs_name, self.connection)
 
     def use_patch(self, *args, **kwargs):
         patch = mock.patch(*args, **kwargs)
@@ -167,7 +164,7 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
     def test__get_net_name(self):
         expect = self.dvs_name + fake_network['id']
         self.assertEqual(expect, self.controller._get_net_name(self.dvs_name,
-                                 fake_network))
+                                                               fake_network))
 
     def _get_connection_mock(self, dvs_name):
         return mock.Mock(vim=self.vim)
@@ -275,7 +272,9 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
 
     def assert_create_specification(self, spec):
         self.assertEqual(
-            self.controller._get_net_name(fake_network), spec.name)
+            self.controller._get_net_name(self.dvs_name, fake_network),
+            spec.name
+        )
         self.assertEqual('earlyBinding', spec.type)
         self.assertEqual('Managed By Neutron', spec.description)
         vlan_spec = spec.defaultPortConfig.vlan
@@ -375,7 +374,7 @@ class DVSControllerNetworkUpdateTestCase(DVSControllerBaseTestCase):
                         return 'wrong_pg'
                     elif args == (vim, pg_to_update, 'name'):
                         return util.DVSController._get_net_name(self.dvs_name,
-                                    fake_network)
+                                                                fake_network)
                     elif args == (vim, not_pg, 'name'):
                         self.fail('Called with not pg')
                     elif args == (vim, pg_to_update, 'config'):
@@ -451,7 +450,8 @@ class DVSControllerNetworkDeletionTestCase(DVSControllerBaseTestCase):
                     elif args == (vim, wrong_pg, 'name'):
                         return 'wrong_pg'
                     elif args == (vim, pg_to_delete, 'name'):
-                        return util.DVSController._get_net_name(fake_network)
+                        return util.DVSController._get_net_name(self.dvs_name,
+                                                                fake_network)
                     elif args == (vim, not_pg, 'name'):
                         self.fail('Called with not pg')
             elif module == vim:
@@ -479,24 +479,22 @@ class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
         dvs_port = mock.Mock()
         dvs_port.config.setting.blocked.value = True
 
-        with mock.patch.object(
-                self.controller, '_get_port_info',
-                return_value=dvs_port):
-
+        with mock.patch.object(self.controller, '_get_port_info_by_name',
+                               return_value=dvs_port):
             self.controller.switch_port_blocked_state(fake_port)
 
-            self.assertEqual(1, self.connection.invoke_api.call_count)
-            self.assertEqual(
-                mock.call(
-                    self.vim, 'ReconfigureDVPort_Task', self.dvs,
-                    port=mock.ANY),
-                self.connection.invoke_api.call_args)
-            args, kwargs = self.connection.invoke_api.call_args
-            update_spec = kwargs['port'][0]
-            self.assertEqual(dvs_port.key, update_spec.key)
-            self.assertEqual('edit', update_spec.operation)
+        self.assertEqual(1, self.connection.invoke_api.call_count)
+        self.assertEqual(
+            mock.call(
+                self.vim, 'ReconfigureDVPort_Task', self.dvs,
+                port=mock.ANY),
+            self.connection.invoke_api.call_args)
+        args, kwargs = self.connection.invoke_api.call_args
+        update_spec = kwargs['port'][0]
+        self.assertEqual(dvs_port.key, update_spec.key)
+        self.assertEqual('edit', update_spec.operation)
 
-            self.assertEqual(1, self.connection.wait_for_task.call_count)
+        self.assertEqual(1, self.connection.wait_for_task.call_count)
 
     def _get_connection_mock(self, dvs_name):
         return mock.Mock(vim=self.vim)
@@ -514,9 +512,12 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
 
     def test_update_port_rules(self):
         ports = [fake_port]
-        port_info = {'config': {'configVersion': '_config_version_'}}
+        port_info = {'config': {'configVersion': '_config_version_'},
+                     'key': '_dvs_port_key_'}
         self.use_patch('mech_vmware_dvs.util.DVSController'
-                       '._get_port_info', return_value=port_info)
+                       '._get_port_info_by_name', return_value=port_info)
+        self.use_patch('mech_vmware_dvs.util.DVSController._get_ports',
+                       return_value=ports)
         self.controller.update_port_rules(ports)
         self.assertTrue(self.connection.invoke_api.called)
         args, kwargs = self.connection.invoke_api.call_args
@@ -608,35 +609,29 @@ class SpecBuilderTestCase(base.BaseTestCase):
 
     def test__create_rule_egress(self):
         rule = self._create_rule(direction='egress')
-        self.assertEqual(rule.direction, 'both')
+        self.assertEqual(rule.direction, 'outgoingPackets')
 
     def test__create_rule_ingress(self):
         rule = self._create_rule(direction='ingress')
-        self.assertEqual(rule.direction, 'both')
-
-    def test__create_rule_ingress_source_port_range(self):
-        rule = self._create_rule(direction='ingress',
-                                 source_port_range_min=22,
-                                 source_port_range_max=23)
-        qualifier = rule.qualifier[0]
-        self.assertIn('sourceIpPort', dir(qualifier))
-        self.assertNotIn('destinationIpPort', dir(qualifier))
+        self.assertEqual(rule.direction, 'incomingPackets')
 
     def test__create_rule_ingress_port_range(self):
         rule = self._create_rule(direction='ingress',
                                  port_range_min=22,
                                  port_range_max=23)
         qualifier = rule.qualifier[0]
-        self.assertIn('destinationIpPort', dir(qualifier))
-        self.assertNotIn('sourceIpPort', dir(qualifier))
+        self.assertEqual(qualifier.sourceIpPort.startPortNumber, 32768)
+        self.assertEqual(qualifier.sourceIpPort.endPortNumber, 65535)
+        self.assertEqual(qualifier.destinationIpPort.startPortNumber, 22)
+        self.assertEqual(qualifier.destinationIpPort.endPortNumber, 23)
 
     def test__create_rule_egress_port_range(self):
         rule = self._create_rule(direction='egress',
                                  port_range_min=22,
                                  port_range_max=23)
         qualifier = rule.qualifier[0]
-        self.assertNotIn('destinationIpPort', dir(qualifier))
-        self.assertIn('sourceIpPort', dir(qualifier))
+        self.assertEqual(qualifier.destinationIpPort.startPortNumber, 22)
+        self.assertEqual(qualifier.destinationIpPort.endPortNumber, 23)
 
     def test__create_rule_ingress_cidr(self):
         rule = self._create_rule(direction='ingress',
@@ -678,12 +673,15 @@ class SpecBuilderTestCase(base.BaseTestCase):
         self.factory.create.side_effect = side_effect
 
         rule_info = {'direction': 'egress',
+                     'protocol': 'tcp',
                      'ethertype': 'IPv4'}
-        rule_info.update(kwargs)
+
         sequence = 25
-        rule = self.builder._create_rule(rule_info, sequence, ip)
-        self.assertEqual(rule.sequence, sequence)
-        return rule
+        rule_info.update(kwargs)
+        rule = self.builder._create_rule(rule_info, ip)
+        result = rule.build(sequence)
+        self.assertEqual(result.sequence, sequence)
+        return result
 
 
 class TrafficRuleBuilderBaseTestCase(UtilBaseTestCase):
@@ -702,8 +700,11 @@ class TrafficRuleBuilderBaseTestCase(UtilBaseTestCase):
 
 
 class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
+    def setUp(self):
+        super(TrafficRuleBuilderTestCase, self).setUp()
+        self.sequence = 20
 
-    def _create_builder(self, ethertype=None, protocol=None, sequence=None):
+    def _create_builder(self, ethertype=None, protocol=None, name=None):
         class ConcreteTrafficRuleBuilder(util.TrafficRuleBuilder):
 
             def port_range(self, start, end):
@@ -713,16 +714,18 @@ class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
                 pass
 
         return ConcreteTrafficRuleBuilder(
-            self.spec_factory, ethertype, protocol, sequence)
+            self.spec_factory, ethertype, protocol, name)
 
     def test_build_sequence(self):
-        builder = self._create_builder(sequence='_sequence_')
-        rule = builder.build()
-        self.assertEqual('_sequence_', rule.sequence)
+        name = '_name_'
+        builder = self._create_builder(name=name)
+        rule = builder.build(self.sequence)
+        self.assertEqual(self.sequence, rule.sequence)
+        self.assertEqual(str(self.sequence) + '. ' + name, rule.description)
 
     def test_build_ethertype_IPv4(self):
         builder = self._create_builder(ethertype='IPv4')
-        rule = builder.build()
+        rule = builder.build(self.sequence)
         qualifier = rule.qualifier[0]
         self.assertEqual('0.0.0.0', qualifier.sourceAddress.addressPrefix)
         self.assertEqual('0', qualifier.sourceAddress.prefixLength)
@@ -731,7 +734,7 @@ class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
 
     def test_build_ethertype_IPv6(self):
         builder = self._create_builder(ethertype='IPv6')
-        rule = builder.build()
+        rule = builder.build(self.sequence)
         qualifier = rule.qualifier[0]
         self.assertEqual('::', qualifier.sourceAddress.addressPrefix)
         self.assertEqual('0', qualifier.sourceAddress.prefixLength)
@@ -741,14 +744,14 @@ class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
     def test_build_ethertype_protocol(self):
         for name, rfc in util.PROTOCOL.iteritems():
             builder = self._create_builder(protocol=name)
-            rule = builder.build()
+            rule = builder.build(self.sequence)
             qualifier = rule.qualifier[0]
             self.assertEqual(rfc,
                              qualifier.protocol.value,
                              'Wrong value for %s protocol' % name)
 
         builder = self._create_builder(protocol='not_described')
-        rule = builder.build()
+        rule = builder.build(self.sequence)
         qualifier = rule.qualifier[0]
         self.assertEqual('not_described',
                          qualifier.protocol.value)
@@ -833,7 +836,7 @@ class UtilTestCase(base.BaseTestCase):
 
         def side_effect(*args, **kwargs):
             exception = vmware_exceptions.VMwareDriverException()
-            exception.msg = util.LOGIN_PROBLEM_TEXT
+            exception.message = util.LOGIN_PROBLEM_TEXT
             raise exception
 
         func.side_effect = side_effect

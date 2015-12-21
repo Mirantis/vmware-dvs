@@ -68,7 +68,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
             'configurations': {'bridge_mappings': bridge_mappings,
                                'vsphere_hostname': vsphere_hostname,
                                'log_agent_heartbeats':
-                               cfg.CONF.AGENT.log_agent_heartbeats},
+                                   cfg.CONF.AGENT.log_agent_heartbeats},
             'agent_type': 'DVS agent',
             'start_flag': True}
 
@@ -152,13 +152,15 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
                 'id': current['id'],
                 'reason': e.message})
         except exceptions.NoDVSForPhysicalNetwork:
-            LOG.info(_LI('Port %(port_id)s belong to VMWare VM, but there is '
-                         'no mapping from network to DVS.') % {
-                'port_id': current['id']})
-        self._update_admin_state_up(dvs, original, current)
-        force = original['status'] == n_const.PORT_STATUS_DOWN
-        self._update_security_groups(dvs, current, original, sg_info,
-                                     force=force)
+            raise exceptions.InvalidSystemState(details=_(
+                'Port %(port_id)s belong to VMWare VM, but there is '
+                'no mapping from network to DVS.') % {'port_id': current['id']}
+            )
+        else:
+            self._update_admin_state_up(dvs, original, current)
+            force = original['status'] == n_const.PORT_STATUS_DOWN
+            self._update_security_groups(dvs, current, original, sg_info,
+                                         force=force)
 
     @util.wrap_retry
     def delete_port_postcommit(self, current, original, segment, sg_info):
@@ -169,12 +171,14 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
                 'id': current['id'],
                 'reason': e.message})
         except exceptions.NoDVSForPhysicalNetwork:
-            LOG.info(_LI('Port %(port_id)s belong to VMWare VM, but there is '
-                         'no mapping from network to DVS.') % {
-                'port_id': current['id']})
-        self._update_security_groups(
-            dvs, current, original, sg_info, force=True)
-        dvs.release_port(current)
+            raise exceptions.InvalidSystemState(details=_(
+                'Port %(port_id)s belong to VMWare VM, but there is '
+                'no mapping from network to DVS.') % {'port_id': current['id']}
+            )
+        else:
+            self._update_security_groups(
+                dvs, current, original, sg_info, force=True)
+            dvs.release_port(current)
 
     def _lookup_dvs_for_context(self, segment):
         if segment['network_type'] == constants.TYPE_VLAN:
