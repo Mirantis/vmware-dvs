@@ -92,9 +92,9 @@ class DVSClientAPI(object):
 
     def bind_port_cast(self, current, network_segments, network_current):
         return self._get_cctxt().cast(self.context, 'bind_port',
+                                      current=current,
                                       network_segments=network_segments,
-                                      network_current=network_current,
-                                      current=current)
+                                      network_current=network_current)
 
     def update_postcommit_port_cast(self, current, original, segment, sg_info):
         return self._get_cctxt().cast(self.context, 'post_update_port',

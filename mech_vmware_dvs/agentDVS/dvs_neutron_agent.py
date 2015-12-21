@@ -37,8 +37,8 @@ class ExtendAPI(object):
     def update_network(self, context, current, segment, original):
         self.update_network_precommit(current, segment, original)
 
-    def bind_port(self, context, network_current, network_segments, current):
-        self.book_port(network_current, network_segments, current)
+    def bind_port(self, context, current, network_segments, network_current):
+        self.book_port(current, network_segments, network_current)
 
     def post_update_port(self, context, current, original, segment, sg_info):
         self.update_port_postcommit(current, original, segment, sg_info)
@@ -137,7 +137,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
             dvs.update_network(current, original)
 
     @util.wrap_retry
-    def book_port(self, network_segments, network_current, current):
+    def book_port(self, current, network_segments, network_current):
         for segment in network_segments:
             dvs = self._lookup_dvs_for_context(segment)
             # TODO(ekosareva): port_key need to send back to server
