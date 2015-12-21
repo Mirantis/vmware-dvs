@@ -544,25 +544,6 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
         self.spec = mock.Mock()
         self.vim.client.factory.create.return_value = self.spec
 
-    def test_update_port_rules(self):
-        ports = [fake_port]
-        port_info = {'config': {'configVersion': '_config_version_'},
-                     'key': '_dvs_port_key_'}
-        self.use_patch('mech_vmware_dvs.util.DVSController'
-                       '._get_port_info_by_name', return_value=port_info)
-        self.use_patch('mech_vmware_dvs.util.DVSController'
-                       '._get_ports', return_value=ports)
-        self.controller.update_port_rules(ports)
-        self.assertTrue(self.connection.invoke_api.called)
-        args, kwargs = self.connection.invoke_api.call_args
-        self.assertEqual(self.vim, args[0])
-        self.assertEqual('ReconfigureDVPort_Task', args[1])
-        self.assertEqual(self.dvs, args[2])
-        call_ports = kwargs['port']
-        self.assertEqual(len(ports), len(call_ports))
-        self.assertEqual('_config_version_', self.spec.configVersion)
-        self.assertEqual('_dvs_port_key_', self.spec.key)
-
     def test__get_ports_for_pg(self):
         pg = mock.Mock()
         self.use_patch('mech_vmware_dvs.util.DVSController'
@@ -714,110 +695,6 @@ class SpecBuilderTestCase(base.BaseTestCase):
         result = rule.build(25)
         self.assertEqual(result.sequence, 25)
         return result
-
-
-class TrafficRuleBuilderBaseTestCase(UtilBaseTestCase):
-
-    def setUp(self):
-        super(TrafficRuleBuilderBaseTestCase, self).setUp()
-        self.spec_factory = self._get_factory_mock((
-            'ns0:IntExpression',
-            'ns0:DvsTrafficRule',
-            'ns0:DvsAcceptNetworkRuleAction',
-            'ns0:DvsIpNetworkRuleQualifier',
-            'ns0:IpRange',
-            'ns0:SingleIp',
-            'ns0:DvsSingleIpPort',
-            'ns0:DvsIpPortRange'))
-
-
-class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
-
-    def _create_builder(self, ethertype=None, protocol=None, name=None):
-        class ConcreteTrafficRuleBuilder(util.TrafficRuleBuilder):
-
-            def port_range(self, start, end):
-                pass
-
-            def cidr(self, cidr):
-                pass
-
-        return ConcreteTrafficRuleBuilder(
-            self.spec_factory, ethertype, protocol, name)
-
-    def test_build_name(self):
-        builder = self._create_builder(name='_name_')
-        rule = builder.build(20)
-        self.assertEqual('20. _name_', rule.description)
-
-    def test_build_ethertype_IPv4(self):
-        builder = self._create_builder(ethertype='IPv4')
-        rule = builder.build(20)
-        qualifier = rule.qualifier[0]
-        self.assertEqual('0.0.0.0', qualifier.sourceAddress.addressPrefix)
-        self.assertEqual('0', qualifier.sourceAddress.prefixLength)
-        self.assertEqual('0.0.0.0', qualifier.destinationAddress.addressPrefix)
-        self.assertEqual('0', qualifier.destinationAddress.prefixLength)
-
-    def test_build_ethertype_IPv6(self):
-        builder = self._create_builder(ethertype='IPv6')
-        rule = builder.build(20)
-        qualifier = rule.qualifier[0]
-        self.assertEqual('::', qualifier.sourceAddress.addressPrefix)
-        self.assertEqual('0', qualifier.sourceAddress.prefixLength)
-        self.assertEqual('::', qualifier.destinationAddress.addressPrefix)
-        self.assertEqual('0', qualifier.destinationAddress.prefixLength)
-
-    def test_build_ethertype_protocol(self):
-        for name, rfc in util.PROTOCOL.iteritems():
-            builder = self._create_builder(protocol=name)
-            rule = builder.build(20)
-            qualifier = rule.qualifier[0]
-            self.assertEqual(rfc,
-                             qualifier.protocol.value,
-                             'Wrong value for %s protocol' % name)
-
-        builder = self._create_builder(protocol='not_described')
-        rule = builder.build(20)
-        qualifier = rule.qualifier[0]
-        self.assertEqual('not_described',
-                         qualifier.protocol.value)
-
-    def test__has_port_for_icmp(self):
-        builder = self._create_builder(protocol='icmp')
-        self.assertFalse(builder._has_port(None))
-        self.assertFalse(builder._has_port(123))
-
-    def test__has_port_for_tcp(self):
-        builder = self._create_builder(protocol='tcp')
-        self.assertFalse(builder._has_port(None))
-        self.assertTrue(builder._has_port(123))
-
-    def test__cidr_spec_for_ip_range(self):
-        builder = self._create_builder()
-        cidr_spec = builder._cidr_spec('192.168.0.2/24')
-        self.assertEqual('ns0:IpRange', cidr_spec._mock_name)
-        self.assertEqual('192.168.0.2', cidr_spec.addressPrefix)
-        self.assertEqual('24', cidr_spec.prefixLength)
-
-    def test__cidr_spec_for_single_ip(self):
-        builder = self._create_builder()
-        cidr_spec = builder._cidr_spec('192.168.0.2')
-        self.assertEqual('ns0:SingleIp', cidr_spec._mock_name)
-        self.assertEqual('192.168.0.2', cidr_spec.address)
-
-    def test__port_spec_for_single_port(self):
-        builder = self._create_builder()
-        port_spec = builder._port_range_spec(22, 22)
-        self.assertEqual('ns0:DvsSingleIpPort', port_spec._mock_name)
-        self.assertEqual(22, port_spec.portNumber)
-
-    def test__port_spec_for_port_range(self):
-        builder = self._create_builder()
-        port_spec = builder._port_range_spec(22, 121)
-        self.assertEqual('ns0:DvsIpPortRange', port_spec._mock_name)
-        self.assertEqual(22, port_spec.startPortNumber)
-        self.assertEqual(121, port_spec.endPortNumber)
 
 
 class UtilTestCase(base.BaseTestCase):

@@ -1,0 +1,121 @@
+# Copyright 2015 Mirantis, Inc.
+# All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+
+from mech_vmware_dvs import security_group_utils as util
+from mech_vmware_dvs.tests import test_util
+
+
+class TrafficRuleBuilderBaseTestCase(test_util.UtilBaseTestCase):
+
+    def setUp(self):
+        super(TrafficRuleBuilderBaseTestCase, self).setUp()
+        self.spec_factory = self._get_factory_mock((
+            'ns0:IntExpression',
+            'ns0:DvsTrafficRule',
+            'ns0:DvsAcceptNetworkRuleAction',
+            'ns0:DvsIpNetworkRuleQualifier',
+            'ns0:IpRange',
+            'ns0:SingleIp',
+            'ns0:DvsSingleIpPort',
+            'ns0:DvsIpPortRange'))
+
+
+class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
+
+    def _create_builder(self, ethertype=None, protocol=None, name=None):
+        class ConcreteTrafficRuleBuilder(util.TrafficRuleBuilder):
+
+            def port_range(self, start, end):
+                pass
+
+            def cidr(self, cidr):
+                pass
+
+        return ConcreteTrafficRuleBuilder(
+            self.spec_factory, ethertype, protocol, name)
+
+    def test_build_name(self):
+        builder = self._create_builder(name='_name_')
+        rule = builder.build(20)
+        self.assertEqual('20. _name_', rule.description)
+
+    def test_build_ethertype_IPv4(self):
+        builder = self._create_builder(ethertype='IPv4')
+        rule = builder.build(20)
+        qualifier = rule.qualifier[0]
+        self.assertEqual('0.0.0.0', qualifier.sourceAddress.addressPrefix)
+        self.assertEqual('0', qualifier.sourceAddress.prefixLength)
+        self.assertEqual('0.0.0.0', qualifier.destinationAddress.addressPrefix)
+        self.assertEqual('0', qualifier.destinationAddress.prefixLength)
+
+    def test_build_ethertype_IPv6(self):
+        builder = self._create_builder(ethertype='IPv6')
+        rule = builder.build(20)
+        qualifier = rule.qualifier[0]
+        self.assertEqual('::', qualifier.sourceAddress.addressPrefix)
+        self.assertEqual('0', qualifier.sourceAddress.prefixLength)
+        self.assertEqual('::', qualifier.destinationAddress.addressPrefix)
+        self.assertEqual('0', qualifier.destinationAddress.prefixLength)
+
+    def test_build_ethertype_protocol(self):
+        for name, rfc in util.PROTOCOL.iteritems():
+            builder = self._create_builder(protocol=name)
+            rule = builder.build(20)
+            qualifier = rule.qualifier[0]
+            self.assertEqual(rfc,
+                             qualifier.protocol.value,
+                             'Wrong value for %s protocol' % name)
+
+        builder = self._create_builder(protocol='not_described')
+        rule = builder.build(20)
+        qualifier = rule.qualifier[0]
+        self.assertEqual('not_described',
+                         qualifier.protocol.value)
+
+    def test__has_port_for_icmp(self):
+        builder = self._create_builder(protocol='icmp')
+        self.assertFalse(builder._has_port(None))
+        self.assertFalse(builder._has_port(123))
+
+    def test__has_port_for_tcp(self):
+        builder = self._create_builder(protocol='tcp')
+        self.assertFalse(builder._has_port(None))
+        self.assertTrue(builder._has_port(123))
+
+    def test__cidr_spec_for_ip_range(self):
+        builder = self._create_builder()
+        cidr_spec = builder._cidr_spec('192.168.0.2/24')
+        self.assertEqual('ns0:IpRange', cidr_spec._mock_name)
+        self.assertEqual('192.168.0.2', cidr_spec.addressPrefix)
+        self.assertEqual('24', cidr_spec.prefixLength)
+
+    def test__cidr_spec_for_single_ip(self):
+        builder = self._create_builder()
+        cidr_spec = builder._cidr_spec('192.168.0.2')
+        self.assertEqual('ns0:SingleIp', cidr_spec._mock_name)
+        self.assertEqual('192.168.0.2', cidr_spec.address)
+
+    def test__port_spec_for_single_port(self):
+        builder = self._create_builder()
+        port_spec = builder._port_range_spec(22, 22)
+        self.assertEqual('ns0:DvsSingleIpPort', port_spec._mock_name)
+        self.assertEqual(22, port_spec.portNumber)
+
+    def test__port_spec_for_port_range(self):
+        builder = self._create_builder()
+        port_spec = builder._port_range_spec(22, 121)
+        self.assertEqual('ns0:DvsIpPortRange', port_spec._mock_name)
+        self.assertEqual(22, port_spec.startPortNumber)
+        self.assertEqual(121, port_spec.endPortNumber)
