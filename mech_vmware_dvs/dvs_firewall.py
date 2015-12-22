@@ -18,10 +18,9 @@ from neutron.agent import firewall
 from neutron.common import constants
 from neutron.i18n import _LI
 from oslo_log import log as logging
-from oslo.vmware import exceptions as vmware_exceptions
 
 from mech_vmware_dvs import config
-from mech_vmware_dvs import exceptions
+from mech_vmware_dvs import security_group_utils as sg_util
 from mech_vmware_dvs import util
 LOG = logging.getLogger(__name__)
 
@@ -44,7 +43,6 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         # Map for known port and dvs it is connected to.
         self.dvs_port_map = {}
 
-    @util.wrap_retry
     def prepare_port_filter(self, port):
         self.dvs_ports[port['device']] = port
         self._apply_sg_rules_for_ports(port)
@@ -55,7 +53,6 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         # Called for setting port in dvs_port_map
         self._get_dvs_for_port_id(port['id'])
 
-    @util.wrap_retry
     def update_port_filter(self, port):
         self.dvs_ports[port['device']] = port
         self._apply_sg_rules_for_ports(port)
@@ -63,12 +60,15 @@ class DVSFirewallDriver(firewall.FirewallDriver):
 
     def remove_port_filter(self, port):
         self.dvs_ports.pop(port['device'], None)
+        if port['id'] in self.dvs_port_map.values():
+            for dvs in self.dvs_port_map.keys():
+                if port['id'] in self.dvs_port_map[dvs]:
+                    self.dvs_port_map[dvs].remove(port['id'])
 
     @property
     def ports(self):
         return self.dvs_ports
 
-    @util.wrap_retry
     def update_security_group_rules(self, sg_id, sg_rules):
         if sg_id in sg_rules and self.sg_rules[sg_id] == sg_rules:
             return
@@ -76,7 +76,6 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         self._update_sg_rules_for_ports(sg_id)
         LOG.debug("Update rules of security group (%s)", sg_id)
 
-    @util.wrap_retry
     def update_security_group_members(self, sg_id, sg_members):
         updated = False
         for sg, rules in self.sg_rules.items():
@@ -102,7 +101,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                     port['security_group_rules'] = self.sg_rules[sg]
 
         dvs = self._get_dvs_for_port_id(port['id'])
-        self.update_port_rules(dvs, [port])
+        sg_util.update_port_rules(dvs, [port])
 
     def _get_dvs_for_port_id(self, port_id):
         if port_id not in self.dvs_port_map.keys():
@@ -129,7 +128,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
             for id in ids:
                 p.append(port_ids[id])
             if p:
-                self.update_port_rules(dvs, p)
+                sg_util.update_port_rules(dvs, p)
 
     def filter_defer_apply_on(self):
         if not self._defer_apply:
@@ -232,26 +231,3 @@ class DVSFirewallDriver(firewall.FirewallDriver):
             self._defer_apply = False
             self._remove_unused_security_group_info()
             self._pre_defer_filtered_ports = None
-
-    def update_port_rules(self, dvs, ports):
-        list_ports = dvs._get_ports()
-        try:
-            builder = util.SpecBuilder(dvs.connection.vim.client.factory)
-            port_config_list = []
-            for port in ports:
-                port_info = dvs._get_port_info_by_name(port['id'], list_ports)
-                port_config = builder.port_config(
-                    str(port_info['key']),
-                    port['security_group_rules']
-                )
-                port_config.configVersion = port_info['config'][
-                    'configVersion']
-                port_config_list.append(port_config)
-            task = dvs.connection.invoke_api(
-                dvs.connection.vim,
-                'ReconfigureDVPort_Task',
-                dvs._dvs, port=port_config_list
-            )
-            return dvs.connection.wait_for_task(task)
-        except vmware_exceptions.VimException as e:
-            raise exceptions.wrap_wmvare_vim_exception(e)

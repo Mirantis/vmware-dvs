@@ -13,8 +13,13 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from mech_vmware_dvs import security_group_utils as util
+import mock
+
+from neutron.tests import base
+
+from mech_vmware_dvs import security_group_utils as sg_util
 from mech_vmware_dvs.tests import test_util
+from mech_vmware_dvs import util
 
 
 class TrafficRuleBuilderBaseTestCase(test_util.UtilBaseTestCase):
@@ -35,7 +40,7 @@ class TrafficRuleBuilderBaseTestCase(test_util.UtilBaseTestCase):
 class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
 
     def _create_builder(self, ethertype=None, protocol=None, name=None):
-        class ConcreteTrafficRuleBuilder(util.TrafficRuleBuilder):
+        class ConcreteTrafficRuleBuilder(sg_util.TrafficRuleBuilder):
 
             def port_range(self, start, end):
                 pass
@@ -70,7 +75,7 @@ class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
         self.assertEqual('0', qualifier.destinationAddress.prefixLength)
 
     def test_build_ethertype_protocol(self):
-        for name, rfc in util.PROTOCOL.iteritems():
+        for name, rfc in sg_util.PROTOCOL.iteritems():
             builder = self._create_builder(protocol=name)
             rule = builder.build(20)
             qualifier = rule.qualifier[0]
@@ -119,3 +124,87 @@ class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
         self.assertEqual('ns0:DvsIpPortRange', port_spec._mock_name)
         self.assertEqual(22, port_spec.startPortNumber)
         self.assertEqual(121, port_spec.endPortNumber)
+
+
+class SpecBuilderSecurityGroupsTestCase(base.BaseTestCase):
+
+    def setUp(self):
+        super(SpecBuilderSecurityGroupsTestCase, self).setUp()
+        self.spec = mock.Mock(name='spec')
+        self.factory = mock.Mock(name='factory')
+        self.factory.create.return_value = self.spec
+        self.builder = util.SpecBuilder(self.factory)
+
+    def test__create_rule_egress(self):
+        rule = self._create_rule(direction='egress')
+        self.assertEqual(rule.direction, 'outgoingPackets')
+
+    def test__create_rule_ingress(self):
+        rule = self._create_rule(direction='ingress')
+        self.assertEqual(rule.direction, 'incomingPackets')
+
+    def test__create_rule_ingress_port_range(self):
+        rule = self._create_rule(direction='ingress',
+                                 port_range_min=22,
+                                 port_range_max=23)
+        qualifier = rule.qualifier[0]
+        self.assertEqual(qualifier.sourceIpPort.startPortNumber, 32768)
+        self.assertEqual(qualifier.sourceIpPort.endPortNumber, 65535)
+        self.assertEqual(qualifier.destinationIpPort.startPortNumber, 22)
+        self.assertEqual(qualifier.destinationIpPort.endPortNumber, 23)
+
+    def test__create_rule_egress_port_range(self):
+        rule = self._create_rule(direction='egress',
+                                 port_range_min=22,
+                                 port_range_max=23)
+        qualifier = rule.qualifier[0]
+        self.assertEqual(qualifier.destinationIpPort.startPortNumber, 22)
+        self.assertEqual(qualifier.destinationIpPort.endPortNumber, 23)
+
+    def test__create_rule_ingress_cidr(self):
+        rule = self._create_rule(direction='ingress',
+                                 source_ip_prefix='192.168.0.1/24')
+        qualifier = rule.qualifier[0]
+        self.assertEqual('192.168.0.1', qualifier.sourceAddress.addressPrefix)
+        self.assertEqual('0.0.0.0', qualifier.destinationAddress.addressPrefix)
+
+    def test__create_rule_egress_cidr(self):
+        rule = self._create_rule(direction='egress',
+                                 dest_ip_prefix='192.168.0.1/24')
+        qualifier = rule.qualifier[0]
+        self.assertEqual('192.168.0.1',
+                         qualifier.destinationAddress.addressPrefix)
+        self.assertEqual('0.0.0.0', qualifier.sourceAddress.addressPrefix)
+
+    def test__create_rule_egress_ip(self):
+        rule = self._create_rule(direction='egress',
+                                 dest_ip_prefix='192.168.0.1/24',
+                                 ip='10.20.0.2')
+        qualifier = rule.qualifier[0]
+        self.assertEqual('10.20.0.2',
+                         qualifier.destinationAddress.address)
+        self.assertEqual('0.0.0.0', qualifier.sourceAddress.addressPrefix)
+
+    def test__create_rule_ingress_ip(self):
+        rule = self._create_rule(direction='ingress',
+                                 dest_ip_prefix='192.168.0.1/24',
+                                 ip='10.20.0.2')
+        qualifier = rule.qualifier[0]
+        self.assertEqual('0.0.0.0',
+                         qualifier.destinationAddress.addressPrefix)
+        self.assertEqual('10.20.0.2', qualifier.sourceAddress.address)
+
+    def _create_rule(self, ip=None, **kwargs):
+        def side_effect(name):
+            return mock.Mock(name=name)
+
+        self.factory.create.side_effect = side_effect
+
+        rule_info = {'direction': 'egress',
+                     'protocol': 'tcp',
+                     'ethertype': 'IPv4'}
+        rule_info.update(kwargs)
+        rule = sg_util._create_rule(self.builder, rule_info, ip)
+        result = rule.build(25)
+        self.assertEqual(result.sequence, 25)
+        return result

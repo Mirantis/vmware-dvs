@@ -15,9 +15,13 @@
 import abc
 
 from oslo_log import log
+from oslo.vmware import exceptions as vmware_exceptions
 import six
 
-from neutron.i18n import _LI
+from neutron.i18n import _LI, _LW
+
+from mech_vmware_dvs import exceptions
+from mech_vmware_dvs import util
 
 LOG = log.getLogger(__name__)
 
@@ -183,3 +187,96 @@ class EgressRule(TrafficRuleBuilder):
 
 class DropAllRule(TrafficRuleBuilder):
     action = 'ns0:DvsDropNetworkRuleAction'
+
+
+@util.wrap_retry
+def update_port_rules(dvs, ports):
+    list_ports = dvs.get_ports()
+    try:
+        builder = util.SpecBuilder(dvs.connection.vim.client.factory)
+        port_config_list = []
+        for port in ports:
+            try:
+                port_info = dvs.get_port_info_by_name(port['id'], list_ports)
+            except exceptions.PortNotFound:
+                LOG.warn(_LW("Port %s was not found. Security rules can not be"
+                             " applied."), port['id'])
+                continue
+            port_config = port_configuration(builder,
+                str(port_info['key']),
+                port['security_group_rules']
+            )
+            port_config.configVersion = port_info['config'][
+                'configVersion']
+            port_config_list.append(port_config)
+        if port_config_list:
+            task = dvs.connection.invoke_api(
+                dvs.connection.vim,
+                'ReconfigureDVPort_Task',
+                dvs._dvs, port=port_config_list
+            )
+            return dvs.connection.wait_for_task(task)
+    except vmware_exceptions.VimException as e:
+        raise exceptions.wrap_wmvare_vim_exception(e)
+
+
+def port_configuration(builder, port_key, sg_rules):
+    rules = []
+    reversed_rules = []
+    seq = 0
+    for rule_info in sg_rules:
+        if 'ip_set' in rule_info:
+            for ip in rule_info['ip_set']:
+                rule = _create_rule(builder, rule_info, ip,
+                                    name='remote security group')
+                rules.append(rule.build(seq))
+                seq += 10
+                reversed_rules.append(rule.reverse())
+        else:
+            rule = _create_rule(builder, rule_info, name='regural')
+            rules.append(rule.build(seq))
+            seq += 10
+            reversed_rules.append(rule.reverse())
+
+    for r in reversed_rules:
+        rules.append(r.build(seq))
+        seq += 10
+
+    for i, protocol in enumerate(PROTOCOL.values()):
+        rules.append(
+            DropAllRule(builder.factory, None, protocol,
+                        name='drop all').build(seq + i * 10))
+
+    filter_policy = builder.filter_policy(rules)
+    setting = builder.port_setting()
+    setting.filterPolicy = filter_policy
+
+    spec = builder.factory.create('ns0:DVPortConfigSpec')
+    spec.operation = 'edit'
+    spec.setting = setting
+    spec.key = port_key
+    return spec
+
+
+def _create_rule(builder, rule_info, ip=None, name=None):
+    if rule_info['direction'] == 'ingress':
+        rule_class = IngressRule
+        cidr = rule_info.get('source_ip_prefix')
+    else:
+        rule_class = EgressRule
+        cidr = rule_info.get('dest_ip_prefix')
+    rule = rule_class(
+        spec_factory=builder.factory,
+        ethertype=rule_info['ethertype'],
+        protocol=rule_info.get('protocol'),
+        name=name
+    )
+    rule.cidr = ip or cidr
+
+    if rule_info.get('protocol') in ('tcp', 'udp'):
+        rule.port_range = (rule_info.get('port_range_min'),
+                           rule_info.get('port_range_max'))
+        rule.backward_port_range = (
+            rule_info.get('source_port_range_min') or 32768,
+            rule_info.get('source_port_range_max') or 65535)
+    return rule
