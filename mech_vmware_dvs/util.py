@@ -26,7 +26,6 @@ from oslo.vmware import vim_util
 from neutron.i18n import _LI, _LW, _
 
 from mech_vmware_dvs import exceptions
-from mech_vmware_dvs import security_group_utils as sg_utils
 
 LOG = log.getLogger(__name__)
 
@@ -53,6 +52,10 @@ LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect "\
 
 DELETED_TEXT = "The object has already been deleted or has not been "\
                "completely created"
+
+#TODO(akamyshnikova):added for testing, remove later
+CANNOT_COMPLETE_OPERATION = 'Cannot complete a vSphere Distributed Switch ' \
+                            'operation for one or more host members.'
 
 
 class DVSController(object):
@@ -143,7 +146,7 @@ class DVSController(object):
     def switch_port_blocked_state(self, port):
         state = not port['admin_state_up']
 
-        port_info = self._get_port_info_by_name(port['id'])
+        port_info = self.get_port_info_by_name(port['id'])
 
         builder = SpecBuilder(self.connection.vim.client.factory)
         port_settings = builder.port_setting()
@@ -188,7 +191,7 @@ class DVSController(object):
             raise exceptions.wrap_wmvare_vim_exception(e)
 
     def release_port(self, port):
-        port_info = self._get_port_info_by_name(port['id'])
+        port_info = self.get_port_info_by_name(port['id'])
         builder = SpecBuilder(self.connection.vim.client.factory)
         update_spec = builder.port_config_spec(
             port_info.config.configVersion, name='')
@@ -356,9 +359,9 @@ class DVSController(object):
             'FetchDVPorts',
             self._dvs, criteria=criteria)[0]
 
-    def _get_port_info_by_name(self, name, port_list=None):
+    def get_port_info_by_name(self, name, port_list=None):
         if port_list is None:
-            port_list = self._get_ports()
+            port_list = self.get_ports()
         ports = [port for port in port_list
                  if port.config.name == name]
         if not ports:
@@ -368,7 +371,7 @@ class DVSController(object):
                 LOG.warn(_LW("Multiple ports found for name %s."), name)
         return ports[0]
 
-    def _get_ports(self):
+    def get_ports(self):
         ports = []
         net_list = self.connection.invoke_api(
             vim_util, 'get_object_property', self.connection.vim,
@@ -392,7 +395,7 @@ class DVSController(object):
         return ports
 
     def _get_ports_ids(self):
-        return [port.config.name for port in self._get_ports()]
+        return [port.config.name for port in self.get_ports()]
 
     def _valid_uuid(self, name):
         try:
@@ -453,66 +456,6 @@ class SpecBuilder(object):
         else:
             filter_policy.inherited = '1'
         return filter_policy
-
-    def port_config(self, port_key, sg_rules):
-        rules = []
-        reversed_rules = []
-        seq = 0
-        for rule_info in sg_rules:
-            if 'ip_set' in rule_info:
-                for ip in rule_info['ip_set']:
-                    rule = self._create_rule(rule_info, ip,
-                                             name='remote security group')
-                    rules.append(rule.build(seq))
-                    seq += 10
-                    reversed_rules.append(rule.reverse())
-            else:
-                rule = self._create_rule(rule_info, name='regural')
-                rules.append(rule.build(seq))
-                seq += 10
-                reversed_rules.append(rule.reverse())
-
-        for r in reversed_rules:
-            rules.append(r.build(seq))
-            seq += 10
-
-        for i, protocol in enumerate(PROTOCOL.values()):
-            rules.append(
-                sg_utils.DropAllRule(self.factory, None, protocol,
-                                     name='drop all').build(seq + i * 10))
-
-        filter_policy = self.filter_policy(rules)
-        setting = self.port_setting()
-        setting.filterPolicy = filter_policy
-
-        spec = self.factory.create('ns0:DVPortConfigSpec')
-        spec.operation = 'edit'
-        spec.setting = setting
-        spec.key = port_key
-        return spec
-
-    def _create_rule(self, rule_info, ip=None, name=None):
-        if rule_info['direction'] == 'ingress':
-            rule_class = sg_utils.IngressRule
-            cidr = rule_info.get('source_ip_prefix')
-        else:
-            rule_class = sg_utils.EgressRule
-            cidr = rule_info.get('dest_ip_prefix')
-        rule = rule_class(
-            spec_factory=self.factory,
-            ethertype=rule_info['ethertype'],
-            protocol=rule_info.get('protocol'),
-            name=name
-        )
-        rule.cidr = ip or cidr
-
-        if rule_info.get('protocol') in ('tcp', 'udp'):
-            rule.port_range = (rule_info.get('port_range_min'),
-                               rule_info.get('port_range_max'))
-            rule.backward_port_range = (
-                rule_info.get('source_port_range_min') or 32768,
-                rule_info.get('source_port_range_max') or 65535)
-        return rule
 
     def port_criteria(self, port_key=None, port_group_key=None):
         criteria = self.factory.create(
@@ -579,7 +522,8 @@ def wrap_retry(func):
                 return func(*args, **kwargs)
             except (vmware_exceptions.VMwareDriverException,
                     exceptions.VMWareDVSException) as e:
-                if CONCURRENT_MODIFICATION_TEXT in e.message:
+                if (CONCURRENT_MODIFICATION_TEXT in e.message or
+                        CANNOT_COMPLETE_OPERATION in e.message):
                     continue
                 elif (LOGIN_PROBLEM_TEXT in getattr(e, 'msg', '')
                         and login_failures < LOGIN_RETRIES - 1):

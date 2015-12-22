@@ -512,7 +512,7 @@ class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
         dvs_port.config.setting.blocked.value = True
 
         with mock.patch.object(
-                self.controller, '_get_port_info_by_name',
+                self.controller, 'get_port_info_by_name',
                 return_value=dvs_port):
 
             self.controller.switch_port_blocked_state(fake_port)
@@ -621,80 +621,6 @@ class SpecBuilderTestCase(base.BaseTestCase):
         self.assertEqual(criteria.portgroupKey, '_port_group_key')
         self.assertEqual(criteria.inside, '1')
         self.assertNotIn('portKey', dir(criteria))
-
-    def test__create_rule_egress(self):
-        rule = self._create_rule(direction='egress')
-        self.assertEqual(rule.direction, 'outgoingPackets')
-
-    def test__create_rule_ingress(self):
-        rule = self._create_rule(direction='ingress')
-        self.assertEqual(rule.direction, 'incomingPackets')
-
-    def test__create_rule_ingress_port_range(self):
-        rule = self._create_rule(direction='ingress',
-                                 port_range_min=22,
-                                 port_range_max=23)
-        qualifier = rule.qualifier[0]
-        self.assertEqual(qualifier.sourceIpPort.startPortNumber, 32768)
-        self.assertEqual(qualifier.sourceIpPort.endPortNumber, 65535)
-        self.assertEqual(qualifier.destinationIpPort.startPortNumber, 22)
-        self.assertEqual(qualifier.destinationIpPort.endPortNumber, 23)
-
-    def test__create_rule_egress_port_range(self):
-        rule = self._create_rule(direction='egress',
-                                 port_range_min=22,
-                                 port_range_max=23)
-        qualifier = rule.qualifier[0]
-        self.assertEqual(qualifier.destinationIpPort.startPortNumber, 22)
-        self.assertEqual(qualifier.destinationIpPort.endPortNumber, 23)
-
-    def test__create_rule_ingress_cidr(self):
-        rule = self._create_rule(direction='ingress',
-                                 source_ip_prefix='192.168.0.1/24')
-        qualifier = rule.qualifier[0]
-        self.assertEqual('192.168.0.1', qualifier.sourceAddress.addressPrefix)
-        self.assertEqual('0.0.0.0', qualifier.destinationAddress.addressPrefix)
-
-    def test__create_rule_egress_cidr(self):
-        rule = self._create_rule(direction='egress',
-                                 dest_ip_prefix='192.168.0.1/24')
-        qualifier = rule.qualifier[0]
-        self.assertEqual('192.168.0.1',
-                         qualifier.destinationAddress.addressPrefix)
-        self.assertEqual('0.0.0.0', qualifier.sourceAddress.addressPrefix)
-
-    def test__create_rule_egress_ip(self):
-        rule = self._create_rule(direction='egress',
-                                 dest_ip_prefix='192.168.0.1/24',
-                                 ip='10.20.0.2')
-        qualifier = rule.qualifier[0]
-        self.assertEqual('10.20.0.2',
-                         qualifier.destinationAddress.address)
-        self.assertEqual('0.0.0.0', qualifier.sourceAddress.addressPrefix)
-
-    def test__create_rule_ingress_ip(self):
-        rule = self._create_rule(direction='ingress',
-                                 dest_ip_prefix='192.168.0.1/24',
-                                 ip='10.20.0.2')
-        qualifier = rule.qualifier[0]
-        self.assertEqual('0.0.0.0',
-                         qualifier.destinationAddress.addressPrefix)
-        self.assertEqual('10.20.0.2', qualifier.sourceAddress.address)
-
-    def _create_rule(self, ip=None, **kwargs):
-        def side_effect(name):
-            return mock.Mock(name=name)
-
-        self.factory.create.side_effect = side_effect
-
-        rule_info = {'direction': 'egress',
-                     'protocol': 'tcp',
-                     'ethertype': 'IPv4'}
-        rule_info.update(kwargs)
-        rule = self.builder._create_rule(rule_info, ip)
-        result = rule.build(25)
-        self.assertEqual(result.sequence, 25)
-        return result
 
 
 class UtilTestCase(base.BaseTestCase):
