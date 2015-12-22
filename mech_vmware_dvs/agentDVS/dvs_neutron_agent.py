@@ -1,3 +1,17 @@
+# Copyright 2015 Mirantis, Inc.
+# All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
 import sys
 import signal
 import time
@@ -13,8 +27,8 @@ from neutron.common import constants as n_const
 from neutron.i18n import _LE, _LI
 from neutron.agent import rpc as agent_rpc
 from neutron.agent import securitygroups_rpc as sg_rpc
-from neutron.agent.common import polling
-from neutron.agent.linux import ip_lib
+# from neutron.agent.common import polling
+# from neutron.agent.linux import ip_lib
 from neutron import context
 from neutron.plugins.common import constants
 from oslo_service import loopingcall
@@ -93,6 +107,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
         self.quitting_rpc_timeout = quitting_rpc_timeout
         self.network_map = util.create_network_map_from_config(
             cfg.CONF.ML2_VMWARE)
+        self.updated_ports = set()
+        self.deleted_ports = set()
 
     @util.wrap_retry
     def create_network_precommit(self, current, segment):
@@ -305,26 +321,29 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
         self.run_daemon_loop = False
 
     def daemon_loop(self):
-        with polling.get_polling_manager(self.minimize_polling) as pm:
-            self.rpc_loop(polling_manager=pm)
+        # with polling.get_polling_manager(self.minimize_polling) as pm:
+        self.rpc_loop()
+        # (polling_manager=pm)
 
     def rpc_loop(self, polling_manager=None):
-        if not polling_manager:
-            polling_manager = polling.get_polling_manager(
-                minimize_polling=False)
+        # if not polling_manager:
+        #    polling_manager = polling.get_polling_manager(
+        #        minimize_polling=False)
         while self.run_daemon_loop:
             start = time.time()
             if self.fullsync:
                 LOG.info(_LI("Agent out of sync with plugin!"))
                 self.fullsync = False
-                polling_manager.force_polling()
+                # polling_manager.force_polling()
             if self._agent_has_updates(polling_manager):
                 LOG.debug("Agent rpc_loop - update")
+                self.process_ports()
             self.loop_count_and_wait(start)
 
     def _agent_has_updates(self, polling_manager):
-        return (polling_manager.is_polling_required or
-                self.sg_agent.firewall_refresh_needed())
+        # return (polling_manager.is_polling_required or
+        #         self.sg_agent.firewall_refresh_needed())
+        return self.sg_agent.firewall_refresh_needed()
 
     def loop_count_and_wait(self, start_time):
         # sleep till end of polling interval
@@ -343,13 +362,28 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
         self.iter_num = self.iter_num + 1
 
     def process_ports(self):
-        pass
+        self.added_ports = self._get_dvs_ports()
+        LOG.info(_LI("Added ports %s"), self.added_ports)
+        self.sg_agent.setup_port_filters(self.added_ports, self.updated_ports)
 
     def port_update(self, context, **kwargs):
-        pass
+        port = kwargs.get('port')
+        self.updated_ports.add(port['id'])
+        LOG.debug("port_update message processed for port %s", port['id'])
 
     def port_delete(self, context, **kwargs):
-        pass
+        port_id = kwargs.get('port_id')
+        self.deleted_ports.add(port_id)
+        self.updated_ports.discard(port_id)
+        LOG.debug("port_delete message processed for port %s", port_id)
+
+    def _get_dvs_ports(self):
+        ports = set()
+        dvs_list = self.network_map.values()
+        for dvs in dvs_list:
+            LOG.debug("Take port ids for dvs %s", dvs)
+            ports.update(dvs._get_ports_ids())
+        return ports
 
 
 def create_agent_config_map(config):
@@ -378,7 +412,7 @@ def create_agent_config_map(config):
 
 def main():
 
-    cfg.CONF.register_opts(ip_lib.OPTS)
+    # cfg.CONF.register_opts(ip_lib.OPTS)
     common_config.init(sys.argv[1:])
     common_config.setup_logging()
     utils.log_opt_values(LOG)

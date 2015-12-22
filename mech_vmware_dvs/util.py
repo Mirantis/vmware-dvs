@@ -417,10 +417,11 @@ class DVSController(object):
         """pg - ManagedObjectReference of Port Group"""
         builder = SpecBuilder(self.connection.vim.client.factory)
         criteria = builder.port_criteria(port_key=port_key)
-        return self.connection.invoke_api(
+        port_info = self.connection.invoke_api(
             self.connection.vim,
             'FetchDVPorts',
-            self._dvs, criteria=criteria)[0]
+            self._dvs, criteria=criteria)
+        return port_info[0]
 
     def _get_port_info_by_name(self, name, port_list=None):
         if port_list is None:
@@ -436,7 +437,7 @@ class DVSController(object):
         ports = []
         net_list = self.connection.invoke_api(
             vim_util, 'get_object_property', self.connection.vim,
-            self._datacenter, 'network').ManagedObjectReference
+            self._dvs, 'portgroup').ManagedObjectReference
         type_value = 'DistributedVirtualPortgroup'
         pg_list = self._get_object_by_type(net_list, type_value)
         port_keys = []
@@ -447,13 +448,16 @@ class DVSController(object):
                                             'portKeys')
             if not isinstance(pk, basestring):
                 port_keys = port_keys + pk[0]
-
         for port_key in port_keys:
             port = self._get_port_info_by_portkey(port_key)
+
             if (getattr(port.config, 'name', None) is not None and
                     self._valid_uuid(port.config.name)):
                 ports.append(port)
         return ports
+
+    def _get_ports_ids(self):
+        return [port.config.name for port in self._get_ports()]
 
     def _valid_uuid(self, name):
         try:
