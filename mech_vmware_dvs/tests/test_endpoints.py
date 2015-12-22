@@ -62,8 +62,7 @@ class EndPointBaseTestCase(base.BaseTestCase):
 
         self.endpoint = ConcreteEndPoint(self.driver)
 
-    @mock.patch('neutron.policy.get_admin_roles')
-    def test_update_security_group(self, get_admin_roles):
+    def test_update_security_group(self):
         def PortContext(plugin, plugin_context, port, network, binding,
                         binding_levels, original_port=None):
             expected = Context.from_dict(fake_endpoint_context)

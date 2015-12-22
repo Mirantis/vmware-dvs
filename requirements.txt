@@ -2,14 +2,14 @@
 # of appearance. Changing the order has an impact on the overall integration
 # process, which may cause wedges in the gate later.
 
-#pbr>=0.6,!=0.7,<1.0
-oslo.vmware>=0.6.0
-#,<=0.11.3
+pbr>=1.8.0,<2.0.0
+oslo.vmware>=1.21.0,<2.0.0
 #-e git://git.openstack.org/openstack/python-novaclient#egg=python-novaclient
 #-e git+git://github.com/yunesj/suds#egg=suds
-#oslo.log<=1.1.0
-#oslo.messaging<1.8.4
-#oslo.config<1.10.0,>=1.9.3
-oslo.i18n<2.0.0
-oslo.utils<2.0.0
-#oslo.serialization<1.4.1
+oslo.log>=1.11.0,<2.0.0
+oslo.messaging>=2.5.0,<3.0.0
+oslo.config>=2.4.0,<3.0.0
+oslo.i18n>=2.6.0,<3.0.0
+oslo.utils>=2.5.0,<3.0.0
+oslo.serialization>=1.9.0,<2.0.0
+#novaclient>=2.30.2
