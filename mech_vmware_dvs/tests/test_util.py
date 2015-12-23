@@ -402,7 +402,7 @@ class DVSControllerNetworkUpdateTestCase(DVSControllerBaseTestCase):
                         return mock.Mock(objects=[
                             mock.Mock(obj='datacenter1')])
                 elif method == 'get_object_property':
-                    if args == (vim, 'datacenter1', 'network'):
+                    if args == (vim, self.dvs, 'portgroup'):
                         return mock.Mock(ManagedObjectReference=objects)
                     elif args == (vim, wrong_pg, 'name'):
                         return 'wrong_pg'
@@ -478,7 +478,7 @@ class DVSControllerNetworkDeletionTestCase(DVSControllerBaseTestCase):
                         return mock.Mock(objects=[
                             mock.Mock(obj='datacenter1')])
                 elif method == 'get_object_property':
-                    if args == (vim, 'datacenter1', 'network'):
+                    if args == (vim, self.dvs, 'portgroup'):
                         return mock.Mock(ManagedObjectReference=objects)
                     elif args == (vim, wrong_pg, 'name'):
                         return 'wrong_pg'

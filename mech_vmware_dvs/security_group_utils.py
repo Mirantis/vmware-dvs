@@ -227,6 +227,7 @@ def port_configuration(builder, port_key, sg_rules):
     for rule_info in sg_rules:
         if 'ip_set' in rule_info:
             for ip in rule_info['ip_set']:
+                ip = ip + '/32' if '/' not in ip else ip
                 rule = _create_rule(builder, rule_info, ip,
                                     name='remote security group')
                 rules.append(rule.build(seq))

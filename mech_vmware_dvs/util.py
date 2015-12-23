@@ -266,7 +266,7 @@ class DVSController(object):
         """Get the dpg ref by name"""
         net_list = self.connection.invoke_api(
             vim_util, 'get_object_property', self.connection.vim,
-            self._datacenter, 'network').ManagedObjectReference
+            self._dvs, 'portgroup').ManagedObjectReference
         type_value = 'DistributedVirtualPortgroup'
         pg_list = self._get_object_by_type(net_list, type_value)
         for pg in pg_list:
@@ -375,7 +375,7 @@ class DVSController(object):
         ports = []
         net_list = self.connection.invoke_api(
             vim_util, 'get_object_property', self.connection.vim,
-            self._datacenter, 'network').ManagedObjectReference
+            self._dvs, 'portgroup').ManagedObjectReference
         type_value = 'DistributedVirtualPortgroup'
         pg_list = self._get_object_by_type(net_list, type_value)
         port_keys = []
@@ -522,9 +522,11 @@ def wrap_retry(func):
                 return func(*args, **kwargs)
             except (vmware_exceptions.VMwareDriverException,
                     exceptions.VMWareDVSException) as e:
-                if (CONCURRENT_MODIFICATION_TEXT in e.message or
-                        CANNOT_COMPLETE_OPERATION in e.message):
+                if CONCURRENT_MODIFICATION_TEXT in e.message:
                     continue
+                #TODO(akamyshnikova) for testing, remove later
+                elif CANNOT_COMPLETE_OPERATION in e.message:
+                    pass
                 elif (LOGIN_PROBLEM_TEXT in getattr(e, 'msg', '')
                         and login_failures < LOGIN_RETRIES - 1):
                     login_failures += 1
