@@ -107,7 +107,7 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
         self.topic = topics.AGENT
         self.plugin_rpc = DVSPluginApi(topics.PLUGIN)
         self.sg_plugin_rpc = sg_rpc.SecurityGroupServerRpcApi(topics.PLUGIN)
-        self.state_rpc = agent_rpc.PluginReportStateAPI(topics.REPORTS)
+        self.state_rpc = agent_rpc.PluginReportStateAPI(topics.PLUGIN)
 
         consumers = [
             [topics.PORT, topics.CREATE],
@@ -188,6 +188,7 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
     def process_ports(self):
         LOG.debug("Process deleted ports")
         self.sg_agent.remove_devices_filter(self.deleted_ports)
+        self.deleted_ports = set()
         self.known_ports |= self.added_ports
         self.added_ports = self._get_dvs_ports() - self.known_ports
         LOG.info(_LI("Added ports %s"), self.added_ports)
