@@ -136,11 +136,14 @@ class DVSControllerBaseTestCase(UtilBaseTestCase):
         self.connection = self._get_connection_mock(self.dvs_name)
 
         self.datacenter = 'datacenter1'
-        self.use_patch('mech_vmware_dvs.util.DVSController._get_datacenter',
-                       return_value=self.datacenter)
+        #self.use_patch('mech_vmware_dvs.util.DVSController._get_datacenter',
+        #               return_value=self.datacenter)
         self.dvs = mock.Mock()
+        dvs_param = [self.dvs, self.datacenter]
         self.use_patch('mech_vmware_dvs.util.DVSController._get_dvs',
-                       return_value=self.dvs)
+                       return_value=dvs_param)
+        self.dvs = dvs_param[0]
+        self.datacenter = dvs_param[1]
 
         self.controller = util.DVSController(self.dvs_name, self.connection)
 
@@ -810,7 +813,7 @@ class UtilTestCase(base.BaseTestCase):
             util.create_network_map_from_config(CONF.ml2_vmware))
 
     @mock.patch('mech_vmware_dvs.util.DVSController._get_dvs')
-    @mock.patch('mech_vmware_dvs.util.DVSController._get_datacenter')
+    #@mock.patch('mech_vmware_dvs.util.DVSController._get_datacenter')
     def test_creates_network_map_from_conf(self, *args):
         network_map = ['physnet1:dvSwitch', 'physnet2:dvSwitch1']
         CONF.set_override(
