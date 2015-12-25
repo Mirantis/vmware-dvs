@@ -53,10 +53,6 @@ LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect "\
 DELETED_TEXT = "The object has already been deleted or has not been "\
                "completely created"
 
-#TODO(akamyshnikova):added for testing, remove later
-CANNOT_COMPLETE_OPERATION = 'Cannot complete a vSphere Distributed Switch ' \
-                            'operation for one or more host members.'
-
 
 class DVSController(object):
     """Controls one DVS."""
@@ -513,9 +509,6 @@ def wrap_retry(func):
                     exceptions.VMWareDVSException) as e:
                 if CONCURRENT_MODIFICATION_TEXT in e.message:
                     continue
-                #TODO(akamyshnikova) for testing, remove later
-                elif CANNOT_COMPLETE_OPERATION in e.message:
-                    pass
                 elif (LOGIN_PROBLEM_TEXT in getattr(e, 'msg', '')
                         and login_failures < LOGIN_RETRIES - 1):
                     login_failures += 1
