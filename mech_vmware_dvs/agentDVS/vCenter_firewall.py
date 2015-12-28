@@ -87,6 +87,10 @@ class DVSFirewallDriver(firewall.FirewallDriver):
             self._update_sg_rules_for_ports(sg_id)
         LOG.debug("Update members of security group (%s)", sg_id)
 
+    def security_group_updated(self, action_type, sec_group_ids,
+                               device_id=None):
+        pass
+
     def _apply_sg_rules_for_ports(self, port):
         dev = port['device']
         sg_rules = 'security_group_rules'

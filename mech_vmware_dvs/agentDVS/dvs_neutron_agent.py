@@ -27,7 +27,7 @@ from neutron.common import constants as n_const
 from neutron.i18n import _LE, _LI
 from neutron.agent import rpc as agent_rpc
 from neutron.agent import securitygroups_rpc as sg_rpc
-# from neutron.agent.common import polling
+from neutron.agent.common import polling
 # from neutron.agent.linux import ip_lib
 from neutron import context
 from neutron.plugins.common import constants
@@ -52,7 +52,7 @@ class ExtendAPI(object):
         self.update_network_precommit(current, segment, original)
 
     def bind_port(self, context, current, network_segments, network_current):
-        self.book_port(current, network_segments, network_current)
+        return self.book_port(current, network_segments, network_current)
 
     def post_update_port(self, context, current, original, segment, sg_info):
         self.update_port_postcommit(current, original, segment, sg_info)
@@ -109,6 +109,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
             cfg.CONF.ML2_VMWARE)
         self.updated_ports = set()
         self.deleted_ports = set()
+        self.known_ports = set()
+        self.added_ports = set()
 
     @util.wrap_retry
     def create_network_precommit(self, current, segment):
@@ -154,10 +156,16 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
 
     @util.wrap_retry
     def book_port(self, current, network_segments, network_current):
+        physnet = network_current['provider:physical_network']
+        dvs = None
         for segment in network_segments:
-            dvs = self._lookup_dvs_for_context(segment)
+            if segment['physical_network'] == physnet:
+                dvs = self._lookup_dvs_for_context(segment)
+        if dvs:
             # TODO(ekosareva): port_key need to send back to server
-            dvs.book_port(network_current, current['id'])
+            return dvs.book_port(network_current, current['id'])
+        else:
+            return None
 
     @util.wrap_retry
     def update_port_postcommit(self, current, original, segment, sg_info):
@@ -321,29 +329,35 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
         self.run_daemon_loop = False
 
     def daemon_loop(self):
-        # with polling.get_polling_manager(self.minimize_polling) as pm:
-        self.rpc_loop()
-        # (polling_manager=pm)
+        with polling.get_polling_manager() as pm:
+            self.rpc_loop(polling_manager=pm)
 
     def rpc_loop(self, polling_manager=None):
-        # if not polling_manager:
-        #    polling_manager = polling.get_polling_manager(
-        #        minimize_polling=False)
+        if not polling_manager:
+            polling_manager = polling.get_polling_manager(
+                minimize_polling=False)
         while self.run_daemon_loop:
             start = time.time()
+            port_stats = {'regular': {'added': 0,
+                                      'updated': 0,
+                                      'removed': 0}}
             if self.fullsync:
                 LOG.info(_LI("Agent out of sync with plugin!"))
                 self.fullsync = False
-                # polling_manager.force_polling()
+                polling_manager.force_polling()
             if self._agent_has_updates(polling_manager):
                 LOG.debug("Agent rpc_loop - update")
                 self.process_ports()
+                port_stats['regular']['added'] = len(self.added_ports)
+                port_stats['regular']['updated'] = len(self.updated_ports)
+                port_stats['regular']['removed'] = len(self.deleted_ports)
+                polling_manager.polling_completed()
             self.loop_count_and_wait(start)
 
     def _agent_has_updates(self, polling_manager):
-        # return (polling_manager.is_polling_required or
-        #         self.sg_agent.firewall_refresh_needed())
-        return self.sg_agent.firewall_refresh_needed()
+        return (polling_manager.is_polling_required or
+                self.sg_agent.firewall_refresh_needed() or
+                self.updated_ports or self.deleted_ports)
 
     def loop_count_and_wait(self, start_time):
         # sleep till end of polling interval
@@ -362,7 +376,14 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
         self.iter_num = self.iter_num + 1
 
     def process_ports(self):
-        self.added_ports = self._get_dvs_ports()
+        LOG.debug("Process deleted ports")
+        self.sg_agent.remove_devices_filter(self.deleted_ports)
+        LOG.info(_LI("Deleted ports %s"), self.deleted_ports)
+        LOG.info(_LI("Known ports %s"), self.known_ports)
+        self.known_ports |= self.added_ports
+        LOG.info(_LI("Known ports %s"), self.known_ports)
+        LOG.info(_LI("Added? ports %s"), self.added_ports)
+        self.added_ports = self._get_dvs_ports() - self.known_ports
         LOG.info(_LI("Added ports %s"), self.added_ports)
         self.sg_agent.setup_port_filters(self.added_ports, self.updated_ports)
 
@@ -374,7 +395,9 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
     def port_delete(self, context, **kwargs):
         port_id = kwargs.get('port_id')
         self.deleted_ports.add(port_id)
-        self.updated_ports.discard(port_id)
+        self.known_ports.discard(port_id)
+        if port_id in self.added_ports:
+            self.added_ports.discard(port_id)
         LOG.debug("port_delete message processed for port %s", port_id)
 
     def _get_dvs_ports(self):

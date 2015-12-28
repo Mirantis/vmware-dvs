@@ -77,6 +77,10 @@ class DVSClientAPI(object):
                                    topic=self._get_security_group_topic(),
                                    fanout=True)
 
+    def _get_cctxt_direct(self, host):
+        return self.client.prepare(version=self.ver,
+                    topic=self._get_security_group_topic(host=host))
+
     def create_network_cast(self, current, segment):
         return self._get_cctxt().cast(self.context, 'create_network',
                                       current=current, segment=segment)
@@ -90,8 +94,8 @@ class DVSClientAPI(object):
                                       current=current, segment=segment,
                                       original=original)
 
-    def bind_port_cast(self, current, network_segments, network_current):
-        return self._get_cctxt().cast(self.context, 'bind_port',
+    def bind_port_call(self, current, network_segments, network_current, host):
+        return self._get_cctxt_direct(host).call(self.context, 'bind_port',
                                       current=current,
                                       network_segments=network_segments,
                                       network_current=network_current)
@@ -114,9 +118,7 @@ class DVSController(object):
         self.connection = connection
         try:
             self.dvs_name = dvs_name
-            ret = self._get_dvs(dvs_name, connection)
-            self._dvs = ret[0]
-            self._datacenter = ret[1]
+            self._dvs, self._datacenter = self._get_dvs(dvs_name, connection)
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
@@ -329,7 +331,7 @@ class DVSController(object):
                         vim_util, 'get_object_property',
                         connection.vim, dvs, 'name')
                     if name == dvs_name:
-                        return [dvs, datacenter]
+                        return dvs, datacenter
         raise exceptions.DVSNotFound(dvs_name=dvs_name)
 
     def _get_pg_by_name(self, pg_name):

@@ -812,8 +812,8 @@ class UtilTestCase(base.BaseTestCase):
             {},
             util.create_network_map_from_config(CONF.ml2_vmware))
 
-    @mock.patch('mech_vmware_dvs.util.DVSController._get_dvs')
-    #@mock.patch('mech_vmware_dvs.util.DVSController._get_datacenter')
+    @mock.patch('mech_vmware_dvs.util.DVSController._get_dvs',
+                return_value=(mock.Mock(), 'datacenter1'))
     def test_creates_network_map_from_conf(self, *args):
         network_map = ['physnet1:dvSwitch', 'physnet2:dvSwitch1']
         CONF.set_override(

@@ -16,9 +16,7 @@
 import six
 
 from oslo_log import log
-import oslo_messaging
 from neutron.common import constants as n_const
-from neutron.common import rpc as n_rpc
 from neutron.i18n import _LI
 from neutron.extensions import portbindings
 from neutron.plugins.common import constants
@@ -29,7 +27,6 @@ from neutron import context
 
 from mech_vmware_dvs import compute_util
 from mech_vmware_dvs import config
-from mech_vmware_dvs import endpoints
 from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util
 
@@ -87,13 +84,6 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     def initialize(self):
         self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)
-        listener = oslo_messaging.get_notification_listener(
-            n_rpc.TRANSPORT,
-            targets=[oslo_messaging.Target(topic='vmware_dvs')],
-            endpoints=[endpoints.SecurityGroupRuleCreateEndPoint(self),
-                       endpoints.SecurityGroupRuleDeleteEndPoint(self)],
-            executor='eventlet')
-        listener.start()
 
     def create_network_precommit(self, context):
         self.dvs_notifier.create_network_cast(context.current,
@@ -109,16 +99,19 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     @port_belongs_to_vmware
     def bind_port(self, context):
-        self.dvs_notifier.bind_port_cast(context.current,
+        print context.host
+        b_port = self.dvs_notifier.bind_port_call(context.current,
                                          context.network.network_segments,
-                                         context.network.current)
+                                         context.network.current, context.host)
         # TODO(ekosareva): currently a hack, need to check results from agent
         #                  and store port_key
+        vif_details = dict(self.vif_details)
+        vif_details['dvs_port_key'] = b_port
         for segment in context.network.network_segments:
             context.set_binding(
                 segment[driver_api.ID],
                 self.vif_type,
-                self.vif_details,
+                vif_details,
                 status=n_const.PORT_STATUS_ACTIVE)
 
     @port_belongs_to_vmware
