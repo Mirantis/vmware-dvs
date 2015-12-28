@@ -59,7 +59,6 @@ class DVSFirewallDriver(firewall.FirewallDriver):
 
     def remove_port_filter(self, port):
         self._remove_sg_from_dvs_port(port)
-        self._check_for_sg_members_update(port)
         self.dvs_ports.pop(port['device'], None)
         if port['id'] in self.dvs_port_map.values():
             for dvs in self.dvs_port_map.keys():
@@ -95,31 +94,6 @@ class DVSFirewallDriver(firewall.FirewallDriver):
             self._update_sg_rules_for_ports(sg_id)
         self.sg_members[sg_id] = sg_members
         LOG.debug("Update members of security group (%s)", sg_id)
-
-    def _check_for_sg_members_update(self, port):
-        updated = False
-        for ip in port['fixed_ips']:
-            if ip in self._get_sg_members_ips():
-                for sg_id, sg_member in self.sg_members.iteritems():
-                    for ethertype, ips in sg_member.iteritems():
-                        if ip in ips:
-                            sg_member[ethertype].remove(ip)
-                            updated = True
-                    if updated:
-                        self.update_security_group_members(sg_id, sg_member)
-                        updated = False
-
-    def _get_sg_members_ips(self, sg=None):
-        ips = []
-        if sg is None:
-            sg_member_list = self.sg_members.values()
-        else:
-            sg_member_list = self.sg_members[sg]
-
-        for sg_member in sg_member_list:
-            for member_ip in sg_member.values():
-                ips = ips + member_ip
-        return ips
 
     def _apply_ip_set(self, rules):
         for rule in rules:
