@@ -174,7 +174,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
 
         self.assertEqual(set([1, 2]), self.driver._bound_ports)
 
-    '''@mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
+    @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
     def test_update_port_precomit_unbound_port(self, hypervisor_by_host):
         hypervisor_by_host.return_value = mock.Mock(
             hypervisor_type=VALID_HYPERVISOR_TYPE)
@@ -186,7 +186,8 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
                         'bind_port_call') as cast_mock:
             self.driver.update_port_precommit(port_ctx)
             cast_mock.assert_called_once_with(
-                current, network.network_segments, network.current)'''
+                current, network.network_segments, network.current,
+                port_ctx.host)
 
     @mock.patch('mech_vmware_dvs.compute_util.get_hypervisors_by_host')
     def test_update_port_precomit_not_unbound_port(self, hypervisor_by_host):
