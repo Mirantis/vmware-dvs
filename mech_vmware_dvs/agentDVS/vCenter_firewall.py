@@ -77,11 +77,12 @@ class DVSFirewallDriver(firewall.FirewallDriver):
             if self.sg_rules[sg_id] == sg_rules:
                 return
         self.sg_rules[sg_id] = sg_rules
-        self._update_sg_rules_for_ports(sg_id)
+        self._update_sg_rules_for_ports([sg_id])
         LOG.debug("Update rules of security group (%s)", sg_id)
 
     def update_security_group_members(self, sg_id, sg_members):
         updated = False
+        updated_sgs = [sg_id]
         for sg, rules in self.sg_rules.items():
             for rule in rules:
                 if rule.get('remote_group_id') == sg_id:
@@ -90,8 +91,10 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                             rule.get('ip_set') != sg_members[ethertype]):
                         rule['ip_set'] = sg_members[ethertype]
                         updated = True
+                        if sg_id != sg:
+                            updated_sgs.append(sg)
         if updated:
-            self._update_sg_rules_for_ports(sg_id)
+            self._update_sg_rules_for_ports(updated_sgs)
         self.sg_members[sg_id] = sg_members
         LOG.debug("Update members of security group (%s)", sg_id)
 
@@ -112,7 +115,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                 if (port['id'] not in self.dvs_port_map.keys() or
                         self.dvs_ports[dev][sg_rules] != self.sg_rules[sg]):
                     port['security_group_rules'] = self.sg_rules[sg]
-
+        # TODO(akamyshnikova): improve applying rules in case of agent restart
         if port['security_group_rules']:
             dvs = self._get_dvs_for_port_id(port['id'])
             sg_util.update_port_rules(dvs, [port])
@@ -130,11 +133,11 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                     self.dvs_port_map[dvs].append(port_id)
                 return dvs
 
-    def _update_sg_rules_for_ports(self, sg_id):
+    def _update_sg_rules_for_ports(self, sg_ids):
         ports_to_update = []
         for port in self.dvs_ports.values():
-            if sg_id in port['security_groups']:
-                if port['security_group_rules'] != self.sg_rules[sg_id]:
+            for sg_id in sg_ids:
+                if sg_id in port['security_groups']:
                     port['security_group_rules'] = self.sg_rules[sg_id]
                     ports_to_update.append(port)
         port_ids = {p['id']: p for p in ports_to_update}
