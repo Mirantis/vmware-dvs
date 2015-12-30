@@ -21,7 +21,7 @@ from neutron.tests import base
 from mech_vmware_dvs import endpoints
 from mech_vmware_dvs.agentDVS import dvs_neutron_agent
 from mech_vmware_dvs import exceptions
-from mech_vmware_dvs import util
+from mech_vmware_dvs import constants as dvs_const
 
 NOT_SUPPORTED_TYPES = [
     constants.TYPE_FLAT,
@@ -332,7 +332,7 @@ class DVSAgentTestCase(base.BaseTestCase):
             'admin_state_up': True,
             'security_groups': security_groups,
             'binding:host_id': '_id_server_',
-            'binding:vif_type': vif_type or util.DVS,
+            'binding:vif_type': vif_type or dvs_const.DVS,
             'status': 'DOWN',
             'security_group_rules': [CONSTANT_SG_RULE],
             'binding:vif_details': vif_details or {

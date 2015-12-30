@@ -35,6 +35,7 @@ from oslo_service import loopingcall
 
 from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util
+from mech_vmware_dvs import constants as dvs_const
 
 LOG = logging.getLogger(__name__)
 cfg.CONF.import_group('AGENT', 'mech_vmware_dvs.agentDVS.vmware_conf')
@@ -259,7 +260,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
             for id, port in devices.iteritems():
                 # TODO(ekosareva): removed one more condition(is it needed?):
                 # 'dvs_port_key' in port['binding:vif_details']
-                if (port['binding:vif_type'] == util.DVS and
+                if (port['binding:vif_type'] == dvs_const.DVS and
                         sg_to_update & set(port['security_groups'])):
                     ports_to_update.add(id)
 
@@ -318,7 +319,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, ExtendAPI):
                      [topics.PORT, topics.DELETE],
                      [topics.NETWORK, topics.DELETE],
                      [topics.SECURITY_GROUP, topics.UPDATE],
-                     [util.DVS, topics.UPDATE]]
+                     [dvs_const.DVS, topics.UPDATE]]
         self.connection = agent_rpc.create_consumers(self.endpoints,
                                                      self.topic,
                                                      consumers,

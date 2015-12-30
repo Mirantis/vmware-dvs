@@ -29,11 +29,11 @@ from mech_vmware_dvs import compute_util
 from mech_vmware_dvs import config
 from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util
+from mech_vmware_dvs import constants as dvs_const
+from mech_vmware_dvs.agentDVS import agentAPI
 
 CONF = config.CONF
 LOG = log.getLogger(__name__)
-
-VMWARE_HYPERVISOR_TYPE = 'VMware vCenter Server'
 
 
 def port_belongs_to_vmware(func):
@@ -51,7 +51,7 @@ def port_belongs_to_vmware(func):
 
             # value for field hypervisor_type collected from VMWare itself,
             # need to make research, about all possible and suitable values
-            if hypervisor.hypervisor_type != VMWARE_HYPERVISOR_TYPE:
+            if hypervisor.hypervisor_type != dvs_const.VMWARE_HYPERVISOR_TYPE:
                 raise exceptions.HypervisorNotFound
         except exceptions.ResourceNotFond:
             return False
@@ -63,15 +63,15 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
     """Ml2 Mechanism driver for vmware dvs."""
 
     def __init__(self):
-        self.vif_type = util.DVS
+        self.vif_type = dvs_const.DVS
         sg_enabled = securitygroups_rpc.is_firewall_enabled()
         self.vif_details = {portbindings.CAP_PORT_FILTER: sg_enabled,
                             portbindings.OVS_HYBRID_PLUG: sg_enabled}
         self.context = context.get_admin_context_without_session()
-        self.dvs_notifier = util.DVSClientAPI(self.context)
+        self.dvs_notifier = agentAPI.DVSClientAPI(self.context)
         LOG.info(_LI('DVS_notifier'))
         super(VMwareDVSMechanismDriver, self).__init__(
-            util.AGENT_TYPE_DVS,
+            dvs_const.AGENT_TYPE_DVS,
             self.vif_type,
             self.vif_details)
 

@@ -18,97 +18,17 @@ from time import sleep
 import uuid
 import six
 
-import oslo_messaging
 from oslo_log import log
 
-from neutron.common import rpc as n_rpc
-from neutron.common import topics
 from neutron.i18n import _LI, _LW
 from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
 
 from mech_vmware_dvs import exceptions
+from mech_vmware_dvs import constants as dvs_const
 
 LOG = log.getLogger(__name__)
-
-DVS = 'dvs'
-AGENT_TYPE_DVS = 'DVS agent'
-
-# protocol number according to RFC 1700
-PROTOCOL = {'icmp': 1,
-            'tcp': 6,
-            'udp': 17}
-
-DVS_PORTGROUP_NAME_MAXLEN = 80
-
-LOGIN_RETRIES = 3
-
-VM_NETWORK_DEVICE_TYPES = [
-    'VirtualE1000', 'VirtualE1000e', 'VirtualPCNet32',
-    'VirtualSriovEthernetCard', 'VirtualVmxnet']
-
-CONCURRENT_MODIFICATION_TEXT = 'Cannot complete operation due to concurrent '\
-                               'modification by another operation.'
-
-LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect "\
-                     "user name or password"
-
-DELETED_TEXT = "The object has already been deleted or has not been "\
-               "completely created"
-
-
-class DVSClientAPI(object):
-    """Client side RPC interface definition."""
-    ver = '1.1'
-
-    def __init__(self, context):
-        target = oslo_messaging.Target(topic=DVS, version='1.0')
-        self.client = n_rpc.get_client(target)
-        self.context = context
-
-    def _get_security_group_topic(self, host=None):
-        return topics.get_topic_name(topics.AGENT,
-                                     DVS,
-                                     topics.UPDATE, host)
-
-    def _get_cctxt(self):
-        return self.client.prepare(version=self.ver,
-                                   topic=self._get_security_group_topic(),
-                                   fanout=True)
-
-    def _get_cctxt_direct(self, host):
-        return self.client.prepare(version=self.ver,
-                    topic=self._get_security_group_topic(host=host))
-
-    def create_network_cast(self, current, segment):
-        return self._get_cctxt().cast(self.context, 'create_network',
-                                      current=current, segment=segment)
-
-    def delete_network_cast(self, current, segment):
-        return self._get_cctxt().cast(self.context, 'delete_network',
-                                      current=current, segment=segment)
-
-    def update_network_cast(self, current, segment, original):
-        return self._get_cctxt().cast(self.context, 'update_network',
-                                      current=current, segment=segment,
-                                      original=original)
-
-    def bind_port_call(self, current, network_segments, network_current, host):
-        return self._get_cctxt_direct(host).call(self.context, 'bind_port',
-                                      current=current,
-                                      network_segments=network_segments,
-                                      network_current=network_current)
-
-    def update_postcommit_port_cast(self, current, original, segment, sg_info):
-        return self._get_cctxt().cast(self.context, 'post_update_port',
-                                      current=current, original=original,
-                                      segment=segment, sg_info=sg_info)
-
-    def delete_port_cast(self, current, original, segment, sg_info):
-        return self._get_cctxt().cast(self.context, 'delete_port',
-                                      current=current, original=original,
-                                      segment=segment, sg_info=sg_info)
 
 
 class DVSController(object):
@@ -191,7 +111,7 @@ class DVSController(object):
             except vmware_exceptions.VimException as e:
                 raise exceptions.wrap_wmvare_vim_exception(e)
             except vmware_exceptions.VMwareDriverException as e:
-                if DELETED_TEXT in e.message:
+                if dvs_const.DELETED_TEXT in e.message:
                     sleep(1)
                 else:
                     raise
@@ -249,7 +169,7 @@ class DVSController(object):
                         self._increase_ports_on_portgroup(pg)
                     except (vmware_exceptions.VMwareDriverException,
                             exceptions.VMWareDVSException) as e:
-                        if CONCURRENT_MODIFICATION_TEXT in e.message:
+                        if dvs_const.CONCURRENT_MODIFICATION_TEXT in e.message:
                             LOG.info(_LI('Concurent modification on'
                                      ' increase port group.'))
                             continue
@@ -531,7 +451,7 @@ class SpecBuilder(object):
             rules.append(r.build(seq))
             seq += 10
 
-        for i, protocol in enumerate(PROTOCOL.values()):
+        for i, protocol in enumerate(dvs_const.PROTOCOL.values()):
             rules.append(
                 DropAllRule(self.factory, None, protocol,
                             name='drop all').build(seq + i * 10))
@@ -627,7 +547,7 @@ class TrafficRuleBuilder(object):
         self.protocol = protocol
         if protocol:
             int_exp = self.factory.create('ns0:IntExpression')
-            int_exp.value = PROTOCOL.get(protocol, protocol)
+            int_exp.value = dvs_const.PROTOCOL.get(protocol, protocol)
             int_exp.negate = 'false'
             self.ip_qualifier.protocol = int_exp
 
@@ -794,10 +714,10 @@ def wrap_retry(func):
                 return func(*args, **kwargs)
             except (vmware_exceptions.VMwareDriverException,
                     exceptions.VMWareDVSException) as e:
-                if CONCURRENT_MODIFICATION_TEXT in e.message:
+                if dvs_const.CONCURRENT_MODIFICATION_TEXT in e.message:
                     continue
-                elif (LOGIN_PROBLEM_TEXT in getattr(e, 'msg', '')
-                        and login_failures < LOGIN_RETRIES - 1):
+                elif (dvs_const.LOGIN_PROBLEM_TEXT in getattr(e, 'msg', '')
+                        and login_failures < dvs_const.LOGIN_RETRIES - 1):
                     login_failures += 1
                     continue
                 else:

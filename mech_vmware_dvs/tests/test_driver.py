@@ -21,7 +21,7 @@ from neutron.tests import base
 from mech_vmware_dvs import config
 from mech_vmware_dvs import driver
 from mech_vmware_dvs import exceptions
-from mech_vmware_dvs import util
+from mech_vmware_dvs import constants as dvs_const
 
 
 VALID_HYPERVISOR_TYPE = 'VMware vCenter Server'
@@ -58,7 +58,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
     def test_create_network_precommit_when_network_not_mapped(self):
         context = self._create_network_context()
         self.driver.network_map = {}
-        with mock.patch('mech_vmware_dvs.util.DVSClientAPI.'
+        with mock.patch('mech_vmware_dvs.agentDVS.agentAPI.DVSClientAPI.'
                         'create_network_cast') as cast_mock:
             self.driver.create_network_precommit(context)
             cast_mock.assert_called_once_with(
@@ -67,7 +67,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
     def test_delete_network_postcommit_when_network_is_not_mapped(self):
         context = self._create_network_context()
         self.driver.network_map = {}
-        with mock.patch('mech_vmware_dvs.util.DVSClientAPI.'
+        with mock.patch('mech_vmware_dvs.agentDVS.agentAPI.DVSClientAPI.'
                         'delete_network_cast') as cast_mock:
             self.driver.delete_network_postcommit(context)
             cast_mock.assert_called_once_with(
@@ -76,7 +76,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
     def test_update_network_precommit(self):
         context = self._create_network_context()
         self.driver.network_map = {}
-        with mock.patch('mech_vmware_dvs.util.DVSClientAPI.'
+        with mock.patch('mech_vmware_dvs.agentDVS.agentAPI.DVSClientAPI.'
                         'update_network_cast') as cast_mock:
             self.driver.update_network_precommit(context)
             cast_mock.assert_called_once_with(
@@ -98,7 +98,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
                                          status=n_const.PORT_STATUS_DOWN)
         port_ctx = self._create_port_context(current=current)
         segment = port_ctx.network.network_segments[0]
-        with mock.patch('mech_vmware_dvs.util.DVSClientAPI.'
+        with mock.patch('mech_vmware_dvs.agentDVS.agentAPI.DVSClientAPI.'
                         'update_postcommit_port_cast') as cast_mock:
             self.driver.update_port_postcommit(port_ctx)
             cast_mock.assert_called_once_with(
@@ -109,7 +109,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         hypervisor_by_host.return_value = mock.Mock(
             hypervisor_type=INVALID_HYPERVISOR_TYPE)
         port_context = self._create_port_context()
-        with mock.patch('mech_vmware_dvs.util.DVSClientAPI.'
+        with mock.patch('mech_vmware_dvs.agentDVS.agentAPI.DVSClientAPI.'
                         'update_postcommit_port_cast') as cast_mock:
             self.driver.update_port_postcommit(port_context)
             self.assertEqual(cast_mock.call_count, 0)
@@ -166,7 +166,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         port_ctx = self._create_port_context(current=current)
         segment = port_ctx.network.network_segments[0]
         self.driver._bound_ports = set([1, 2])
-        with mock.patch('mech_vmware_dvs.util.DVSClientAPI.'
+        with mock.patch('mech_vmware_dvs.agentDVS.agentAPI.DVSClientAPI.'
                         'delete_port_cast') as cast_mock:
             self.driver.delete_port_postcommit(port_ctx)
             cast_mock.assert_called_once_with(
@@ -182,7 +182,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
                                          status=n_const.PORT_STATUS_DOWN)
         port_ctx = self._create_port_context(current=current)
         network = port_ctx.network
-        with mock.patch('mech_vmware_dvs.util.DVSClientAPI.'
+        with mock.patch('mech_vmware_dvs.agentDVS.agentAPI.DVSClientAPI.'
                         'bind_port_call') as cast_mock:
             self.driver.update_port_precommit(port_ctx)
             cast_mock.assert_called_once_with(
@@ -195,7 +195,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
             hypervisor_type=VALID_HYPERVISOR_TYPE)
         current = self._create_port_dict(vif_type='binding_failed')
         port_ctx = self._create_port_context(current=current)
-        with mock.patch('mech_vmware_dvs.util.DVSClientAPI.'
+        with mock.patch('mech_vmware_dvs.agentDVS.agentAPI.DVSClientAPI.'
                         'bind_port_call') as cast_mock:
             self.driver.update_port_precommit(port_ctx)
             self.assertEqual(cast_mock.call_count, 0)
@@ -211,7 +211,7 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
             network=network or self._create_network_context())
         return context
 
-    def _create_port_dict(self, security_groups=None, vif_type=util.DVS,
+    def _create_port_dict(self, security_groups=None, vif_type=dvs_const.DVS,
                           status=n_const.PORT_STATUS_DOWN):
         security_groups = security_groups or []
         security_groups = list(security_groups)

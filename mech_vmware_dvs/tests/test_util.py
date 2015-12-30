@@ -21,7 +21,7 @@ from neutron.tests import base
 from mech_vmware_dvs import config
 from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util
-
+from mech_vmware_dvs import constants as dvs_const
 
 CONF = config.CONF
 
@@ -745,7 +745,7 @@ class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
         self.assertEqual('0', qualifier.destinationAddress.prefixLength)
 
     def test_build_ethertype_protocol(self):
-        for name, rfc in util.PROTOCOL.iteritems():
+        for name, rfc in dvs_const.PROTOCOL.iteritems():
             builder = self._create_builder(protocol=name)
             rule = builder.build(self.sequence)
             qualifier = rule.qualifier[0]
@@ -839,7 +839,7 @@ class UtilTestCase(base.BaseTestCase):
 
         def side_effect(*args, **kwargs):
             exception = vmware_exceptions.VMwareDriverException()
-            exception.message = util.LOGIN_PROBLEM_TEXT
+            exception.message = dvs_const.LOGIN_PROBLEM_TEXT
             raise exception
 
         func.side_effect = side_effect
