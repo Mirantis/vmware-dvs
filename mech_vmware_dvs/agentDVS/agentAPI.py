@@ -20,6 +20,27 @@ from neutron.common import topics
 from mech_vmware_dvs import constants as dvs_const
 
 
+class ExtendAPI(object):
+
+    def create_network(self, context, current, segment):
+        self.create_network_precommit(current, segment)
+
+    def delete_network(self, context, current, segment):
+        self.delete_network_postcommit(current, segment)
+
+    def update_network(self, context, current, segment, original):
+        self.update_network_precommit(current, segment, original)
+
+    def bind_port(self, context, current, network_segments, network_current):
+        return self.book_port(current, network_segments, network_current)
+
+    def post_update_port(self, context, current, original, segment, sg_info):
+        self.update_port_postcommit(current, original, segment, sg_info)
+
+    def delete_port(self, context, current, original, segment, sg_info):
+        self.delete_port_postcommit(current, original, segment, sg_info)
+
+
 class DVSClientAPI(object):
     """Client side RPC interface definition."""
     ver = '1.1'

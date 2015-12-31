@@ -39,6 +39,8 @@ class DVSController(object):
         try:
             self.dvs_name = dvs_name
             self._dvs, self._datacenter = self._get_dvs(dvs_name, connection)
+            # (SlOPS) To do release blocked port after use
+            self._blocked_ports = []
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
@@ -298,6 +300,32 @@ class DVSController(object):
             vim_util, 'get_object_property',
             self.connection.vim, pg, 'portKeys')[0]
 
+    def _lookup_unbound_port_untested(self, port_group):
+        builder = SpecBuilder(self.connection.vim.client.factory)
+        criteria = builder.port_criteria(port_group_key=port_group.value,
+                                         connected=None)
+        all_port_keys = self.connection.invoke_api(
+            self.connection.vim,
+            'FetchDVPortKeys',
+            self._dvs, criteria=criteria)
+        criteria = builder.port_criteria(port_group_key=port_group.value,
+                                         connected=True)
+        print 'all keys', all_port_keys
+        connected_port_keys = self.connection.invoke_api(
+            self.connection.vim,
+            'FetchDVPortKeys',
+            self._dvs, criteria=criteria)
+        free_keys = [x for x in all_port_keys if x not in connected_port_keys]
+        print 'free keys', free_keys
+        print 'blocked ', self._blocked_ports
+        port_keys = [x for x in free_keys if x not in self._blocked_ports]
+        print 'port keys', port_keys
+        if len(port_keys) > 0:
+            print "Port key", port_keys[0]
+            self._blocked_ports.append(port_keys[0])
+            return self._get_port_info_by_portkey(port_keys[0])
+        raise exceptions.UnboundPortNotFound()
+
     def _lookup_unbound_port(self, port_group):
         builder = SpecBuilder(self.connection.vim.client.factory)
         criteria = builder.port_criteria(port_group_key=port_group.value)
@@ -307,7 +335,9 @@ class DVSController(object):
             'FetchDVPorts',
             self._dvs, criteria=criteria)
         for port in ports:
-            if not getattr(port.config, 'name', None):
+            if (not getattr(port.config, 'name', None) and
+                    port.key not in self._blocked_ports):
+                self._blocked_ports.append(port.key)
                 return port
         raise exceptions.UnboundPortNotFound()
 
