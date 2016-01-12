@@ -386,6 +386,11 @@ class DVSController(object):
             return False
         return True
 
+    def get_security_group_rules_for_port_keys(self, port):
+        rule_set = (
+            port.config.setting.filterPolicy.filterConfig[0].trafficRuleset)
+        return [rule.key for rule in rule_set.rules]
+
 
 class SpecBuilder(object):
     """Builds specs for vSphere API calls"""
