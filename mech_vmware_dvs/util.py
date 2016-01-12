@@ -386,10 +386,10 @@ class DVSController(object):
             return False
         return True
 
-    def get_security_group_rules_for_port_keys(self, port):
+    def get_security_group_rules_for_port(self, port):
         rule_set = (
             port.config.setting.filterPolicy.filterConfig[0].trafficRuleset)
-        return [rule.key for rule in rule_set.rules]
+        return [rule.description for rule in rule_set.rules]
 
 
 class SpecBuilder(object):
@@ -514,8 +514,8 @@ def wrap_retry(func):
                     exceptions.VMWareDVSException) as e:
                 if CONCURRENT_MODIFICATION_TEXT in e.message:
                     continue
-                elif (LOGIN_PROBLEM_TEXT in getattr(e, 'msg', '')
-                        and login_failures < LOGIN_RETRIES - 1):
+                elif (LOGIN_PROBLEM_TEXT in getattr(e, 'msg', '') and
+                        login_failures < LOGIN_RETRIES - 1):
                     login_failures += 1
                     continue
                 else:

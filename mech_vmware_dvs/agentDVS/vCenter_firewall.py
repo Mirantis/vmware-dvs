@@ -39,7 +39,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         self.pre_sg_rules = None
         self.pre_sg_members = None
         self._defer_apply = False
-        # Map for known port and dvs it is connected to.
+        # Map for known ports and dvs it is connected to.
         self.dvs_port_map = {}
 
     def prepare_port_filter(self, port):
@@ -73,6 +73,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         if sg_id in self.sg_rules and self.sg_rules[sg_id] == sg_rules:
             return
         elif sg_id in self.sg_rules:
+            # For remote sg rules we need to apply ip_sets manually
             sg_rules = self._apply_ip_set(sg_rules)
             if self.sg_rules[sg_id] == sg_rules:
                 return
@@ -82,7 +83,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
 
     def update_security_group_members(self, sg_id, sg_members):
         updated = False
-        updated_sgs = [sg_id]
+        updated_sgs = set(sg_id)
         for sg, rules in self.sg_rules.items():
             for rule in rules:
                 if rule.get('remote_group_id') == sg_id:
@@ -92,7 +93,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                         rule['ip_set'] = sg_members[ethertype]
                         updated = True
                         if sg_id != sg:
-                            updated_sgs.append(sg)
+                            updated_sgs.add(sg)
         if updated:
             self._update_sg_rules_for_ports(updated_sgs)
         self.sg_members[sg_id] = sg_members
@@ -231,8 +232,8 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     def _remove_unused_sg_members(self):
         """Remove sg_member entries where no IPv4 or IPv6 is associated."""
         for sg_id in self.sg_members.keys():
-            sg_has_members = (self.sg_members[sg_id][constants.IPv4] or
-                              self.sg_members[sg_id][constants.IPv6])
+            sg_has_members = (self.sg_members[sg_id].get(constants.IPv4) or
+                              self.sg_members[sg_id].get(constants.IPv6))
             if not sg_has_members:
                 del self.sg_members[sg_id]
 
