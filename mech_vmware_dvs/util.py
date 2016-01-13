@@ -180,6 +180,14 @@ class DVSController(object):
             raise exceptions.wrap_wmvare_vim_exception(e)
 
     def book_port(self, network, port_name):
+        for iter in range(1, 5):
+            port_key = self._book_port(network, port_name)
+            sleep(1)
+            port_info = self._get_port_info(port_key)
+            if port_info.config.name == port_name:
+                return port_key
+
+    def _book_port(self, network, port_name):
         try:
             net_name = self._get_net_name(network)
             pg = self._get_pg_by_name(net_name)
