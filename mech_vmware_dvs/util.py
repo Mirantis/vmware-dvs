@@ -698,8 +698,9 @@ def wrap_retry(func):
                     exceptions.VMWareDVSException) as e:
                 if CONCURRENT_MODIFICATION_TEXT in e.message:
                     continue
-                elif (LOGIN_PROBLEM_TEXT in getattr(e, 'msg', '')
-                        and login_failures < LOGIN_RETRIES - 1):
+                elif (LOGIN_PROBLEM_TEXT in
+                      getattr(e, 'msg', '') and login_failures <
+                      LOGIN_RETRIES - 1):
                     login_failures += 1
                     continue
                 else:
