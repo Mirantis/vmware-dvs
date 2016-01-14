@@ -35,11 +35,11 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         self.dvs_ports = {}
         self.sg_rules = {}
         self.sg_members = {}
-        self._pre_defer_filtered_ports = None
+        self._pre_defer_dvs_ports = None
         self.pre_sg_rules = None
         self.pre_sg_members = None
         self._defer_apply = False
-        # Map for known port and dvs it is connected to.
+        # Map for known ports and dvs it is connected to.
         self.dvs_port_map = {}
 
     def prepare_port_filter(self, port):
@@ -73,6 +73,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         if sg_id in self.sg_rules and self.sg_rules[sg_id] == sg_rules:
             return
         elif sg_id in self.sg_rules:
+            # For remote sg rules we need to apply ip_sets manually
             sg_rules = self._apply_ip_set(sg_rules)
             if self.sg_rules[sg_id] == sg_rules:
                 return
@@ -82,7 +83,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
 
     def update_security_group_members(self, sg_id, sg_members):
         updated = False
-        updated_sgs = [sg_id]
+        updated_sgs = set(sg_id)
         for sg, rules in self.sg_rules.items():
             for rule in rules:
                 if rule.get('remote_group_id') == sg_id:
@@ -92,7 +93,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                         rule['ip_set'] = sg_members[ethertype]
                         updated = True
                         if sg_id != sg:
-                            updated_sgs.append(sg)
+                            updated_sgs.add(sg)
         if updated:
             self._update_sg_rules_for_ports(updated_sgs)
         self.sg_members[sg_id] = sg_members
@@ -158,22 +159,18 @@ class DVSFirewallDriver(firewall.FirewallDriver):
 
     def filter_defer_apply_on(self):
         if not self._defer_apply:
-            self._pre_defer_filtered_ports = dict(self.dvs_ports)
+            self._pre_defer_dvs_ports = dict(self.dvs_ports)
             self.pre_sg_members = dict(self.sg_members)
             self.pre_sg_rules = dict(self.sg_rules)
             self._defer_apply = True
 
     def _remove_unused_security_group_info(self):
-        """Remove any unnecessary local security group info or unused ipsets.
-
-        This function has to be called after applying the last iptables
-        rules, so we're in a point where no iptable rule depends
-        on an ipset we're going to delete.
+        """Remove any unnecessary local security group info.
         """
-        filtered_ports = self.dvs_ports.values()
+        dvs_ports = self.dvs_ports.values()
 
         remote_sgs_to_remove = self._determine_remote_sgs_to_remove(
-            filtered_ports)
+            dvs_ports)
 
         for ip_version, remote_sg_ids in remote_sgs_to_remove.iteritems():
             self._clear_sg_members(ip_version, remote_sg_ids)
@@ -182,10 +179,10 @@ class DVSFirewallDriver(firewall.FirewallDriver):
 
         # Remove unused security group rules
         for remove_group_id in self._determine_sg_rules_to_remove(
-                filtered_ports):
+                dvs_ports):
             self.sg_rules.pop(remove_group_id, None)
 
-    def _determine_remote_sgs_to_remove(self, filtered_ports):
+    def _determine_remote_sgs_to_remove(self, dvs_ports):
         """Calculate which remote security groups we don't need anymore.
 
         We do the calculation for each ip_version.
@@ -193,36 +190,36 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         sgs_to_remove_per_ipversion = {constants.IPv4: set(),
                                        constants.IPv6: set()}
         remote_group_id_sets = self._get_remote_sg_ids_sets_by_ipversion(
-            filtered_ports)
+            dvs_ports)
         for ip_version, remote_group_id_set in (
                 remote_group_id_sets.iteritems()):
             sgs_to_remove_per_ipversion[ip_version].update(
                 set(self.pre_sg_members) - remote_group_id_set)
         return sgs_to_remove_per_ipversion
 
-    def _get_remote_sg_ids_sets_by_ipversion(self, filtered_ports):
+    def _get_remote_sg_ids_sets_by_ipversion(self, dvs_ports):
         """Given a port, calculates the remote sg references by ip_version."""
         remote_group_id_sets = {constants.IPv4: set(),
                                 constants.IPv6: set()}
-        for port in filtered_ports:
+        for port in dvs_ports:
             remote_sg_ids = self._get_remote_sg_ids(port)
             for ip_version in (constants.IPv4, constants.IPv6):
                 remote_group_id_sets[ip_version] |= remote_sg_ids[ip_version]
         return remote_group_id_sets
 
-    def _determine_sg_rules_to_remove(self, filtered_ports):
+    def _determine_sg_rules_to_remove(self, dvs_ports):
         """Calculate which security groups need to be removed.
 
         We find out by subtracting our previous sg group ids,
         with the security groups associated to a set of ports.
         """
-        port_group_ids = self._get_sg_ids_set_for_ports(filtered_ports)
+        port_group_ids = self._get_sg_ids_set_for_ports(dvs_ports)
         return set(self.pre_sg_rules) - port_group_ids
 
-    def _get_sg_ids_set_for_ports(self, filtered_ports):
+    def _get_sg_ids_set_for_ports(self, dvs_ports):
         """Get the port security group ids as a set."""
         port_group_ids = set()
-        for port in filtered_ports:
+        for port in dvs_ports:
             port_group_ids.update(port.get('security_groups', []))
         return port_group_ids
 
@@ -235,8 +232,8 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     def _remove_unused_sg_members(self):
         """Remove sg_member entries where no IPv4 or IPv6 is associated."""
         for sg_id in self.sg_members.keys():
-            sg_has_members = (self.sg_members[sg_id][constants.IPv4] or
-                              self.sg_members[sg_id][constants.IPv6])
+            sg_has_members = (self.sg_members[sg_id].get(constants.IPv4) or
+                              self.sg_members[sg_id].get(constants.IPv6))
             if not sg_has_members:
                 del self.sg_members[sg_id]
 
@@ -256,4 +253,4 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         if self._defer_apply:
             self._defer_apply = False
             self._remove_unused_security_group_info()
-            self._pre_defer_filtered_ports = None
+            self._pre_defer_dvs_ports = None
