@@ -79,8 +79,8 @@ class DVSFirewallDriver(firewall.FirewallDriver):
             for rule in rules:
                 if rule.get('remote_group_id') == sg_id:
                     ethertype = rule['ethertype']
-                    if (sg_members.get(ethertype)
-                            and rule.get('ip_set') != sg_members[ethertype]):
+                    if (sg_members.get(ethertype) and
+                            rule.get('ip_set') != sg_members[ethertype]):
                         rule['ip_set'] = sg_members[rule['ethertype']]
                         updated = True
         if updated:
@@ -96,8 +96,8 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         sg_rules = 'security_group_rules'
         for sg in port['security_groups']:
             if sg in self.sg_rules.keys():
-                if (port['id'] not in self.dvs_port_map.keys()
-                        or self.dvs_ports[dev][sg_rules] != self.sg_rules[sg]):
+                if (port['id'] not in self.dvs_port_map.keys() or
+                        self.dvs_ports[dev][sg_rules] != self.sg_rules[sg]):
                     port['security_group_rules'] = self.sg_rules[sg]
                     dvs = self._get_dvs_for_port_id(port['id'])
                     dvs.update_port_rules([port])

@@ -373,7 +373,7 @@ class DVSController(object):
 
     def _get_port_info_by_name(self, name, port_list=None):
         if port_list is None:
-            port_list = self._get_ports()
+            port_list = self._get_ports(None)
         ports = [port for port in port_list if port.config.name == name]
         if not ports:
             raise exceptions.PortNotFound()
@@ -381,10 +381,10 @@ class DVSController(object):
             LOG.warn(_LW("Multiple ports found for name %s."), name)
         return ports[0]
 
-    def _get_ports(self):
+    def _get_ports(self, connectflag=True):
         ports = []
         builder = SpecBuilder(self.connection.vim.client.factory)
-        criteria = builder.port_criteria(connected=True)
+        criteria = builder.port_criteria(connected=connectflag)
         ports = self.connection.invoke_api(
             self.connection.vim,
             'FetchDVPorts',
@@ -746,8 +746,9 @@ def wrap_retry(func):
                     exceptions.VMWareDVSException) as e:
                 if dvs_const.CONCURRENT_MODIFICATION_TEXT in e.message:
                     continue
-                elif (dvs_const.LOGIN_PROBLEM_TEXT in getattr(e, 'msg', '')
-                        and login_failures < dvs_const.LOGIN_RETRIES - 1):
+                elif (dvs_const.LOGIN_PROBLEM_TEXT in
+                        getattr(e, 'msg', '') and
+                        login_failures < dvs_const.LOGIN_RETRIES - 1):
                     login_failures += 1
                     continue
                 else:
