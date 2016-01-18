@@ -59,6 +59,11 @@ class DVSAgentTestCase(base.BaseTestCase):
         self.port_context = test_port_data[0]
         self.sg_info = test_port_data[1]
 
+        sg_util_patch = mock.patch(
+            'mech_vmware_dvs.security_group_utils.update_port_rules')
+        self.addCleanup(sg_util_patch.stop)
+        self.update_port_rules_mock = sg_util_patch.start()
+
     def test_look_up_dvs_failed(self):
         for type_ in NOT_SUPPORTED_TYPES:
             self.assertRaisesRegexp(exceptions.NotSupportedNetworkType,
@@ -148,7 +153,7 @@ class DVSAgentTestCase(base.BaseTestCase):
         self.agent._update_security_groups(self.dvs, self.port_context.current,
                                            self.port_context.original,
                                            self.sg_info, False)
-        self.assertFalse(self.dvs.update_port_rules.called)
+        self.assertFalse(self.update_port_rules_mock.called)
 
     def test_update_security_groups_update_when_sg_added(self):
         context, sg_info = self._create_port_context(
@@ -158,7 +163,8 @@ class DVSAgentTestCase(base.BaseTestCase):
         self.agent._update_security_groups(self.dvs, context.current,
                                            context.original, sg_info,
                                            False)
-        self.dvs.update_port_rules.assert_called_once_with([context.current])
+        self.update_port_rules_mock.assert_called_once_with(self.dvs,
+                                                            [context.current])
 
     def test_update_security_groups_update_when_sg_removed(self):
         context, sg_info = self._create_port_context(
@@ -167,15 +173,16 @@ class DVSAgentTestCase(base.BaseTestCase):
         )
         self.agent._update_security_groups(self.dvs, context.current,
                                            context.original, sg_info, False)
-        self.dvs.update_port_rules.assert_called_once_with([context.current])
+        self.update_port_rules_mock.assert_called_once_with(self.dvs,
+                                                            [context.current])
 
     def test_update_security_groups_force_flag(self):
         self.port_context.current['security_groups'] = []
         self.agent._update_security_groups(self.dvs, self.port_context.current,
                                            self.port_context.original,
                                            self.sg_info, True)
-        self.dvs.update_port_rules.assert_called_once_with(
-            [self.port_context.current])
+        self.update_port_rules_mock.assert_called_once_with(
+            self.dvs, [self.port_context.current])
 
     def test_update_security_groups_containing_remote_group_id(self):
         current = self._create_port_dict(
@@ -194,7 +201,8 @@ class DVSAgentTestCase(base.BaseTestCase):
         )
         self.agent._update_security_groups(self.dvs, context.current,
                                            context.original, sg_info, True)
-        self.dvs.update_port_rules.assert_called_once_with([context.current])
+        self.update_port_rules_mock.assert_called_once_with(self.dvs,
+                                                            [context.current])
         self.assertEqual(CONSTANT_SG_RULE,
                          context.current['security_group_rules'][0])
         self.assertEqual(ips,
@@ -215,8 +223,8 @@ class DVSAgentTestCase(base.BaseTestCase):
             sg_member_ips=sg_member_ips)
         self.agent._update_security_groups(self.dvs, context.current,
                                            context.original, sg_info, True)
-        self.assertTrue(self.dvs.update_port_rules.called)
-        updated_ports = self.dvs.update_port_rules.call_args[0][0]
+        self.assertTrue(self.update_port_rules_mock.called)
+        updated_ports = self.update_port_rules_mock.call_args[0][1]
         self.assertListEqual(sorted([context.current, p1, p3, p4]),
                              sorted(updated_ports))
 
@@ -245,8 +253,8 @@ class DVSAgentTestCase(base.BaseTestCase):
             sg_member_ips=sg_member_ips)
         self.agent._update_security_groups(self.dvs, context.current,
                                            context.original, sg_info, False)
-        self.assertTrue(self.dvs.update_port_rules.called)
-        updated_ports = self.dvs.update_port_rules.call_args[0][0]
+        self.assertTrue(self.update_port_rules_mock.called)
+        updated_ports = self.update_port_rules_mock.call_args[0][1]
         self.assertListEqual(sorted([context.current, p4]),
                              sorted(updated_ports))
         self.assertEqual(ips,
@@ -259,8 +267,8 @@ class DVSAgentTestCase(base.BaseTestCase):
         self.agent._update_security_groups(self.dvs, self.port_context.current,
                                            self.port_context.original,
                                            self.sg_info, True)
-        self.dvs.update_port_rules.assert_called_once_with(
-            [self.port_context.current])
+        self.update_port_rules_mock.assert_called_once_with(
+            self.dvs, [self.port_context.current])
         sg_rules = self.port_context.current['security_group_rules']
         self.assertEqual(1, len(sg_rules))
         self.assertEqual(CONSTANT_SG_RULE, sg_rules[0])
@@ -270,7 +278,7 @@ class DVSAgentTestCase(base.BaseTestCase):
         self.agent._update_security_groups(self.dvs, self.port_context.current,
                                            self.port_context.original,
                                            self.sg_info, True)
-        self.assertTrue(self.dvs.update_port_rules.called)
+        self.assertTrue(self.update_port_rules_mock.called)
 
     def test_update_security_groups_update_of_sg_without_ports(self):
         current = self._create_port_dict(vif_type='fake')
@@ -281,7 +289,7 @@ class DVSAgentTestCase(base.BaseTestCase):
         self.agent._update_security_groups(self.dvs, current,
                                            self.port_context.original,
                                            self.sg_info, True)
-        self.assertFalse(self.dvs.update_port_rules.called)
+        self.assertFalse(self.update_port_rules_mock.called)
 
     def _create_ports(self, security_groups=None):
         ports = [

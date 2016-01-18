@@ -12,29 +12,31 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-import sys
+
 import signal
+import sys
 import time
 
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_service import loopingcall
 import oslo_messaging
 
-from neutron.common import topics
-from neutron.common import utils
-from neutron.common import config as common_config
-from neutron.common import constants as n_const
-from neutron.i18n import _LE, _LI
+from neutron import context
 from neutron.agent import rpc as agent_rpc
 from neutron.agent import securitygroups_rpc as sg_rpc
 from neutron.agent.common import polling
 # from neutron.agent.linux import ip_lib
-from neutron import context
+from neutron.common import config as common_config
+from neutron.common import constants as n_const
+from neutron.common import utils
+from neutron.common import topics
+from neutron.i18n import _LE, _LI
 from neutron.plugins.common import constants
-from oslo_service import loopingcall
 
 from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util
+from mech_vmware_dvs import security_group_utils as sg_util
 from mech_vmware_dvs import constants as dvs_const
 from mech_vmware_dvs.agentDVS import agentAPI
 
@@ -257,7 +259,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
                         else:
                             port['security_group_rules'].extend(rules)
                     ports.append(port)
-                dvs.update_port_rules(ports)
+                sg_util.update_port_rules(dvs, ports)
 
     def _update_admin_state_up(self, dvs, original, current):
         try:
