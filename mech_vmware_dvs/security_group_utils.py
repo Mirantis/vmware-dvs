@@ -105,12 +105,11 @@ class TrafficRuleBuilder(object):
         try:
             ip, mask = cidr.split('/')
         except ValueError:
-            result = self.factory.create('ns0:SingleIp')
-            result.address = cidr
-        else:
-            result = self.factory.create('ns0:IpRange')
-            result.addressPrefix = ip
-            result.prefixLength = mask
+            ip = cidr
+            mask = '32'
+        result = self.factory.create('ns0:IpRange')
+        result.addressPrefix = ip
+        result.prefixLength = mask
         return result
 
     def _has_port(self, min_port):
@@ -223,7 +222,6 @@ def port_configuration(builder, port_key, sg_rules):
     for rule_info in sg_rules:
         if 'ip_set' in rule_info:
             for ip in rule_info['ip_set']:
-                ip = ip + '/32' if '/' not in ip else ip
                 rule = _create_rule(builder, rule_info, ip,
                                     name='remote security group')
                 rules.append(rule.build(seq))
