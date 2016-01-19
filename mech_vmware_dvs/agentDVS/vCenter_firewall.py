@@ -15,7 +15,7 @@
 
 from neutron.agent import firewall
 from neutron.common import constants
-from neutron.i18n import _LI
+from neutron.i18n import _LI, _LW
 from oslo_log import log as logging
 
 from mech_vmware_dvs import config
@@ -60,10 +60,8 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     def remove_port_filter(self, port):
         self._remove_sg_from_dvs_port(port)
         self.dvs_ports.pop(port['device'], None)
-        if port['id'] in self.dvs_port_map.values():
-            for dvs in self.dvs_port_map.keys():
-                if port['id'] in self.dvs_port_map[dvs]:
-                    self.dvs_port_map[dvs].remove(port['id'])
+        for ports in self.dvs_port_map.values():
+            ports.discard(port['id'])
 
     @property
     def ports(self):
@@ -119,7 +117,8 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         # TODO(akamyshnikova): improve applying rules in case of agent restart
         if port['security_group_rules']:
             dvs = self._get_dvs_for_port_id(port['id'])
-            sg_util.update_port_rules(dvs, [port])
+            if dvs:
+                sg_util.update_port_rules(dvs, [port])
 
     def _get_dvs_for_port_id(self, port_id):
         if port_id not in self.dvs_port_map.keys():
@@ -129,10 +128,11 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         for dvs, port_list in port_map.iteritems():
             if port_id in port_list:
                 if dvs not in self.dvs_port_map:
-                    self.dvs_port_map[dvs] = []
-                if port_id not in self.dvs_port_map[dvs]:
-                    self.dvs_port_map[dvs].append(port_id)
+                    self.dvs_port_map[dvs] = set()
+                self.dvs_port_map[dvs].add(port_id)
                 return dvs
+            else:
+                LOG.warning(_LW("Can find dvs for port %s"), port_id)
 
     def _update_sg_rules_for_ports(self, sg_ids):
         ports_to_update = []
