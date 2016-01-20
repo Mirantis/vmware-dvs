@@ -83,7 +83,7 @@ class TestDVSFirewallDriver(base.BaseTestCase):
     def test_remove_port_filter(self):
         port = self._fake_port('12345', [FAKE_SG_RULE_IPV4_PORT,
                                          FAKE_SG_RULE_IPV6])
-        self.firewall.dvs_port_map = {self.dvs: [port['id'], '1234']}
+        self.firewall.dvs_port_map = {self.dvs: set([port['id'], '1234'])}
         with mock.patch.object(self.firewall, '_get_dvs_for_port_id',
                                return_value=self.dvs), \
             mock.patch.object(sg_utils, 'update_port_rules') as update_port:
