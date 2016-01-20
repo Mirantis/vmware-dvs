@@ -60,8 +60,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     def remove_port_filter(self, port):
         self._remove_sg_from_dvs_port(port)
         self.dvs_ports.pop(port['device'], None)
-        for ports in self.dvs_port_map.values():
-            ports.discard(port['id'])
+        set.union(*self.dvs_port_map.values()).discard(port['id'])
 
     @property
     def ports(self):
@@ -111,7 +110,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         sg_rules = 'security_group_rules'
         for sg in port['security_groups']:
             if sg in self.sg_rules.keys():
-                if (port['id'] not in self.dvs_port_map.keys() or
+                if (port['id'] not in set.union(*self.dvs_port_map.values()) or
                         self.dvs_ports[dev][sg_rules] != self.sg_rules[sg]):
                     port['security_group_rules'] = self.sg_rules[sg]
         # TODO(akamyshnikova): improve applying rules in case of agent restart
@@ -121,7 +120,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                 sg_util.update_port_rules(dvs, [port])
 
     def _get_dvs_for_port_id(self, port_id):
-        if port_id not in self.dvs_port_map.keys():
+        if port_id not in set.union(*self.dvs_port_map.values()):
             port_map = util.create_port_map(self.networking_map.values())
         else:
             port_map = self.dvs_port_map
