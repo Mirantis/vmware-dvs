@@ -187,7 +187,8 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
 
     def process_ports(self):
         LOG.debug("Process deleted ports")
-        self.sg_agent.remove_devices_filter(self.deleted_ports)
+        deleted_ports = list(self.deleted_ports)
+        self.sg_agent.remove_devices_filter(deleted_ports)
         self.deleted_ports = set()
         self.known_ports |= self.added_ports
         self.added_ports = self._get_dvs_ports() - self.known_ports
