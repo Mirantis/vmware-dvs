@@ -60,7 +60,8 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     def remove_port_filter(self, port):
         self._remove_sg_from_dvs_port(port)
         self.dvs_ports.pop(port['device'], None)
-        set.union(*self.dvs_port_map.values()).discard(port['id'])
+        for port_set in self.dvs_port_map.values():
+            port_set.discard(port['id'])
 
     @property
     def ports(self):
