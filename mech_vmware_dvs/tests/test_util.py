@@ -37,6 +37,7 @@ fake_port = {
     'device_id': '_dummy_server_id_',
     'security_group_rules': [{'ethertype': 'IPv4',
                               'direction': 'ingress'}],
+    'binding:vif_details': {'dvs_port_key': '_dvs_port_key_'}
 }
 
 fake_security_group = {'description': u'Default security group',
@@ -511,7 +512,7 @@ class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
         dvs_port.config.setting.blocked.value = True
 
         with mock.patch.object(
-                self.controller, 'get_port_info_by_name',
+                self.controller, '_get_port_info_by_portkey',
                 return_value=dvs_port):
 
             self.controller.switch_port_blocked_state(fake_port)
