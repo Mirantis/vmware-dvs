@@ -175,6 +175,7 @@ class DVSController(object):
             self.connection.vim, 'ReconfigureDVPort_Task',
             self._dvs, port=[update_spec])
         self.connection.wait_for_task(update_task)
+        self._blocked_ports.remove(port.key)
 
     def _build_pg_create_spec(self, name, vlan_tag, blocked):
         builder = SpecBuilder(self.connection.vim.client.factory)

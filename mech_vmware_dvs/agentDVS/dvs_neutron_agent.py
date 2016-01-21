@@ -360,12 +360,11 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
 
     def process_ports(self):
         LOG.debug("Process deleted ports")
-        self.sg_agent.remove_devices_filter(self.deleted_ports)
+        deleted_ports = list(self.deleted_ports)
+        self.sg_agent.remove_devices_filter(deleted_ports)
         LOG.info(_LI("Deleted ports %s"), self.deleted_ports)
-        LOG.info(_LI("Known ports %s"), self.known_ports)
         self.known_ports |= self.added_ports
         LOG.info(_LI("Known ports %s"), self.known_ports)
-        LOG.info(_LI("Added? ports %s"), self.added_ports)
         self.added_ports = self._get_dvs_ports() - self.known_ports
         LOG.info(_LI("Added ports %s"), self.added_ports)
         self.sg_agent.setup_port_filters(self.added_ports, self.updated_ports)
