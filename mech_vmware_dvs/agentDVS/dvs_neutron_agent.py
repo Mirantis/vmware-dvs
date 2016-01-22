@@ -36,7 +36,6 @@ from neutron.plugins.common import constants
 
 from mech_vmware_dvs import exceptions
 from mech_vmware_dvs import util
-from mech_vmware_dvs import security_group_utils as sg_util
 from mech_vmware_dvs import constants as dvs_const
 from mech_vmware_dvs.agentDVS import agentAPI
 
@@ -165,9 +164,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
             )
         else:
             self._update_admin_state_up(dvs, original, current)
-            force = original['status'] == n_const.PORT_STATUS_DOWN
-            self._update_security_groups(dvs, current, original, sg_info,
-                                         force=force)
+            # TODO SlOPS: update security groups on girect call
 
     @util.wrap_retry
     def delete_port_postcommit(self, current, original, segment, sg_info):
@@ -183,8 +180,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
                 'no mapping from network to DVS.') % {'port_id': current['id']}
             )
         else:
-            self._update_security_groups(
-                dvs, current, original, sg_info, force=True)
+            # TODO SlOPS: update security groups on girect call
             dvs.release_port(current)
 
     def _lookup_dvs_for_context(self, segment):
@@ -200,66 +196,6 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
         else:
             raise exceptions.NotSupportedNetworkType(
                 network_type=segment['network_type'])
-
-    @util.wrap_retry
-    def _update_security_groups(self, dvs, current, original, sg_info, force):
-        if not dvs:
-            return
-        current_sg = set(current['security_groups'])
-        if force:
-            changed_sg = current_sg
-        else:
-            original_sg = set(original.get('security_groups', []))
-            changed_sg = current_sg.symmetric_difference(original_sg)
-
-        if changed_sg or force:
-            devices = sg_info['devices']
-            security_groups = sg_info['security_groups']
-            sg_member_ips = sg_info['sg_member_ips']
-
-            sg_to_update = set()
-            ports_to_update = set()
-
-            if current['id'] not in devices:
-                sg_to_update = sg_to_update.union(changed_sg)
-            else:
-                ports_to_update.add(current['id'])
-
-            for sg_id, rules in security_groups.items():
-                for rule in rules:
-                    try:
-                        remote_group_id = rule['remote_group_id']
-                    except KeyError:
-                        pass
-                    else:
-                        if remote_group_id in changed_sg:
-                            sg_to_update.add(sg_id)
-                        if sg_id in changed_sg.union(sg_to_update):
-                            ip_set = sg_member_ips[remote_group_id][
-                                rule['ethertype']]
-                            rule['ip_set'] = ip_set
-
-            for id, port in devices.iteritems():
-                # TODO(ekosareva): removed one more condition(is it needed?):
-                # 'dvs_port_key' in port['binding:vif_details']
-                if (port['binding:vif_type'] == dvs_const.DVS and
-                        sg_to_update & set(port['security_groups'])):
-                    ports_to_update.add(id)
-
-            if ports_to_update:
-                ports = []
-                for port_id in ports_to_update:
-                    port = devices[port_id]
-                    for sec_group_id in port['security_groups']:
-                        try:
-                            rules = security_groups[sec_group_id]
-                        except KeyError:
-                            # security_group doesn't has rules
-                            pass
-                        else:
-                            port['security_group_rules'].extend(rules)
-                    ports.append(port)
-                sg_util.update_port_rules(dvs, ports)
 
     def _update_admin_state_up(self, dvs, original, current):
         try:
@@ -359,14 +295,12 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
         self.iter_num = self.iter_num + 1
 
     def process_ports(self):
-        LOG.debug("Process deleted ports")
-        deleted_ports = list(self.deleted_ports)
+        LOG.debug("Process ports")
+        deleted_ports = self.deleted_ports.copy()
+        self.deleted_ports = self.deleted_ports - deleted_ports
         self.sg_agent.remove_devices_filter(deleted_ports)
-        LOG.info(_LI("Deleted ports %s"), self.deleted_ports)
         self.known_ports |= self.added_ports
-        LOG.info(_LI("Known ports %s"), self.known_ports)
         self.added_ports = self._get_dvs_ports() - self.known_ports
-        LOG.info(_LI("Added ports %s"), self.added_ports)
         self.sg_agent.setup_port_filters(self.added_ports, self.updated_ports)
 
     def port_update(self, context, **kwargs):
