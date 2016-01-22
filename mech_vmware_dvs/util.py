@@ -39,7 +39,7 @@ class DVSController(object):
             self.dvs_name = dvs_name
             self._dvs, self._datacenter = self._get_dvs(dvs_name, connection)
             # (SlOPS) To do release blocked port after use
-            self._blocked_ports = []
+            self._blocked_ports = set()
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
@@ -174,8 +174,9 @@ class DVSController(object):
         update_task = self.connection.invoke_api(
             self.connection.vim, 'ReconfigureDVPort_Task',
             self._dvs, port=[update_spec])
-        self.connection.wait_for_task(update_task)
-        self._blocked_ports.remove(port.key)
+        task_result = self.connection.wait_for_task(update_task)
+        if task_result.state == "success":
+            self._blocked_ports.discard(port_info.key)
 
     def _build_pg_create_spec(self, name, vlan_tag, blocked):
         builder = SpecBuilder(self.connection.vim.client.factory)
@@ -298,7 +299,7 @@ class DVSController(object):
         print 'port keys', port_keys
         if len(port_keys) > 0:
             print "Port key", port_keys[0]
-            self._blocked_ports.append(port_keys[0])
+            self._blocked_ports.add(port_keys[0])
             return self._get_port_info_by_portkey(port_keys[0])
         raise exceptions.UnboundPortNotFound()
 
@@ -313,7 +314,7 @@ class DVSController(object):
         for port in ports:
             if (not getattr(port.config, 'name', None) and
                     port.key not in self._blocked_ports):
-                self._blocked_ports.append(port.key)
+                self._blocked_ports.add(port.key)
                 return port
         raise exceptions.UnboundPortNotFound()
 

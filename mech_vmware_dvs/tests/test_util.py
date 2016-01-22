@@ -32,6 +32,7 @@ fake_network = {'id': '34e33a31-516a-439f-a186-96ac85155a8c',
 fake_segment = {'segmentation_id': '102'}
 fake_port = {
     'id': '_dummy_port_id_',
+    'dvs_port_key': '_dummy_port_key_',
     'admin_state_up': True,
     'device_id': '_dummy_server_id_',
     'security_group_rules': [{'ethertype': 'IPv4',
@@ -169,6 +170,27 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
         expect = self.dvs_name + fake_network['id']
         self.assertEqual(expect, self.controller._get_net_name(self.dvs_name,
                                                                fake_network))
+
+    @mock.patch('mech_vmware_dvs.util.DVSController.get_port_info_by_name')
+    def test_release_port(self, get_port_info_mock):
+        dvs_port = mock.Mock()
+        dvs_port.config.configVersion = 'config_version'
+        dvs_port.key = fake_port['dvs_port_key']
+        get_port_info_mock.return_value = dvs_port
+
+        self.connection.wait_for_task.return_value = mock.Mock(state="success")
+        self.controller._blocked_ports = set(['1', '3', '10'])
+        self.controller.release_port(fake_port)
+        self.assertEqual(self.controller._blocked_ports, set(['1', '3', '10']))
+
+        self.controller._blocked_ports.add(dvs_port.key)
+        self.connection.wait_for_task.return_value = mock.Mock(state="error")
+        self.controller.release_port(fake_port)
+        self.assertIn(dvs_port.key, self.controller._blocked_ports)
+
+        self.connection.wait_for_task.return_value = mock.Mock(state="success")
+        self.controller.release_port(fake_port)
+        self.assertNotIn(dvs_port.key, self.controller._blocked_ports)
 
     def _get_connection_mock(self, dvs_name):
         return mock.Mock(vim=self.vim)
@@ -485,7 +507,7 @@ class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
 
         with mock.patch.object(self.controller, 'get_port_info_by_name',
                                return_value=dvs_port):
-            self.controller.switch_port_blocked_state(fake_port)
+            self.controller.switch_port_blocked_state(neutron_port)
 
         self.assertEqual(1, self.connection.invoke_api.call_count)
         self.assertEqual(
@@ -667,3 +689,25 @@ class UtilTestCase(base.BaseTestCase):
         self.assertRaises(
             vmware_exceptions.VMwareDriverException, util.wrap_retry(double))
         self.assertEqual(3, func.call_count)
+
+    def test_wrap_retry_w_concurrent_modification(self):
+        func = mock.Mock()
+        func.side_effect = [
+            exceptions.VMWareDVSException(
+                message=dvs_const.CONCURRENT_MODIFICATION_TEXT,
+                type='TestException',
+                cause='Test cause'
+            ),
+            exceptions.VMWareDVSException(
+                message='Some exception text',
+                type='TestException',
+                cause='Test cause'
+            )
+        ]
+
+        def double(*args, **kwargs):
+            return func(*args, **kwargs)
+
+        self.assertRaises(
+            exceptions.VMWareDVSException, util.wrap_retry(double))
+        self.assertEqual(2, func.call_count)
