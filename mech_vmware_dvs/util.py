@@ -142,7 +142,8 @@ class DVSController(object):
     def switch_port_blocked_state(self, port):
         state = not port['admin_state_up']
 
-        port_info = self.get_port_info_by_name(port['id'])
+        port_info = self._get_port_info_by_portkey(
+            port['binding:vif_details']['dvs_port_key'])
 
         builder = SpecBuilder(self.connection.vim.client.factory)
         port_settings = builder.port_setting()
@@ -183,11 +184,13 @@ class DVSController(object):
                 self.connection.vim, 'ReconfigureDVPort_Task',
                 self._dvs, port=[update_spec])
             self.connection.wait_for_task(update_task)
+            return port_info.key
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
     def release_port(self, port):
-        port_info = self.get_port_info_by_name(port['id'])
+        port_key = port['binding:vif_details']['dvs_port_key']
+        port_info = self._get_port_info_by_portkey(port_key)
         builder = SpecBuilder(self.connection.vim.client.factory)
         update_spec = builder.port_config_spec(
             port_info.config.configVersion, name='')
