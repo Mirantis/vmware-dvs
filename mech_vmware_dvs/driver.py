@@ -28,7 +28,6 @@ from neutron import context
 from mech_vmware_dvs import compute_util
 from mech_vmware_dvs import config
 from mech_vmware_dvs import exceptions
-from mech_vmware_dvs import util
 from mech_vmware_dvs import constants as dvs_const
 from mech_vmware_dvs.agentDVS import agentAPI
 
@@ -81,9 +80,6 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     def get_mappings(self, agent):
         return agent['configurations'].get('bridge_mappings', {})
-
-    def initialize(self):
-        self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)
 
     def create_network_precommit(self, context):
         self.dvs_notifier.create_network_cast(context.current,
