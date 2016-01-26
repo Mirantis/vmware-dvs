@@ -61,7 +61,7 @@ class DVSController(object):
         self.connection = connection
         try:
             self.dvs_name = dvs_name
-            self._dvs, self._datacenter = self._get_dvs(dvs_name, connection)
+            self._dvs = self._get_dvs(dvs_name, connection)
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
@@ -233,27 +233,15 @@ class DVSController(object):
 
     def _get_dvs(self, dvs_name, connection):
         """Get the dvs by name"""
-        dcs = connection.invoke_api(
+        dvswitches = connection.invoke_api(
             vim_util, 'get_objects', connection.vim,
-            'Datacenter', 100, ['name']).objects
-        for dc in dcs:
-            datacenter = dc.obj
-            network_folder = connection.invoke_api(
-                vim_util, 'get_object_property', connection.vim,
-                datacenter, 'networkFolder')
-            results = connection.invoke_api(
-                vim_util, 'get_object_property', connection.vim,
-                network_folder, 'childEntity')
-            if results:
-                networks = results.ManagedObjectReference
-                dvswitches = self._get_object_by_type(networks,
-                                              'VmwareDistributedVirtualSwitch')
-                for dvs in dvswitches:
-                    name = connection.invoke_api(
-                        vim_util, 'get_object_property',
-                        connection.vim, dvs, 'name')
-                    if name == dvs_name:
-                        return dvs, datacenter
+            'VmwareDistributedVirtualSwitch', 100, ['name']).objects
+        for dvs in dvswitches:
+            name = connection.invoke_api(
+                vim_util, 'get_object_property',
+                connection.vim, dvs.obj, 'name')
+            if name == dvs_name:
+                return dvs.obj
         raise exceptions.DVSNotFound(dvs_name=dvs_name)
 
     def _get_pg_by_name(self, pg_name):
