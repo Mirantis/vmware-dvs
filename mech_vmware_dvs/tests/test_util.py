@@ -138,11 +138,10 @@ class DVSControllerBaseTestCase(UtilBaseTestCase):
         self.vim = mock.Mock()
         self.connection = self._get_connection_mock(self.dvs_name)
 
-        self.datacenter = 'datacenter1'
         self.dvs = mock.Mock()
 
         self.use_patch('mech_vmware_dvs.util.DVSController._get_dvs',
-                       return_value=(self.dvs, self.datacenter))
+                       return_value=self.dvs)
 
         self.controller = util.DVSController(self.dvs_name,
                                              self.connection)
@@ -160,7 +159,6 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
     """Tests of DVSController that don't call API methods"""
 
     def test_creation(self):
-        self.assertEqual(self.datacenter, self.controller._datacenter)
         self.assertEqual(self.dvs, self.controller._dvs)
         self.assertIs(self.connection, self.controller.connection)
 
