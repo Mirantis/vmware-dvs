@@ -176,8 +176,9 @@ class DVSController(object):
                 self._dvs, port=port_config_list
             )
             return self.connection.wait_for_task(task)
-        except vmware_exceptions.VimException as e:
-            raise exceptions.wrap_wmvare_vim_exception(e)
+        except vmware_exceptions.VimException:
+            pass
+            # raise exceptions.wrap_wmvare_vim_exception(e)
 
     def book_port(self, network, port_name):
         for iter in range(1, 5):
