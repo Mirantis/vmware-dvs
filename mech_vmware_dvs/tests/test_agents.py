@@ -49,6 +49,8 @@ class DVSAgentTestCase(base.BaseTestCase):
         class TestDVSAgent(dvs_neutron_agent.DVSAgent):
             def __init__(self, network_map):
                 self.network_map = network_map
+                self.wanted_ports=set()
+                self.added_ports=set()
 
         super(DVSAgentTestCase, self).setUp()
         self.dvs = mock.Mock()
