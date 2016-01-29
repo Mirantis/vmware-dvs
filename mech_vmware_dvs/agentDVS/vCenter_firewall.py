@@ -81,7 +81,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
 
     def update_security_group_members(self, sg_id, sg_members):
         updated = False
-        updated_sgs = set(sg_id)
+        updated_sgs = set([sg_id])
         for sg, rules in self.sg_rules.items():
             for rule in rules:
                 if rule.get('remote_group_id') == sg_id:
@@ -90,8 +90,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                             rule.get('ip_set') != sg_members[ethertype]):
                         rule['ip_set'] = sg_members[ethertype]
                         updated = True
-                        if sg_id != sg:
-                            updated_sgs.add(sg)
+                        updated_sgs.add(sg)
         if updated:
             self._update_sg_rules_for_ports(updated_sgs)
         self.sg_members[sg_id] = sg_members
@@ -230,7 +229,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     def _clear_sg_members(self, ip_version, remote_sg_ids):
         """Clear our internal cache of sg members matching the parameters."""
         for remote_sg_id in remote_sg_ids:
-            if self.sg_members[remote_sg_id][ip_version]:
+            if ip_version in self.sg_members[remote_sg_id]:
                 self.sg_members[remote_sg_id][ip_version] = []
 
     def _remove_unused_sg_members(self):
