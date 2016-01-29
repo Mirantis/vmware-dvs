@@ -49,8 +49,8 @@ class DVSAgentTestCase(base.BaseTestCase):
         class TestDVSAgent(dvs_neutron_agent.DVSAgent):
             def __init__(self, network_map):
                 self.network_map = network_map
-                self.wanted_ports=set()
-                self.added_ports=set()
+                self.wanted_ports = set()
+                self.added_ports = set()
 
         super(DVSAgentTestCase, self).setUp()
         self.dvs = mock.Mock()
@@ -112,6 +112,9 @@ class DVSAgentTestCase(base.BaseTestCase):
         is_valid_dvs.return_value = self.dvs
         self.port_context.current['admin_state_up'] = True
         self.port_context.original['admin_state_up'] = False
+        self.agent.added_ports = set()
+        current_port_id = self.port_context.current['id']
+        self.agent.wanted_ports.add(current_port_id)
         self.agent.update_port_postcommit(
             self.port_context.current,
             self.port_context.original,
@@ -120,6 +123,8 @@ class DVSAgentTestCase(base.BaseTestCase):
         )
         self.assertTrue(is_valid_dvs.called)
         self.assertTrue(self.dvs.switch_port_blocked_state.called)
+        self.assertIn(current_port_id, self.agent.added_ports)
+        self.assertNotIn(current_port_id, self.agent.wanted_ports)
 
     @mock.patch('mech_vmware_dvs.agentDVS.dvs_neutron_agent.DVSAgent.'
                 '_lookup_dvs_for_context')
