@@ -229,7 +229,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     def _clear_sg_members(self, ip_version, remote_sg_ids):
         """Clear our internal cache of sg members matching the parameters."""
         for remote_sg_id in remote_sg_ids:
-            if self.sg_members[remote_sg_id][ip_version]:
+            if ip_version in self.sg_members[remote_sg_id]:
                 self.sg_members[remote_sg_id][ip_version] = []
 
     def _remove_unused_sg_members(self):
