@@ -105,9 +105,17 @@ class TestDVSFirewallDriver(base.BaseTestCase):
 
     def test_update_security_group_rules(self):
         sg_rules = [FAKE_SG_RULE_IPV6, FAKE_SG_RULE_IPV4_PORT]
-        self.firewall.update_security_group_rules('1234', sg_rules)
-        self.assertEqual({'1234': sg_rules},
-                         self.firewall.sg_rules)
+        port = self._fake_port(
+            '1234', [FAKE_SG_RULE_IPV6])
+        self.firewall.dvs_ports = {port['device']: port}
+        self.firewall.dvs_port_map = {self.dvs: set([port['id']])}
+        with mock.patch.object(sg_utils, 'update_port_rules') as update_port:
+            self.firewall.update_security_group_rules('1234', sg_rules)
+            expected_port = port
+            expected_port['security_group_rules'] = sg_rules
+            update_port.assert_called_once_with(self.dvs, [expected_port])
+            self.assertEqual({'1234': sg_rules},
+                             self.firewall.sg_rules)
 
     def test_update_security_group_rules_no_action(self):
         sg_rules = [FAKE_SG_RULE_IPV6, FAKE_SG_RULE_IPV4_PORT]
@@ -118,13 +126,16 @@ class TestDVSFirewallDriver(base.BaseTestCase):
     def test_update_security_group_rules_apply_ip_set(self):
         self.firewall.sg_members = {'12345': {'IPv4': ['192.168.0.3'],
                                               'IPv6': []}}
-        updated_sg_rules = [FAKE_SG_RULE_IPV6, FAKE_SG_RULE_IPV4_PORT,
-                            FAKE_SG_RULE_IPV4_WITH_REMOTE]
-        self.firewall.update_security_group_rules(
-            '1234', updated_sg_rules)
-        updated_sg_rules[2]['ip_set'] = ['192.168.0.3']
-        self.assertEqual({'1234': updated_sg_rules},
-                         self.firewall.sg_rules)
+        with mock.patch.object(sg_utils, 'update_port_rules') as update_port:
+            updated_sg_rules = [FAKE_SG_RULE_IPV6, FAKE_SG_RULE_IPV4_PORT,
+                                FAKE_SG_RULE_IPV4_WITH_REMOTE]
+            self.firewall.update_security_group_rules(
+                '1234', updated_sg_rules)
+            self.port['security_group_rules'] = updated_sg_rules
+            update_port.assert_called_once_with(self.dvs, [self.port])
+            updated_sg_rules[2]['ip_set'] = ['192.168.0.3']
+            self.assertEqual({'1234': updated_sg_rules},
+                             self.firewall.sg_rules)
 
     def test_update_security_group_members(self):
         sg_members = {'IPv4': ['192.168.0.3'], 'IPv6': []}

@@ -68,10 +68,11 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         return self.dvs_ports
 
     def update_security_group_rules(self, sg_id, sg_rules):
+        self._apply_ip_set(sg_rules)
         if sg_id in self.sg_rules and self.sg_rules[sg_id] == sg_rules:
             return
-        self._apply_ip_set(sg_rules)
         self.sg_rules[sg_id] = sg_rules
+        self._update_sg_rules_for_ports(set([sg_id]))
         LOG.debug("Update rules of security group (%s)", sg_id)
 
     def update_security_group_members(self, sg_id, sg_members):
