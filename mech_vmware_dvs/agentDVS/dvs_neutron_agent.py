@@ -92,7 +92,9 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
         self.updated_ports = set()
         self.deleted_ports = set()
         self.known_ports = set()
-        self.added_ports = set()
+        dvs_ports = self._get_dvs_ports()
+        self.added_ports = dvs_ports - self.known_ports
+        self.wanted_ports = set()
 
     @util.wrap_retry
     def create_network_precommit(self, current, segment):
@@ -145,6 +147,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
                 dvs = self._lookup_dvs_for_context(segment)
         if dvs:
             # TODO(ekosareva): port_key need to send back to server
+            self.wanted_ports.add(current['id'])
             return dvs.book_port(network_current, current['id'])
         else:
             return None
@@ -153,6 +156,9 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
     def update_port_postcommit(self, current, original, segment, sg_info):
         try:
             dvs = self._lookup_dvs_for_context(segment)
+            if current['id'] in self.wanted_ports:
+                self.added_ports.add(current['id'])
+                self.wanted_ports.discard(current['id'])
         except exceptions.NotSupportedNetworkType as e:
             LOG.info(_LI('Port %(id)s not updated. Reason: %(reason)s') % {
                 'id': current['id'],
@@ -299,9 +305,9 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
         deleted_ports = self.deleted_ports.copy()
         self.deleted_ports = self.deleted_ports - deleted_ports
         self.sg_agent.remove_devices_filter(deleted_ports)
-        self.known_ports |= self.added_ports
-        self.added_ports = self._get_dvs_ports() - self.known_ports
         self.sg_agent.setup_port_filters(self.added_ports, self.updated_ports)
+        self.known_ports |= self.added_ports
+        self.added_ports = set()
 
     def port_update(self, context, **kwargs):
         port = kwargs.get('port')
