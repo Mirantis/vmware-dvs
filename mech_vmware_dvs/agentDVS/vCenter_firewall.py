@@ -85,7 +85,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     @util.wrap_retry
     def update_security_group_members(self, sg_id, sg_members):
         updated = False
-        updated_sgs = set(sg_id)
+        updated_sgs = set([sg_id])
         for sg, rules in self.sg_rules.items():
             for rule in rules:
                 if rule.get('remote_group_id') == sg_id:
