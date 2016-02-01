@@ -18,37 +18,35 @@ import sys
 import time
 import itertools
 
+from neutron import context
+from neutron.agent import rpc as agent_rpc
+from neutron.agent import securitygroups_rpc as sg_rpc
+from neutron.agent.common import polling
+from neutron.common import config as common_config
+from neutron.common import constants as n_const
+from neutron.common import utils
+from neutron.common import topics
+from neutron.i18n import _, _LE, _LI
+from neutron.plugins.common import constants
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import loopingcall
 import oslo_messaging
 
-from neutron import context
-from neutron.agent import rpc as agent_rpc
-from neutron.agent import securitygroups_rpc as sg_rpc
-from neutron.agent.common import polling
-# from neutron.agent.linux import ip_lib
-from neutron.common import config as common_config
-from neutron.common import constants as n_const
-from neutron.common import utils
-from neutron.common import topics
-from neutron.i18n import _LE, _LI
-from neutron.plugins.common import constants
-
-from mech_vmware_dvs import exceptions
-from mech_vmware_dvs import util
-from mech_vmware_dvs import constants as dvs_const
-from mech_vmware_dvs.agentDVS import agentAPI
+from vmware_dvs.utils import dvs_util
+from vmware_dvs.common import constants as dvs_const, exceptions
+from vmware_dvs.api import dvs_agent_rpc_api
 
 LOG = logging.getLogger(__name__)
-cfg.CONF.import_group('AGENT', 'mech_vmware_dvs.agentDVS.vmware_conf')
+cfg.CONF.import_group('AGENT', 'vmware_dvs.agent.common.vmware_conf')
 
 
 class DVSPluginApi(agent_rpc.PluginApi):
     pass
 
 
-class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
+class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
+               dvs_agent_rpc_api.ExtendAPI):
 
     target = oslo_messaging.Target(version='1.2')
 
@@ -88,7 +86,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
         self.connection.consume_in_threads()
 
         self.quitting_rpc_timeout = quitting_rpc_timeout
-        self.network_map = util.create_network_map_from_config(
+        self.network_map = dvs_util.create_network_map_from_config(
             cfg.CONF.ML2_VMWARE)
         self.updated_ports = set()
         self.deleted_ports = set()
@@ -96,7 +94,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
         self.added_ports = set()
         self.booked_ports = set()
 
-    @util.wrap_retry
+    @dvs_util.wrap_retry
     def create_network_precommit(self, current, segment):
         try:
             dvs = self._lookup_dvs_for_context(segment)
@@ -110,7 +108,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
         else:
             dvs.create_network(current, segment)
 
-    @util.wrap_retry
+    @dvs_util.wrap_retry
     def delete_network_postcommit(self, current, segment):
         try:
             dvs = self._lookup_dvs_for_context(segment)
@@ -124,7 +122,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
         else:
             dvs.delete_network(current)
 
-    @util.wrap_retry
+    @dvs_util.wrap_retry
     def update_network_precommit(self, current, segment, original):
         try:
             dvs = self._lookup_dvs_for_context(segment)
@@ -138,7 +136,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
         else:
             dvs.update_network(current, original)
 
-    @util.wrap_retry
+    @dvs_util.wrap_retry
     def book_port(self, current, network_segments, network_current):
         physnet = network_current['provider:physical_network']
         dvs = None
@@ -153,7 +151,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
             return port
         return None
 
-    @util.wrap_retry
+    @dvs_util.wrap_retry
     def update_port_postcommit(self, current, original, segment, sg_info):
         try:
             dvs = self._lookup_dvs_for_context(segment)
@@ -173,7 +171,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
             self._update_admin_state_up(dvs, original, current)
             # TODO SlOPS: update security groups on girect call
 
-    @util.wrap_retry
+    @dvs_util.wrap_retry
     def delete_port_postcommit(self, current, original, segment, sg_info):
         try:
             dvs = self._lookup_dvs_for_context(segment)

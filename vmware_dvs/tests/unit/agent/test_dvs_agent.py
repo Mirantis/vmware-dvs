@@ -18,9 +18,8 @@ import mock
 from neutron.plugins.common import constants
 from neutron.tests import base
 
-from mech_vmware_dvs.agentDVS import dvs_neutron_agent
-from mech_vmware_dvs import exceptions
-from mech_vmware_dvs import constants as dvs_const
+from vmware_dvs.agent import dvs_neutron_agent
+from vmware_dvs.common import constants as dvs_const, exceptions
 
 NOT_SUPPORTED_TYPES = [
     constants.TYPE_FLAT,
@@ -61,7 +60,7 @@ class DVSAgentTestCase(base.BaseTestCase):
         self.sg_info = test_port_data[1]
 
         sg_util_patch = mock.patch(
-            'mech_vmware_dvs.security_group_utils.update_port_rules')
+            'vmware_dvs.utils.security_group_utils.update_port_rules')
         self.addCleanup(sg_util_patch.stop)
         self.update_port_rules_mock = sg_util_patch.start()
 
@@ -89,7 +88,7 @@ class DVSAgentTestCase(base.BaseTestCase):
             self.fail('_lookup_dvs_for_context() function should not throw any'
                       ' exceptions with correct segment data: %s' % segment)
 
-    @mock.patch('mech_vmware_dvs.agentDVS.dvs_neutron_agent.DVSAgent.'
+    @mock.patch('vmware_dvs.agent.dvs_neutron_agent.DVSAgent.'
                 '_lookup_dvs_for_context')
     def test_update_port_postcommit_uncontrolled_dvs(self, is_valid_dvs):
         is_valid_dvs.side_effect = exceptions.NoDVSForPhysicalNetwork(
@@ -106,7 +105,7 @@ class DVSAgentTestCase(base.BaseTestCase):
         self.assertTrue(is_valid_dvs.called)
         self.assertFalse(self.dvs.switch_port_blocked_state.called)
 
-    @mock.patch('mech_vmware_dvs.agentDVS.dvs_neutron_agent.DVSAgent.'
+    @mock.patch('vmware_dvs.agent.dvs_neutron_agent.DVSAgent.'
                 '_lookup_dvs_for_context')
     def test_update_port_postcommit(self, is_valid_dvs):
         is_valid_dvs.return_value = self.dvs
@@ -126,7 +125,7 @@ class DVSAgentTestCase(base.BaseTestCase):
         self.assertIn(current_port_id, self.agent.added_ports)
         self.assertNotIn(current_port_id, self.agent.booked_ports)
 
-    @mock.patch('mech_vmware_dvs.agentDVS.dvs_neutron_agent.DVSAgent.'
+    @mock.patch('vmware_dvs.agent.dvs_neutron_agent.DVSAgent.'
                 '_lookup_dvs_for_context')
     def test_delete_port_postcommit_uncontrolled_dvs(self, is_valid_dvs):
         is_valid_dvs.side_effect = exceptions.NoDVSForPhysicalNetwork(
@@ -141,7 +140,7 @@ class DVSAgentTestCase(base.BaseTestCase):
         self.assertTrue(is_valid_dvs.called)
         self.assertFalse(self.dvs.release_port.called)
 
-    @mock.patch('mech_vmware_dvs.agentDVS.dvs_neutron_agent.DVSAgent.'
+    @mock.patch('vmware_dvs.agent.dvs_neutron_agent.DVSAgent.'
                 '_lookup_dvs_for_context')
     def test_delete_port_postcommit(self, is_valid_dvs):
         is_valid_dvs.return_value = self.dvs

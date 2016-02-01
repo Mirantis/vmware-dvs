@@ -18,7 +18,7 @@ from neutron.i18n import _
 
 
 class VMWareDVSException(exceptions.NeutronException):
-    """Base of all exceptions throwed by mech_vmware_dvs driver"""
+    """Base of all exceptions throwed by vmware_dvs driver"""
     message = _('VMWare DVS exception occurred. Original Exception: '
                 '"%(type)s: %(message)s". Cause: "%(cause)s."')
 

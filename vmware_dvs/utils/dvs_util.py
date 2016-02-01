@@ -17,15 +17,15 @@ from time import sleep
 import uuid
 import six
 
-from oslo_log import log
 
 from neutron.i18n import _LI, _LW
+from oslo_log import log
 from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
 
-from mech_vmware_dvs import exceptions
-from mech_vmware_dvs import constants as dvs_const
+from vmware_dvs.common import constants as dvs_const
+from vmware_dvs.common import exceptions
 
 LOG = log.getLogger(__name__)
 

@@ -12,12 +12,12 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-import mock
 
+import mock
 from neutron.tests import base
 
-from mech_vmware_dvs.agentDVS import vCenter_firewall
-from mech_vmware_dvs import security_group_utils as sg_utils
+from vmware_dvs.agent.firewalls import vcenter_firewall
+from vmware_dvs.utils import security_group_utils as sg_utils
 
 FAKE_PREFIX = {'IPv4': '10.0.0.0/24',
                'IPv6': 'fe80::/48'}
@@ -39,9 +39,10 @@ class TestDVSFirewallDriver(base.BaseTestCase):
     def setUp(self):
         super(TestDVSFirewallDriver, self).setUp()
         self.dvs = mock.Mock()
-        self.use_patch('mech_vmware_dvs.util.create_network_map_from_config',
-                       return_value={'physnet1': self.dvs})
-        self.firewall = vCenter_firewall.DVSFirewallDriver()
+        self.use_patch(
+            'vmware_dvs.utils.dvs_util.create_network_map_from_config',
+            return_value={'physnet1': self.dvs})
+        self.firewall = vcenter_firewall.DVSFirewallDriver()
 
     def use_patch(self, *args, **kwargs):
         patch = mock.patch(*args, **kwargs)
