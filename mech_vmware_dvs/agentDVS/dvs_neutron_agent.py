@@ -146,8 +146,6 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
             if segment['physical_network'] == physnet:
                 dvs = self._lookup_dvs_for_context(segment)
         if dvs:
-            # TODO(ekosareva): port_key need to send back to server
-            self.wanted_ports.add(current['id'])
             return dvs.book_port(network_current, current['id'])
         else:
             return None
@@ -302,12 +300,20 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
 
     def process_ports(self):
         LOG.debug("Process ports")
-        deleted_ports = self.deleted_ports.copy()
-        self.deleted_ports = self.deleted_ports - deleted_ports
-        self.sg_agent.remove_devices_filter(deleted_ports)
-        self.sg_agent.setup_port_filters(self.added_ports, self.updated_ports)
-        self.known_ports |= self.added_ports
-        self.added_ports = set()
+        if self.deleted_ports:
+            deleted_ports = self.deleted_ports.copy()
+            self.deleted_ports = self.deleted_ports - deleted_ports
+            self.sg_agent.remove_devices_filter(deleted_ports)
+        if self.added_ports:
+            possible_ports = self._get_dvs_ports() & self.added_ports
+            self.added_ports -= possible_ports
+            self.known_ports |= possible_ports
+        else:
+            possible_ports = set()
+        if possible_ports or self.updated_ports:
+            self.sg_agent.setup_port_filters(possible_ports,
+                                             self.updated_ports)
+        self.known_ports |= possible_ports
 
     def port_update(self, context, **kwargs):
         port = kwargs.get('port')
@@ -316,8 +322,9 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
 
     def port_delete(self, context, **kwargs):
         port_id = kwargs.get('port_id')
-        self.deleted_ports.add(port_id)
-        self.known_ports.discard(port_id)
+        if port_id in self.known_ports:
+            self.deleted_ports.add(port_id)
+            self.known_ports.discard(port_id)
         if port_id in self.added_ports:
             self.added_ports.discard(port_id)
         LOG.debug("port_delete message processed for port %s", port_id)
