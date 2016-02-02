@@ -18,9 +18,10 @@ from neutron.common import constants
 from neutron.i18n import _LI, _LW
 from oslo_log import log as logging
 
-from mech_vmware_dvs import config
-from mech_vmware_dvs import security_group_utils as sg_util
-from mech_vmware_dvs import util
+from vmware_dvs.common import config
+from vmware_dvs.utils import security_group_utils as sg_util
+from vmware_dvs.utils import dvs_util
+
 LOG = logging.getLogger(__name__)
 
 CONF = config.CONF
@@ -30,7 +31,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     """DVS Firewall Driver.
     """
     def __init__(self):
-        self.networking_map = util.create_network_map_from_config(
+        self.networking_map = dvs_util.create_network_map_from_config(
             CONF.ml2_vmware)
         self.dvs_ports = {}
         self.sg_rules = {}
@@ -121,7 +122,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         known_ports = (set.union(*self.dvs_port_map.values())
                        if self.dvs_port_map.values() else {})
         if port_id not in known_ports:
-            port_map = util.create_port_map(self.networking_map.values())
+            port_map = dvs_util.create_port_map(self.networking_map.values())
         else:
             port_map = self.dvs_port_map
         for dvs, port_list in port_map.iteritems():

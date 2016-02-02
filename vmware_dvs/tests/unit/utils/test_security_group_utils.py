@@ -14,12 +14,11 @@
 #    under the License.
 
 import mock
-
 from neutron.tests import base
 
-from mech_vmware_dvs import security_group_utils as sg_util
-from mech_vmware_dvs.tests import test_util
-from mech_vmware_dvs import util
+from vmware_dvs.tests.unit.utils import test_util
+from vmware_dvs.utils import dvs_util
+from vmware_dvs.utils import security_group_utils as sg_util
 
 
 class TrafficRuleBuilderBaseTestCase(test_util.UtilBaseTestCase):
@@ -134,7 +133,7 @@ class SpecBuilderSecurityGroupsTestCase(base.BaseTestCase):
         self.spec = mock.Mock(name='spec')
         self.factory = mock.Mock(name='factory')
         self.factory.create.return_value = self.spec
-        self.builder = util.SpecBuilder(self.factory)
+        self.builder = dvs_util.SpecBuilder(self.factory)
 
     def test__create_rule_egress(self):
         rule = self._create_rule(direction='egress')

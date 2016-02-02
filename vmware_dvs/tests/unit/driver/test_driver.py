@@ -16,11 +16,11 @@
 
 from neutron.tests import base
 
-from mech_vmware_dvs import driver
+from vmware_dvs.driver import mechaniscm_dvs_driver
 
 
 class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
 
     def setUp(self):
         super(VMwareDVSMechanismDriverTestCase, self).setUp()
-        self.driver = driver.VMwareDVSMechanismDriver()
+        self.driver = mechaniscm_dvs_driver.VMwareDVSMechanismDriver()

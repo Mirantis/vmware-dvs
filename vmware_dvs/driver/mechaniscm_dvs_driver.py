@@ -15,7 +15,6 @@
 
 import six
 from oslo_log import log
-
 from neutron.common import constants as n_const
 from neutron.extensions import portbindings
 from neutron.i18n import _LI, _
@@ -23,10 +22,10 @@ from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api
 from neutron.plugins.ml2.drivers import mech_agent
 
-from mech_vmware_dvs import compute_util
-from mech_vmware_dvs import config
-from mech_vmware_dvs import exceptions
-from mech_vmware_dvs import util
+from vmware_dvs.common import config
+from vmware_dvs.common import exceptions
+from vmware_dvs.utils import compute_util
+from vmware_dvs.utils import dvs_util
 
 LOG = log.getLogger(__name__)
 CONF = config.CONF
@@ -65,12 +64,13 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.vif_details = {portbindings.CAP_PORT_FILTER: False}
 
         super(VMwareDVSMechanismDriver, self).__init__(
-            util.AGENT_TYPE_DVS,
+            dvs_util.AGENT_TYPE_DVS,
             self.vif_type,
             self.vif_details)
 
     def initialize(self):
-        self.network_map = util.create_network_map_from_config(CONF.ml2_vmware)
+        self.network_map = dvs_util.create_network_map_from_config(
+            CONF.ml2_vmware)
 
     def get_allowed_network_types(self, agent):
         return (agent['configurations'].get('tunnel_types', []) +
@@ -92,7 +92,7 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         else:
             dvs.create_network(context.current, context.network_segments[0])
 
-    @util.wrap_retry
+    @dvs_util.wrap_retry
     def update_network_precommit(self, context):
         try:
             dvs = self._lookup_dvs_for_context(context)
@@ -106,7 +106,7 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         else:
             dvs.update_network(context.current, context.original)
 
-    @util.wrap_retry
+    @dvs_util.wrap_retry
     def delete_network_postcommit(self, context):
         try:
             dvs = self._lookup_dvs_for_context(context)
@@ -120,13 +120,13 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         else:
             dvs.delete_network(context.current)
 
-    @util.wrap_retry
+    @dvs_util.wrap_retry
     @port_belongs_to_vmware
     def update_port_precommit(self, context):
         if context.current['binding:vif_type'] == 'unbound':
             self.bind_port(context)
 
-    @util.wrap_retry
+    @dvs_util.wrap_retry
     @port_belongs_to_vmware
     def update_port_postcommit(self, context):
         try:
@@ -150,7 +150,7 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                     context.current['id'],
                     n_const.PORT_STATUS_ACTIVE)
 
-    @util.wrap_retry
+    @dvs_util.wrap_retry
     @port_belongs_to_vmware
     def delete_port_postcommit(self, context):
         try:
@@ -163,7 +163,7 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                     'net_id': context.network.current['id']})
         dvs.release_port(context.current)
 
-    @util.wrap_retry
+    @dvs_util.wrap_retry
     @port_belongs_to_vmware
     def bind_port(self, context):
         for segment in context.network.network_segments:

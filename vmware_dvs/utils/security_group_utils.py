@@ -17,11 +17,10 @@ import abc
 from oslo_log import log
 from oslo.vmware import exceptions as vmware_exceptions
 import six
-
 from neutron.i18n import _LI, _LW
 
-from mech_vmware_dvs import exceptions
-from mech_vmware_dvs import util
+from vmware_dvs.common import exceptions
+from vmware_dvs.utils import dvs_util
 
 LOG = log.getLogger(__name__)
 
@@ -188,10 +187,10 @@ class DropAllRule(TrafficRuleBuilder):
     action = 'ns0:DvsDropNetworkRuleAction'
 
 
-@util.wrap_retry
+@dvs_util.wrap_retry
 def update_port_rules(dvs, ports):
     try:
-        builder = util.SpecBuilder(dvs.connection.vim.client.factory)
+        builder = dvs_util.SpecBuilder(dvs.connection.vim.client.factory)
         port_config_list = []
         for port in ports:
             try:
