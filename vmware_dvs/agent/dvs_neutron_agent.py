@@ -18,10 +18,6 @@ import signal
 import sys
 import time
 
-from oslo_config import cfg
-from oslo_log import log as logging
-import oslo_messaging
-
 from neutron import context
 from neutron.agent import rpc as agent_rpc
 from neutron.agent import securitygroups_rpc as sg_rpc
@@ -34,12 +30,15 @@ from neutron.common import topics
 from neutron.i18n import _LE
 from neutron.i18n import _LI
 from neutron.openstack.common import loopingcall
+from oslo_config import cfg
+from oslo_log import log as logging
+import oslo_messaging
 
-from mech_vmware_dvs import util
+from vmware_dvs.utils import dvs_util
 
 LOG = logging.getLogger(__name__)
-cfg.CONF.import_group('AGENT', 'mech_vmware_dvs.config')
-cfg.CONF.import_group('ml2_vmware', 'mech_vmware_dvs.config')
+cfg.CONF.import_group('AGENT', 'vmware_dvs.config')
+cfg.CONF.import_group('ml2_vmware', 'vmware_dvs.config')
 
 
 class DVSPluginApi(agent_rpc.PluginApi):
@@ -87,7 +86,7 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
         self.deleted_ports = set()
         self.known_ports = set()
         self.added_ports = set()
-        self.network_map = util.create_network_map_from_config(
+        self.network_map = dvs_util.create_network_map_from_config(
             cfg.CONF.ml2_vmware)
 
     def _report_state(self):

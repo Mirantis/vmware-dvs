@@ -22,10 +22,9 @@ from oslo_log import log
 from oslo.vmware import api
 from oslo.vmware import exceptions as vmware_exceptions
 from oslo.vmware import vim_util
-
 from neutron.i18n import _LI, _LW, _
 
-from mech_vmware_dvs import exceptions
+from vmware_dvs.common import exceptions
 
 LOG = log.getLogger(__name__)
 

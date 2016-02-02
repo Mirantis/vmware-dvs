@@ -17,8 +17,7 @@
 from novaclient import client
 from oslo_config.cfg import NoSuchOptError
 
-from mech_vmware_dvs import exceptions
-
+from vmware_dvs.common import exceptions
 
 NOVA_API_VERSION = '2'
 
