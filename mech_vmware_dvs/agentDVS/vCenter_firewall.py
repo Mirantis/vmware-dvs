@@ -71,13 +71,9 @@ class DVSFirewallDriver(firewall.FirewallDriver):
 
     @util.wrap_retry
     def update_security_group_rules(self, sg_id, sg_rules):
+        sg_rules = self._apply_ip_set(sg_rules)
         if sg_id in self.sg_rules and self.sg_rules[sg_id] == sg_rules:
             return
-        elif sg_id in self.sg_rules:
-            # For remote sg rules we need to apply ip_sets manually
-            sg_rules = self._apply_ip_set(sg_rules)
-            if self.sg_rules[sg_id] == sg_rules:
-                return
         self.sg_rules[sg_id] = sg_rules
         self._update_sg_rules_for_ports([sg_id])
         LOG.debug("Update rules of security group (%s)", sg_id)
@@ -96,9 +92,9 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                         updated = True
                         if sg_id != sg:
                             updated_sgs.add(sg)
+        self.sg_members[sg_id] = sg_members
         if updated:
             self._update_sg_rules_for_ports(updated_sgs)
-        self.sg_members[sg_id] = sg_members
         LOG.debug("Update members of security group (%s)", sg_id)
 
     def security_group_updated(self, action_type, sec_group_ids,
