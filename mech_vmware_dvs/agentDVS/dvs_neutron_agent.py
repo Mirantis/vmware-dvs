@@ -146,7 +146,9 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
             if segment['physical_network'] == physnet:
                 dvs = self._lookup_dvs_for_context(segment)
         if dvs:
-            return dvs.book_port(network_current, current['id'])
+            port = dvs.book_port(network_current, current['id'])
+            self.wanted_ports.add(current['id'])
+            return port
         else:
             return None
 
