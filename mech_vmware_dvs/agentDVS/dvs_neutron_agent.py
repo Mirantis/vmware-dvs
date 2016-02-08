@@ -94,7 +94,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
         self.known_ports = set()
         dvs_ports = self._get_dvs_ports()
         self.added_ports = dvs_ports - self.known_ports
-        self.wanted_ports = set()
+        self.booked_ports = set()
 
     @util.wrap_retry
     def create_network_precommit(self, current, segment):
@@ -147,7 +147,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
                 dvs = self._lookup_dvs_for_context(segment)
         if dvs:
             port = dvs.book_port(network_current, current['id'])
-            self.wanted_ports.add(current['id'])
+            self.booked_ports.add(current['id'])
             return port
         else:
             return None
@@ -156,9 +156,9 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
     def update_port_postcommit(self, current, original, segment, sg_info):
         try:
             dvs = self._lookup_dvs_for_context(segment)
-            if current['id'] in self.wanted_ports:
+            if current['id'] in self.booked_ports:
                 self.added_ports.add(current['id'])
-                self.wanted_ports.discard(current['id'])
+                self.booked_ports.discard(current['id'])
         except exceptions.NotSupportedNetworkType as e:
             LOG.info(_LI('Port %(id)s not updated. Reason: %(reason)s') % {
                 'id': current['id'],
@@ -312,9 +312,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
             self.known_ports |= possible_ports
         else:
             possible_ports = set()
-        if possible_ports or self.updated_ports:
-            self.sg_agent.setup_port_filters(possible_ports,
-                                             self.updated_ports)
+        self.sg_agent.setup_port_filters(possible_ports, self.updated_ports)
         self.known_ports |= possible_ports
 
     def port_update(self, context, **kwargs):
