@@ -37,8 +37,8 @@ import oslo_messaging
 from vmware_dvs.utils import dvs_util
 
 LOG = logging.getLogger(__name__)
-cfg.CONF.import_group('AGENT', 'vmware_dvs.config')
-cfg.CONF.import_group('ml2_vmware', 'vmware_dvs.config')
+cfg.CONF.import_group('AGENT', 'vmware_dvs.common.config')
+cfg.CONF.import_group('ml2_vmware', 'vmware_dvs.common.config')
 
 
 class DVSPluginApi(agent_rpc.PluginApi):
