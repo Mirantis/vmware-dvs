@@ -142,15 +142,16 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
     def book_port(self, current, network_segments, network_current):
         physnet = network_current['provider:physical_network']
         dvs = None
+        dvs_segment = None
         for segment in network_segments:
             if segment['physical_network'] == physnet:
                 dvs = self._lookup_dvs_for_context(segment)
+                dvs_segment = segment
         if dvs:
-            port = dvs.book_port(network_current, current['id'])
+            port = dvs.book_port(network_current, current['id'], dvs_segment)
             self.booked_ports.add(current['id'])
             return port
-        else:
-            return None
+        return None
 
     @util.wrap_retry
     def update_port_postcommit(self, current, original, segment, sg_info):

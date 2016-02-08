@@ -64,6 +64,7 @@ class DVSController(object):
             pg = result.result
             LOG.info(_LI('Network %(name)s created \n%(pg_ref)s'),
                      {'name': name, 'pg_ref': pg})
+            return pg
 
     def update_network(self, network, original=None):
         if original:
@@ -134,10 +135,10 @@ class DVSController(object):
             self._dvs, port=[update_spec])
         self.connection.wait_for_task(update_task)
 
-    def book_port(self, network, port_name):
+    def book_port(self, network, port_name, segment):
         try:
             net_name = self._get_net_name(self.dvs_name, network)
-            pg = self._get_pg_by_name(net_name)
+            pg = self._get_or_create_pg(net_name, network, segment)
             while True:
                 try:
                     port_info = self._lookup_unbound_port(pg)
@@ -248,6 +249,14 @@ class DVSController(object):
             if pg_name == name:
                 return pg
         raise exceptions.PortGroupNotFound(pg_name=pg_name)
+
+    def _get_or_create_pg(self, pg_name, network, segment):
+        try:
+            return self._get_pg_by_name(pg_name)
+        except exceptions.PortGroupNotFound:
+            LOG.debug(_LI('Network %s is not present in vcenter. '
+                          'Perform network creation' % pg_name))
+            return self.create_network(network, segment)
 
     def _get_config_by_ref(self, ref):
         """pg - ManagedObjectReference of Port Group"""
