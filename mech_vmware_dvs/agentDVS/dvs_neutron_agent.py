@@ -16,6 +16,7 @@
 import signal
 import sys
 import time
+import itertools
 
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -92,8 +93,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
         self.updated_ports = set()
         self.deleted_ports = set()
         self.known_ports = set()
-        dvs_ports = self._get_dvs_ports()
-        self.added_ports = dvs_ports - self.known_ports
+        self.added_ports = set()
         self.booked_ports = set()
 
     @util.wrap_retry
@@ -254,6 +254,35 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
         LOG.debug("Agent caught SIGTERM, quitting daemon loop.")
         self.run_daemon_loop = False
 
+    def _clean_up_vsphere_extra_ports(self, connected_ports):
+        LOG.debug("Cleanup vsphere extra ports...")
+        vsphere_not_connected_ports_maps = {}
+        for phys_net, dvs in self.network_map.items():
+            all_dvs_ports = set([p.config.name for p in dvs.get_ports(False)])
+            not_connected_dvs_ports = all_dvs_ports - connected_ports
+            vsphere_not_connected_ports_maps.update(
+                {port_id: phys_net for port_id in not_connected_dvs_ports})
+
+        if not vsphere_not_connected_ports_maps:
+            return
+
+        devices_details_list = (
+            self.plugin_rpc.get_devices_details_list_and_failed_devices(
+                self.context,
+                vsphere_not_connected_ports_maps.keys(),
+                self.agent_id,
+                cfg.CONF.host))
+        neutron_ports = set([
+            p['port_id'] for p in itertools.chain(
+                devices_details_list['devices'],
+                devices_details_list['failed_devices']) if p.get('port_id')
+        ])
+
+        for port_id, phys_net in vsphere_not_connected_ports_maps.items():
+            if port_id not in neutron_ports:
+                dvs = self.network_map[phys_net]
+                dvs.release_port({'id': port_id})
+
     def daemon_loop(self):
         with polling.get_polling_manager() as pm:
             self.rpc_loop(polling_manager=pm)
@@ -269,6 +298,9 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
                                       'removed': 0}}
             if self.fullsync:
                 LOG.info(_LI("Agent out of sync with plugin!"))
+                connected_ports = self._get_dvs_ports()
+                self.added_ports = connected_ports - self.known_ports
+                self._clean_up_vsphere_extra_ports(connected_ports)
                 self.fullsync = False
                 polling_manager.force_polling()
             if self._agent_has_updates(polling_manager):
