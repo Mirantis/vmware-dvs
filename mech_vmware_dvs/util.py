@@ -52,6 +52,9 @@ LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect "\
 DELETED_TEXT = "The object has already been deleted or has not been "\
                "completely created"
 
+EPHEMERAL_MIN = 32768
+EPHEMERAL_MAX = 65535
+
 
 class DVSController(object):
     """Controls one DVS."""
@@ -176,9 +179,8 @@ class DVSController(object):
                 self._dvs, port=port_config_list
             )
             return self.connection.wait_for_task(task)
-        except vmware_exceptions.VimException:
-            pass
-            # raise exceptions.wrap_wmvare_vim_exception(e)
+        except vmware_exceptions.VimException as e:
+            raise exceptions.wrap_wmvare_vim_exception(e)
 
     def book_port(self, network, port_name):
         for iter in range(1, 5):
@@ -427,15 +429,7 @@ class SpecBuilder(object):
         reversed_rules = []
         seq = 0
         for rule_info in sg_rules:
-            # if 'ip_set' in rule_info:
-            #     for ip in rule_info['ip_set']:
-            #         rule = self._create_rule(rule_info, ip,
-            #                                  name='remote security group')
-            #         rules.append(rule.build(seq))
-            #         seq += 10
-            #         reversed_rules.append(rule.reverse())
-            # else:
-            rule = self._create_rule(rule_info, name='regural')
+            rule = self._create_rule(rule_info, name='regular')
             rules.append(rule.build(seq))
             seq += 10
             reversed_rules.append(rule.reverse())
@@ -478,8 +472,8 @@ class SpecBuilder(object):
             rule.port_range = (rule_info.get('port_range_min'),
                                rule_info.get('port_range_max'))
             rule.backward_port_range = (
-                rule_info.get('source_port_range_min') or 32768,
-                rule_info.get('source_port_range_max') or 65535)
+                rule_info.get('source_port_range_min') or EPHEMERAL_MIN,
+                rule_info.get('source_port_range_max') or EPHEMERAL_MAX)
         return rule
 
     def port_criteria(self, port_key=None, port_group_key=None):

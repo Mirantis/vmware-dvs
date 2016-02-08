@@ -213,20 +213,6 @@ class VMwareDVSMechanismDriver(driver_api.MechanismDriver):
             else:
                 ports_to_update.add(context.current['id'])
 
-            for sg_id, rules in security_groups.items():
-                for rule in rules:
-                    try:
-                        remote_group_id = rule['remote_group_id']
-                    except KeyError:
-                        pass
-                    else:
-                        if remote_group_id in changed_sg:
-                            sg_to_update.add(sg_id)
-                        if sg_id in changed_sg.union(sg_to_update):
-                            ip_set = sg_member_ips[remote_group_id][
-                                rule['ethertype']]
-                            rule['ip_set'] = ip_set
-
             for id, port in devices.iteritems():
                 if (port['binding:vif_type'] == self.vif_type and
                         'dvs_port_key' in port['binding:vif_details'] and

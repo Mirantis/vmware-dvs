@@ -250,8 +250,6 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         self.dvs.update_port_rules.assert_called_once_with([context.current])
         self.assertEqual(CONSTANT_SG_RULE,
                          context.current['security_group_rules'][0])
-        self.assertEqual(ips,
-                         context.current['security_group_rules'][1]['ip_set'])
 
     def test_update_security_groups_updates_only_dvs_ports(self):
         p1, p2, p3, p4 = ports = self._create_ports()
@@ -269,39 +267,8 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         self.driver._update_security_groups(self.dvs, context, True)
         self.assertTrue(self.dvs.update_port_rules.called)
         updated_ports = self.dvs.update_port_rules.call_args[0][0]
-        self.assertListEqual(sorted([context.current, p1, p3, p4]),
+        self.assertListEqual(sorted([context.current]),
                              sorted(updated_ports))
-
-    def test_update_security_groups_sg_is_others_remote_group_id(self):
-        p1, p2, p3, p4 = ports = self._create_ports()
-        current = self._create_port_dict(
-            security_groups=[FAKE_SECURITY_GROUPS.NEW,
-                             FAKE_SECURITY_GROUPS.CONSTANT])
-        security_groups = {
-            'other': [{'remote_group_id': FAKE_SECURITY_GROUPS.NEW,
-                       'ethertype': 'IPv4'},
-                      {'other': 'rule'}],
-            FAKE_SECURITY_GROUPS.CONSTANT: [
-                {'remote_group_id': FAKE_SECURITY_GROUPS.CONSTANT,
-                 'ethertype': 'IPv4'},
-                {'other': 'rule'}]
-        }
-        ips = ['192.168.0.1', '192.168.0.2']
-        sg_member_ips = {FAKE_SECURITY_GROUPS.NEW: {'IPv4': ips},
-                         FAKE_SECURITY_GROUPS.CONSTANT: {
-                             'IPv4': ['192.168.2.10']}}
-        context = self._create_port_context(current=current,
-                                            ports=ports,
-                                            security_groups=security_groups,
-                                            sg_member_ips=sg_member_ips)
-        self.driver._update_security_groups(self.dvs, context, False)
-        self.assertTrue(self.dvs.update_port_rules.called)
-        updated_ports = self.dvs.update_port_rules.call_args[0][0]
-        self.assertListEqual(sorted([context.current, p4]),
-                             sorted(updated_ports))
-        self.assertEqual(ips,
-                         p4['security_group_rules'][1]['ip_set'])
-        self.assertEqual(1, len(p3['security_group_rules']))
 
     def test_update_security_groups_sg_with_no_rules(self):
         context = self._create_port_context()
