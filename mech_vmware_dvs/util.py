@@ -691,7 +691,7 @@ def wrap_retry(func):
                 return func(*args, **kwargs)
             except (vmware_exceptions.VMwareDriverException,
                     exceptions.VMWareDVSException) as e:
-                if CONCURRENT_MODIFICATION_TEXT in e.message:
+                if CONCURRENT_MODIFICATION_TEXT in str(e):
                     continue
                 elif (LOGIN_PROBLEM_TEXT in
                       getattr(e, 'msg', '') and login_failures <
