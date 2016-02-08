@@ -394,20 +394,6 @@ class DVSController(object):
                 p_ret.append(port)
         return p_ret
 
-    def update_portgroup_config_if_needed(self, pg_key):
-        pg_ref = self.connection.invoke_api(self.connection.vim,
-                                            'LookupDvPortGroup',
-                                            self._dvs,
-                                            portgroupKey=pg_key)
-        pg = self._get_config_by_ref(pg_ref)
-        if not pg.policy.trafficFilterOverrideAllowed:
-            pg_spec = self._build_pg_update_spec(pg.configVersion)
-            pg_spec.name = pg.name
-            pg_update_task = self.connection.invoke_api(
-                self.connection.vim, 'ReconfigureDVPortgroup_Task', pg_ref,
-                spec=pg_spec)
-            self.connection.wait_for_task(pg_update_task)
-
     def _get_ports_ids(self):
         return [port.config.name for port in self.get_ports()]
 

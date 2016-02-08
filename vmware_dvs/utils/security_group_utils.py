@@ -203,13 +203,12 @@ def update_port_rules(dvs, ports):
                 LOG.warn(_LW("Port %s was not found. Security rules can not be"
                              " applied."), port['id'])
                 continue
-            dvs.update_portgroup_config_if_needed(port_info.portgroupKey)
-            port_info = dvs.get_port_info_by_name(port['id'])
             port_config = port_configuration(builder,
                 str(port_info['key']),
                 port['security_group_rules']
             )
-            port_config.configVersion = port_info['config']['configVersion']
+            port_config.configVersion = port_info['config'][
+                'configVersion']
             port_config_list.append(port_config)
         if port_config_list:
             task = dvs.connection.invoke_api(
