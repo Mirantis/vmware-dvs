@@ -114,14 +114,25 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                     port['security_group_rules'] = self.sg_rules[sg]
         # TODO(akamyshnikova): improve applying rules in case of agent restart
         if port['security_group_rules']:
-            dvs = self._get_dvs_for_port_id(port['id'])
+            if port['binding:vif_details'].get('dvs_port_key') is not None:
+                dvs = self._get_dvs_for_port_id(
+                    port['id'], port['binding:vif_details']['dvs_port_key'])
+            else:
+                dvs = self._get_dvs_for_port_id(port['id'])
             if dvs:
                 sg_util.update_port_rules(dvs, [port])
 
-    def _get_dvs_for_port_id(self, port_id):
+    def _get_dvs_for_port_id(self, port_id, p_key=None):
+        # Check if port is already known
         known_ports = (set.union(*self.dvs_port_map.values())
                        if self.dvs_port_map.values() else {})
+        # If port is not known - get fresh port_map from vCenter
         if port_id not in known_ports:
+            if p_key:
+                dvs = dvs_util.get_dvs_by_id_and_key(
+                    self.networking_map.values(), port_id, p_key)
+                if dvs:
+                    return self._get_dvs_and_put_dvs_in_port_map(dvs, port_id)
             port_map = dvs_util.create_port_map(self.networking_map.values())
         else:
             port_map = self.dvs_port_map
@@ -133,6 +144,14 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                 return dvs
             else:
                 LOG.warning(_LW("Can find dvs for port %s"), port_id)
+
+    def _get_dvs_and_put_dvs_in_port_map(self, dvs, port_id):
+        # Check if dvs is known, otherwise add it in port_map with
+        # corresponding port_id
+        if dvs not in self.dvs_port_map:
+            self.dvs_port_map[dvs] = set()
+        self.dvs_port_map[dvs].add(port_id)
+        return dvs
 
     def _update_sg_rules_for_ports(self, sg_ids):
         ports_to_update = []
