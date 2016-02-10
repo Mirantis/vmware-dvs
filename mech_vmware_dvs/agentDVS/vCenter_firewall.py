@@ -122,11 +122,17 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                     port['security_group_rules'] = self.sg_rules[sg]
         # TODO(akamyshnikova): improve applying rules in case of agent restart
         if port['security_group_rules']:
-            dvs = self._get_dvs_for_port_id(port['id'])
+            dvs = self._get_dvs_for_port_id(port['id'],
+                  port['binding:vif_details']['dvs_port_key'])
             if dvs:
                 sg_util.update_port_rules(dvs, [port])
 
-    def _get_dvs_for_port_id(self, port_id):
+    def _get_dvs_for_port_id(self, port_id, p_key=None):
+        if p_key:
+            dvs = util.get_dvs_by_id_and_key(self.networking_map.values(),
+                       port_id, p_key)
+            if dvs:
+                return dvs
         known_ports = (set.union(*self.dvs_port_map.values())
                        if self.dvs_port_map.values() else {})
         if port_id not in known_ports:
@@ -139,8 +145,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                     self.dvs_port_map[dvs] = set()
                 self.dvs_port_map[dvs].add(port_id)
                 return dvs
-            else:
-                LOG.warning(_LW("Can find dvs for port %s"), port_id)
+        LOG.warning(_LW("Can find dvs for port %s"), port_id)
 
     def _update_sg_rules_for_ports(self, sg_ids):
         ports_to_update = []

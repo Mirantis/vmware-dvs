@@ -500,6 +500,15 @@ def create_port_map(dvs_list):
     return port_map
 
 
+def get_dvs_by_id_and_key(dvs_list, port_id, port_key):
+    for dvs in dvs_list:
+        port = dvs._get_port_info_by_portkey(port_key)
+        if port:
+            if port.config.name == port_id:
+                return dvs
+    return None
+
+
 def wrap_retry(func):
     """
     Retry operation on dvs when concurrent modification by another operation

@@ -231,7 +231,7 @@ def port_configuration(builder, port_key, sg_rules):
                 seq += 10
                 reversed_rules.append(rule.reverse())
         else:
-            rule = _create_rule(builder, rule_info, name='regural')
+            rule = _create_rule(builder, rule_info, name='regular')
             rules.append(rule.build(seq))
             seq += 10
             reversed_rules.append(rule.reverse())

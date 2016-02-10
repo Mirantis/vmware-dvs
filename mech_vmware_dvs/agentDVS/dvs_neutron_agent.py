@@ -340,9 +340,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin, agentAPI.ExtendAPI):
             self.deleted_ports = self.deleted_ports - deleted_ports
             self.sg_agent.remove_devices_filter(deleted_ports)
         if self.added_ports:
-            possible_ports = self._get_dvs_ports() & self.added_ports
-            self.added_ports -= possible_ports
-            self.known_ports |= possible_ports
+            possible_ports = self.added_ports
+            self.added_ports = set()
         else:
             possible_ports = set()
         self.sg_agent.setup_port_filters(possible_ports, self.updated_ports)

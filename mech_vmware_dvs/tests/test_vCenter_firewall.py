@@ -54,7 +54,8 @@ class TestDVSFirewallDriver(base.BaseTestCase):
                 'security_groups': [sg_id],
                 'security_group_rules': sg_rules,
                 'mac_address': 'ff:ff:ff:ff:ff:ff',
-                'fixed_ips': [FAKE_IP['IPv4'], FAKE_IP['IPv6']]}
+                'fixed_ips': [FAKE_IP['IPv4'], FAKE_IP['IPv6']],
+                'binding:vif_details': {'dvs_port_key': '333'}}
 
     def test_prepare_port_filter(self):
         port = self._fake_port('12345', [FAKE_SG_RULE_IPV4_PORT,
