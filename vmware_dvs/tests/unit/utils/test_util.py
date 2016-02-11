@@ -140,7 +140,7 @@ class DVSControllerBaseTestCase(UtilBaseTestCase):
         self.dvs = mock.Mock()
 
         self.use_patch('vmware_dvs.utils.dvs_util.DVSController._get_dvs',
-                       return_value=self.dvs)
+                       return_value=(self.dvs, 'datacenter1'))
 
         self.controller = dvs_util.DVSController(self.dvs_name,
                                              self.connection)
