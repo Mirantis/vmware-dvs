@@ -14,16 +14,14 @@
 #    under the License.
 
 import abc
-import six
 
+import six
 from oslo_log import log
+from neutron.i18n import _LI, _LW
 from oslo_vmware import exceptions as vmware_exceptions
 
-from neutron.i18n import _LI, _LW
-
-from mech_vmware_dvs import exceptions
-from mech_vmware_dvs import constants as dvs_const
-from mech_vmware_dvs import util
+from vmware_dvs.common import constants as dvs_const, exceptions
+from vmware_dvs.utils import dvs_util
 
 LOG = log.getLogger(__name__)
 
@@ -184,10 +182,10 @@ class DropAllRule(TrafficRuleBuilder):
     action = 'ns0:DvsDropNetworkRuleAction'
 
 
-@util.wrap_retry
+@dvs_util.wrap_retry
 def update_port_rules(dvs, ports):
     try:
-        builder = util.SpecBuilder(dvs.connection.vim.client.factory)
+        builder = dvs_util.SpecBuilder(dvs.connection.vim.client.factory)
         port_config_list = []
         for port in ports:
             try:

@@ -14,44 +14,43 @@
 #    under the License.
 
 from neutron.agent import firewall
-from neutron.i18n import _LW
 from oslo_log import log as logging
 
 
 LOG = logging.getLogger(__name__)
 
 
-class vCenterNOOP(firewall.FirewallDriver):
+class NoopvCenterFirewallDriver(firewall.FirewallDriver):
 
     def prepare_port_filter(self, port):
-        LOG.warning(_LW("prepare_port_filter called"))
+        LOG.debug("prepare_port_filter called")
 
     def apply_port_filter(self, port):
-        LOG.warning(_LW("apply_port_filter called"))
+        LOG.debug("apply_port_filter called")
 
     def update_port_filter(self, port):
-        LOG.warning(_LW("update_port_filter called"))
+        LOG.debug("update_port_filter called")
 
     def remove_port_filter(self, port):
-        LOG.warning(_LW("remove_port_filter called"))
+        LOG.debug("remove_port_filter called")
 
     def filter_defer_apply_on(self):
-        LOG.warning(_LW("filter_defer_apply_on called"))
+        LOG.debug("filter_defer_apply_on called")
 
     def filter_defer_apply_off(self):
-        LOG.warning(_LW("filter_defer_apply_off called"))
+        LOG.debug("filter_defer_apply_off called")
 
     @property
     def ports(self):
-        LOG.warning(_LW("ports called"))
+        LOG.debug("ports called")
         return {}
 
     def update_security_group_members(self, sg_id, ips):
-        LOG.warning(_LW("update_security_group_members called"))
+        LOG.debug("update_security_group_members called")
 
     def update_security_group_rules(self, sg_id, rules):
-        LOG.warning(_LW("update_security_group_rules called"))
+        LOG.debug("update_security_group_rules called")
 
     def security_group_updated(self, action_type, sec_group_ids,
                                device_id=None):
-        LOG.warning(_LW("security_group_updated called"))
+        LOG.debug("security_group_updated called")

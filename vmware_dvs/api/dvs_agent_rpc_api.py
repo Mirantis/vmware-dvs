@@ -13,11 +13,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 import oslo_messaging
-
 from neutron.common import rpc as n_rpc
 from neutron.common import topics
 
-from mech_vmware_dvs import constants as dvs_const
+from vmware_dvs.common import constants as dvs_const
 
 
 class ExtendAPI(object):

@@ -14,15 +14,14 @@
 #    under the License.
 
 import mock
-from oslo_vmware import exceptions as vmware_exceptions
-from oslo_vmware import vim_util
 from neutron.tests import base
 
-from mech_vmware_dvs import config
-from mech_vmware_dvs import exceptions
-from mech_vmware_dvs import util
-from mech_vmware_dvs import constants as dvs_const
-
+from oslo_vmware import exceptions as vmware_exceptions
+from oslo_vmware import vim_util
+from vmware_dvs.common import config
+from vmware_dvs.common import exceptions
+from vmware_dvs.utils import dvs_util
+from vmware_dvs.common import constants as dvs_const
 
 CONF = config.CONF
 
@@ -138,16 +137,17 @@ class DVSControllerBaseTestCase(UtilBaseTestCase):
         self.connection = self._get_connection_mock(self.dvs_name)
 
         self.datacenter = 'datacenter1'
-        # self.use_patch('mech_vmware_dvs.util.DVSController._get_datacenter',
+        # self.use_patch('vmware_dvs.util.DVSController._get_datacenter',
         #                return_value=self.datacenter)
         self.dvs = mock.Mock()
         dvs_param = [self.dvs, self.datacenter]
-        self.use_patch('mech_vmware_dvs.util.DVSController._get_dvs',
+        self.use_patch('vmware_dvs.utils.dvs_util.DVSController._get_dvs',
                        return_value=dvs_param)
         self.dvs = dvs_param[0]
         self.datacenter = dvs_param[1]
 
-        self.controller = util.DVSController(self.dvs_name, self.connection)
+        self.controller = dvs_util.DVSController(self.dvs_name,
+                                                 self.connection)
 
     def use_patch(self, *args, **kwargs):
         patch = mock.patch(*args, **kwargs)
@@ -171,7 +171,8 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
         self.assertEqual(expect, self.controller._get_net_name(self.dvs_name,
                                                                fake_network))
 
-    @mock.patch('mech_vmware_dvs.util.DVSController.get_port_info_by_name')
+    @mock.patch(
+        'vmware_dvs.utils.dvs_util.DVSController.get_port_info_by_name')
     def test_release_port(self, get_port_info_mock):
         dvs_port = mock.Mock()
         dvs_port.config.configVersion = 'config_version'
@@ -252,7 +253,7 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
                 return org_side_effect(*args, **kwargs)
 
             connection.invoke_api.side_effect = side_effect
-            controller = util.DVSController(self.dvs_name, connection)
+            controller = dvs_util.DVSController(self.dvs_name, connection)
             self.assertRaises(exceptions.VMWareDVSException,
                               controller.create_network, fake_network,
                               fake_segment)
@@ -399,8 +400,8 @@ class DVSControllerNetworkUpdateTestCase(DVSControllerBaseTestCase):
                     elif args == (vim, wrong_pg, 'name'):
                         return 'wrong_pg'
                     elif args == (vim, pg_to_update, 'name'):
-                        return util.DVSController._get_net_name(self.dvs_name,
-                                                                fake_network)
+                        return dvs_util.DVSController._get_net_name(
+                            self.dvs_name, fake_network)
                     elif args == (vim, not_pg, 'name'):
                         self.fail('Called with not pg')
                     elif args == (vim, pg_to_update, 'config'):
@@ -476,8 +477,8 @@ class DVSControllerNetworkDeletionTestCase(DVSControllerBaseTestCase):
                     elif args == (vim, wrong_pg, 'name'):
                         return 'wrong_pg'
                     elif args == (vim, pg_to_delete, 'name'):
-                        return util.DVSController._get_net_name(self.dvs_name,
-                                                                fake_network)
+                        return dvs_util.DVSController._get_net_name(
+                            self.dvs_name, fake_network)
                     elif args == (vim, not_pg, 'name'):
                         self.fail('Called with not pg')
             elif module == vim:
@@ -541,9 +542,9 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
     #     ports = [fake_port]
     #     port_info = {'config': {'configVersion': '_config_version_'},
     #                  'key': '_dvs_port_key_'}
-    #     self.use_patch('mech_vmware_dvs.util.DVSController'
+    #     self.use_patch('vmware_dvs.util.DVSController'
     #                    '.get_port_info_by_name', return_value=port_info)
-    #     self.use_patch('mech_vmware_dvs.util.DVSController.get_ports',
+    #     self.use_patch('vmware_dvs.util.DVSController.get_ports',
     #                    return_value=ports)
     #     self.controller.update_port_rules(ports)
     #     self.assertTrue(self.connection.invoke_api.called)
@@ -558,7 +559,7 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
 
     def test__get_ports_for_pg(self):
         pg = mock.Mock()
-        self.use_patch('mech_vmware_dvs.util.DVSController'
+        self.use_patch('vmware_dvs.utils.dvs_util.DVSController'
                        '._get_pg_by_name', return_value=pg)
 
         some_ports = self.BOUND_PORTS
@@ -575,10 +576,11 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
         ports_number = 8
         pg_info = mock.Mock(numPorts=ports_number,
                             configVersion='_config_version_')
-        self.use_patch('mech_vmware_dvs.util.DVSController'
+        self.use_patch('vmware_dvs.utils.dvs_util.DVSController'
                        '._get_config_by_ref', return_value=pg_info)
         _build_pg_update_spec = self.use_patch(
-            'mech_vmware_dvs.util.DVSController._build_pg_update_spec',
+            'vmware_dvs.utils.dvs_util.DVSController'
+            '._build_pg_update_spec',
             return_value='_update_spec_')
         pg = mock.Mock()
         with mock.patch.object(self.controller.connection, 'invoke_api'):
@@ -592,10 +594,11 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
         ports_number = 0
         pg_info = mock.Mock(numPorts=ports_number,
                             configVersion='_config_version_')
-        self.use_patch('mech_vmware_dvs.util.DVSController'
+        self.use_patch('vmware_dvs.utils.dvs_util.DVSController'
                        '._get_config_by_ref', return_value=pg_info)
         _build_pg_update_spec = self.use_patch(
-            'mech_vmware_dvs.util.DVSController._build_pg_update_spec',
+            'vmware_dvs.utils.dvs_util.DVSController'
+            '._build_pg_update_spec',
             return_value='_update_spec_')
         pg = mock.Mock()
         with mock.patch.object(self.controller.connection, 'invoke_api'):
@@ -615,7 +618,7 @@ class SpecBuilderTestCase(base.BaseTestCase):
         self.spec = mock.Mock(name='spec')
         self.factory = mock.Mock(name='factory')
         self.factory.create.return_value = self.spec
-        self.builder = util.SpecBuilder(self.factory)
+        self.builder = dvs_util.SpecBuilder(self.factory)
 
     def test_port_criteria_with_port_key(self):
         criteria = self.builder.port_criteria(port_key='_some_port_')
@@ -649,15 +652,15 @@ class UtilTestCase(base.BaseTestCase):
         CONF.set_override('network_maps', [], 'ml2_vmware')
         self.assertDictEqual(
             {},
-            util.create_network_map_from_config(CONF.ml2_vmware))
+            dvs_util.create_network_map_from_config(CONF.ml2_vmware))
 
-    @mock.patch('mech_vmware_dvs.util.DVSController._get_dvs',
+    @mock.patch('vmware_dvs.utils.dvs_util.DVSController._get_dvs',
                 return_value=(mock.Mock(), 'datacenter1'))
     def test_creates_network_map_from_conf(self, *args):
         network_map = ['physnet1:dvSwitch', 'physnet2:dvSwitch1']
         CONF.set_override(
             'network_maps', network_map, 'ml2_vmware')
-        actual = util.create_network_map_from_config(CONF.ml2_vmware)
+        actual = dvs_util.create_network_map_from_config(CONF.ml2_vmware)
 
         self.assertEqual(len(network_map), len(actual))
 
@@ -687,7 +690,8 @@ class UtilTestCase(base.BaseTestCase):
             return func(*args, **kwargs)
 
         self.assertRaises(
-            vmware_exceptions.VMwareDriverException, util.wrap_retry(double))
+            vmware_exceptions.VMwareDriverException,
+            dvs_util.wrap_retry(double))
         self.assertEqual(3, func.call_count)
 
     def test_wrap_retry_w_concurrent_modification(self):
@@ -709,5 +713,5 @@ class UtilTestCase(base.BaseTestCase):
             return func(*args, **kwargs)
 
         self.assertRaises(
-            exceptions.VMWareDVSException, util.wrap_retry(double))
+            exceptions.VMWareDVSException, dvs_util.wrap_retry(double))
         self.assertEqual(2, func.call_count)

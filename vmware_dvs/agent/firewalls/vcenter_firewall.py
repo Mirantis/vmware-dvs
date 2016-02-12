@@ -18,9 +18,10 @@ from neutron.common import constants
 from neutron.i18n import _LI, _LW
 from oslo_log import log as logging
 
-from mech_vmware_dvs import config
-from mech_vmware_dvs import security_group_utils as sg_util
-from mech_vmware_dvs import util
+from vmware_dvs.common import config
+from vmware_dvs.utils import security_group_utils as sg_util
+from vmware_dvs.utils import dvs_util
+
 LOG = logging.getLogger(__name__)
 
 CONF = config.CONF
@@ -30,7 +31,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     """DVS Firewall Driver.
     """
     def __init__(self):
-        self.networking_map = util.create_network_map_from_config(
+        self.networking_map = dvs_util.create_network_map_from_config(
             CONF.ml2_vmware)
         self.dvs_ports = {}
         self.sg_rules = {}
@@ -42,7 +43,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         # Map for known ports and dvs it is connected to.
         self.dvs_port_map = {}
 
-    @util.wrap_retry
+    @dvs_util.wrap_retry
     def prepare_port_filter(self, port):
         self.dvs_ports[port['device']] = port
         self._apply_sg_rules_for_port(port)
@@ -53,7 +54,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         # Called for setting port in dvs_port_map
         self._get_dvs_for_port_id(port['id'])
 
-    @util.wrap_retry
+    @dvs_util.wrap_retry
     def update_port_filter(self, port):
         self.dvs_ports[port['device']] = port
         self._apply_sg_rules_for_port(port)
@@ -69,7 +70,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     def ports(self):
         return self.dvs_ports
 
-    @util.wrap_retry
+    @dvs_util.wrap_retry
     def update_security_group_rules(self, sg_id, sg_rules):
         sg_rules = self._apply_ip_set(sg_rules)
         if sg_id in self.sg_rules and self.sg_rules[sg_id] == sg_rules:
@@ -78,7 +79,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         self._update_sg_rules_for_ports(set([sg_id]))
         LOG.debug("Update rules of security group (%s)", sg_id)
 
-    @util.wrap_retry
+    @dvs_util.wrap_retry
     def update_security_group_members(self, sg_id, sg_members):
         updated = False
         updated_sgs = set([sg_id])
@@ -134,11 +135,11 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         # If port is not known - get fresh port_map from vCenter
         if port_id not in known_ports:
             if p_key:
-                dvs = util.get_dvs_by_id_and_key(self.networking_map.values(),
-                                                 port_id, p_key)
+                dvs = dvs_util.get_dvs_by_id_and_key(
+                    self.networking_map.values(), port_id, p_key)
                 if dvs:
                     return self._get_dvs_and_put_dvs_in_port_map(dvs, port_id)
-            port_map = util.create_port_map(self.networking_map.values())
+            port_map = dvs_util.create_port_map(self.networking_map.values())
         else:
             port_map = self.dvs_port_map
         for dvs, port_list in port_map.iteritems():

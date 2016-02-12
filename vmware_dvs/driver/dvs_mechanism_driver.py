@@ -14,22 +14,21 @@
 #    under the License.
 
 import six
-
-from oslo_log import log
+from neutron.agent import securitygroups_rpc
+from neutron import context
 from neutron.common import constants as n_const
 from neutron.i18n import _LI
 from neutron.extensions import portbindings
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api
 from neutron.plugins.ml2.drivers import mech_agent
-from neutron.agent import securitygroups_rpc
-from neutron import context
+from oslo_log import log
 
-from mech_vmware_dvs import compute_util
-from mech_vmware_dvs import config
-from mech_vmware_dvs import exceptions
-from mech_vmware_dvs import constants as dvs_const
-from mech_vmware_dvs.agentDVS import agentAPI
+from vmware_dvs.utils import compute_util
+from vmware_dvs.common import config
+from vmware_dvs.common import exceptions
+from vmware_dvs.common import constants as dvs_const
+from vmware_dvs.api import dvs_agent_rpc_api
 
 CONF = config.CONF
 LOG = log.getLogger(__name__)
@@ -67,7 +66,7 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.vif_details = {portbindings.CAP_PORT_FILTER: sg_enabled,
                             portbindings.OVS_HYBRID_PLUG: sg_enabled}
         self.context = context.get_admin_context_without_session()
-        self.dvs_notifier = agentAPI.DVSClientAPI(self.context)
+        self.dvs_notifier = dvs_agent_rpc_api.DVSClientAPI(self.context)
         LOG.info(_LI('DVS_notifier'))
         super(VMwareDVSMechanismDriver, self).__init__(
             dvs_const.AGENT_TYPE_DVS,
