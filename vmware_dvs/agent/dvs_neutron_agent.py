@@ -35,6 +35,7 @@ from oslo_log import log as logging
 import oslo_messaging
 
 from vmware_dvs.utils import dvs_util
+from vmware_dvs.agent.firewalls import dvs_securitygroup_rpc as dvs_rpc
 
 LOG = logging.getLogger(__name__)
 cfg.CONF.import_group('AGENT', 'vmware_dvs.common.config')
@@ -74,7 +75,7 @@ class DVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin):
                 self._report_state)
             heartbeat.start(interval=report_interval)
         # Security group agent support
-        self.sg_agent = sg_rpc.SecurityGroupAgentRpc(self.context,
+        self.sg_agent = dvs_rpc.DVSSecurityGroupRpc(self.context,
                 self.sg_plugin_rpc, defer_refresh_firewall=True)
         self.iter_num = 0
         self.run_daemon_loop = True

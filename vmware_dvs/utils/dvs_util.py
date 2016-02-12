@@ -60,7 +60,7 @@ class DVSController(object):
         self.connection = connection
         try:
             self.dvs_name = dvs_name
-            self._dvs = self._get_dvs(dvs_name, connection)
+            self._dvs, self.datacenter = self._get_dvs(dvs_name, connection)
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
