@@ -54,3 +54,7 @@ class NoopvCenterFirewallDriver(firewall.FirewallDriver):
     def security_group_updated(self, action_type, sec_group_ids,
                                device_id=None):
         LOG.debug("security_group_updated called")
+
+    def update_security_group_rules_and_members(self, security_groups,
+                                                security_group_member_ips):
+        LOG.debug("update_security_group_rules_and_members")
