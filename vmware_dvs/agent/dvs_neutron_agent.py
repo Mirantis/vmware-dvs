@@ -36,6 +36,7 @@ import oslo_messaging
 from vmware_dvs.utils import dvs_util
 from vmware_dvs.common import constants as dvs_const, exceptions
 from vmware_dvs.api import dvs_agent_rpc_api
+from vmware_dvs.agent.firewalls import dvs_securitygroup_rpc as dvs_rpc
 
 LOG = logging.getLogger(__name__)
 cfg.CONF.import_group('AGENT', 'vmware_dvs.agent.common.vmware_conf')
@@ -77,8 +78,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         self.polling_interval = polling_interval
         self.minimize_polling = minimize_polling
         # Security group agent support
-        self.sg_agent = sg_rpc.SecurityGroupAgentRpc(
-            self.context, self.sg_plugin_rpc, defer_refresh_firewall=True)
+        self.sg_agent = dvs_rpc.DVSSecurityGroupRpc(self.context,
+                self.sg_plugin_rpc, defer_refresh_firewall=True)
         self.run_daemon_loop = True
         self.iter_num = 0
         self.fullsync = True
