@@ -46,20 +46,25 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     @dvs_util.wrap_retry
     def prepare_port_filter(self, port):
         self.dvs_ports[port['device']] = port
-        # self._apply_sg_rules_for_port(port)
-        # LOG.info(_LI("Applied security group rules for port %s"), port['id'])
+        LOG.info(_LI("Applied port %s for dvs port list"), port['id'])
+        # Called for setting port in dvs_port_map
+        self._get_dvs_for_port_id(port['id'],
+                                  port['binding:vif_details']['dvs_port_key'])
 
     def apply_port_filter(self, port):
         self.dvs_ports[port['device']] = port
+        LOG.info(_LI("Applied port %s for dvs port list"), port['id'])
         # Called for setting port in dvs_port_map
         self._get_dvs_for_port_id(port['id'],
-                                 port['binding:vif_details']['dvs_port_key'])
+                                  port['binding:vif_details']['dvs_port_key'])
 
     @dvs_util.wrap_retry
     def update_port_filter(self, port):
         self.dvs_ports[port['device']] = port
-        self._apply_sg_rules_for_port(port)
-        LOG.info(_LI("Updated security group rules for port %s"), port['id'])
+        LOG.info(_LI("Updated port %s for dvs port list"), port['id'])
+        # Called for setting port in dvs_port_map
+        self._get_dvs_for_port_id(port['id'],
+                                  port['binding:vif_details']['dvs_port_key'])
 
     def remove_port_filter(self, port):
         self._remove_sg_from_dvs_port(port)
@@ -177,25 +182,17 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                     ports_to_update.append(port)
 
         port_ids = {p['id']: p for p in ports_to_update}
-        self._update_port_map_for_ids(port_ids)
         for dvs, port_list in self.dvs_port_map.iteritems():
             p = [port_ids[id] for id in port_list if id in port_ids.keys()]
             if p:
                 sg_util.update_port_rules(dvs, p)
 
-    def _update_port_map_for_ids(self, port_ids):
-        for p in port_ids:
-            if p not in self.dvs_port_map.iteritems():
-                self._get_dvs_for_port_id(port_ids[p]['id'],
-                      port_ids[p]['binding:vif_details']['dvs_port_key'])
-
     def _remove_sg_from_dvs_port(self, port):
         port['security_group_rules'] = []
-        dvs = self._get_dvs_for_port_id(port['id'],
-                             port['binding:vif_details']['dvs_port_key'])
+        dvs = self._get_dvs_for_port_id(
+            port['id'], port['binding:vif_details']['dvs_port_key'])
         if dvs:
-            sg_util.update_port_rules(dvs,
-                                      [port])
+            sg_util.update_port_rules(dvs, [port])
 
     def filter_defer_apply_on(self):
         if not self._defer_apply:
