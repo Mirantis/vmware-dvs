@@ -68,22 +68,16 @@ class TestDVSFirewallDriver(base.BaseTestCase):
         port = self._fake_port('12345', [FAKE_SG_RULE_IPV4_PORT,
                                          FAKE_SG_RULE_IPV6])
         with mock.patch.object(self.firewall, '_get_dvs_for_port_id',
-                               return_value=self.dvs), \
-                mock.patch.object(sg_utils,
-                                  'update_port_rules') as update_port:
+                               return_value=self.dvs):
             self.firewall.prepare_port_filter(port)
-            update_port.assert_called_once_with(self.dvs, [port])
             self.assertEqual({port['device']: port}, self.firewall.dvs_ports)
 
     def test_prepare_port_filter_rules_from_sg(self):
         port = self._fake_port('12345', [])
         with mock.patch.object(self.firewall, '_get_dvs_for_port_id',
-                               return_value=self.dvs), \
-                mock.patch.object(sg_utils,
-                                  'update_port_rules') as update_port:
+                               return_value=self.dvs):
             self.firewall.sg_rules = {'12345': FAKE_SG_RULE_IPV4_PORT}
             self.firewall.prepare_port_filter(port)
-            update_port.assert_called_once_with(self.dvs, [port])
             expected_port = port
             expected_port.update({
                 'security_group_rules': [FAKE_SG_RULE_IPV4_PORT]})
