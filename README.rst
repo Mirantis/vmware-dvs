@@ -6,6 +6,10 @@ Travis CI status for branches:
    :target: https://travis-ci.org/Mirantis/vmware-dvs
 .. |kilo_dvs_agent| image:: https://travis-ci.org/Mirantis/vmware-dvs.svg?branch=kilo-dvs-agent
    :target: https://travis-ci.org/Mirantis/vmware-dvs
+.. |liberty| image:: https://travis-ci.org/Mirantis/vmware-dvs.svg?branch=liberty
+   :target: https://travis-ci.org/Mirantis/vmware-dvs
+.. |liberty_sg_stable| image:: https://travis-ci.org/Mirantis/vmware-dvs.svg?branch=liberty_sg_stable
+   :target: https://travis-ci.org/Mirantis/vmware-dvs
 
 Goal
 ====
