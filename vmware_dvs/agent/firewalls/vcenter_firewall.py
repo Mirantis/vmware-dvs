@@ -45,18 +45,24 @@ class DVSFirewallDriver(firewall.FirewallDriver):
 
     def prepare_port_filter(self, port):
         self.dvs_ports[port['device']] = port
-        self._apply_sg_rules_for_port(port)
-        LOG.info(_LI("Applied security group rules for port %s"), port['id'])
+        LOG.info(_LI("Applied port %s for dvs port list"), port['id'])
+        # Called for setting port in dvs_port_map
+        self._get_dvs_for_port_id(port['id'],
+                                  port['binding:vif_details']['dvs_port_key'])
 
     def apply_port_filter(self, port):
         self.dvs_ports[port['device']] = port
+        LOG.info(_LI("Applied port %s for dvs port list"), port['id'])
         # Called for setting port in dvs_port_map
-        self._get_dvs_for_port_id(port['id'])
+        self._get_dvs_for_port_id(port['id'],
+                                  port['binding:vif_details']['dvs_port_key'])
 
     def update_port_filter(self, port):
         self.dvs_ports[port['device']] = port
-        self._apply_sg_rules_for_port(port)
-        LOG.info(_LI("Updated security group rules for port %s"), port['id'])
+        LOG.info(_LI("Updated port %s for dvs port list"), port['id'])
+        # Called for setting port in dvs_port_map
+        self._get_dvs_for_port_id(port['id'],
+                                  port['binding:vif_details']['dvs_port_key'])
 
     def remove_port_filter(self, port):
         self._remove_sg_from_dvs_port(port)
@@ -118,10 +124,10 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     def _apply_sg_rules_for_port(self, port):
         dev = port['device']
         sg_rules = 'security_group_rules'
+        known_ports = (set.union(*self.dvs_port_map.values())
+                       if self.dvs_port_map.values() else {})
         for sg in port['security_groups']:
             if sg in self.sg_rules.keys():
-                known_ports = (set.union(*self.dvs_port_map.values())
-                               if self.dvs_port_map.values() else {})
                 if (port['id'] not in known_ports or
                         self.dvs_ports[dev][sg_rules] != self.sg_rules[sg]):
                     port['security_group_rules'] = self.sg_rules[sg]
@@ -173,21 +179,19 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                 if sg_id in port['security_groups']:
                     port['security_group_rules'] = self.sg_rules[sg_id]
                     ports_to_update.append(port)
+
         port_ids = {p['id']: p for p in ports_to_update}
         for dvs, port_list in self.dvs_port_map.iteritems():
-            ids = [e for e in port_list if e in port_ids.keys()]
-            p = []
-            for id in ids:
-                p.append(port_ids[id])
-            if p:
-                sg_util.update_port_rules(dvs, p)
+            ids = [port_ids[e] for e in port_list if e in port_ids.keys()]
+            if ids:
+                sg_util.update_port_rules(dvs, ids)
 
     def _remove_sg_from_dvs_port(self, port):
         port['security_group_rules'] = []
-        dvs = self._get_dvs_for_port_id(port['id'])
+        dvs = self._get_dvs_for_port_id(
+            port['id'], port['binding:vif_details']['dvs_port_key'])
         if dvs:
-            sg_util.update_port_rules(self._get_dvs_for_port_id(port['id']),
-                                      [port])
+            sg_util.update_port_rules(dvs, [port])
 
     def filter_defer_apply_on(self):
         if not self._defer_apply:
