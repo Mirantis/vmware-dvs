@@ -43,25 +43,18 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         # Map for known ports and dvs it is connected to.
         self.dvs_port_map = {}
 
-    @dvs_util.wrap_retry
     def prepare_port_filter(self, port):
-        self.dvs_ports[port['device']] = port
-        LOG.info(_LI("Applied port %s for dvs port list"), port['id'])
-        # Called for setting port in dvs_port_map
-        self._get_dvs_for_port_id(port['id'],
-                                  port['binding:vif_details']['dvs_port_key'])
+        self._process_port_filter(port, "Prepared port %s for dvs port list")
 
     def apply_port_filter(self, port):
-        self.dvs_ports[port['device']] = port
-        LOG.info(_LI("Applied port %s for dvs port list"), port['id'])
-        # Called for setting port in dvs_port_map
-        self._get_dvs_for_port_id(port['id'],
-                                  port['binding:vif_details']['dvs_port_key'])
+        self._process_port_filter(port, "Applied port %s for dvs port list")
 
-    @dvs_util.wrap_retry
     def update_port_filter(self, port):
+        self._process_port_filter(port, "Updated port %s for dvs port list")
+
+    def _process_port_filter(self, port, caller):
         self.dvs_ports[port['device']] = port
-        LOG.info(_LI("Updated port %s for dvs port list"), port['id'])
+        LOG.info(_LI(caller), port['id'])
         # Called for setting port in dvs_port_map
         self._get_dvs_for_port_id(port['id'],
                                   port['binding:vif_details']['dvs_port_key'])
