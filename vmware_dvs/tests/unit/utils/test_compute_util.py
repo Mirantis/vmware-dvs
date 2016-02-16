@@ -16,8 +16,8 @@
 import mock
 from neutron.tests import base
 
-from mech_vmware_dvs import compute_util
-from mech_vmware_dvs import exceptions
+from vmware_dvs.utils import compute_util
+from vmware_dvs.common import exceptions
 
 
 class ComputeUtilTestCase(base.BaseTestCase):
@@ -27,7 +27,7 @@ class ComputeUtilTestCase(base.BaseTestCase):
         super(ComputeUtilTestCase, self).setUp()
         self.config = mock.Mock()
 
-    @mock.patch('mech_vmware_dvs.compute_util._make_nova_client')
+    @mock.patch('vmware_dvs.utils.compute_util._make_nova_client')
     def test_get_hypervisor_by_host(self, make_client):
         expected_hostname = 'expected-host'
         hosts = [
@@ -42,7 +42,7 @@ class ComputeUtilTestCase(base.BaseTestCase):
 
         self.assertEqual(hosts[0], actual)
 
-    @mock.patch('mech_vmware_dvs.compute_util._make_nova_client')
+    @mock.patch('vmware_dvs.utils.compute_util._make_nova_client')
     def test_get_hypervisor_by_host_not_found(self, make_client):
         expected_hostname = 'expected-host'
         hosts = [
