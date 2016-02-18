@@ -221,18 +221,10 @@ def port_configuration(builder, port_key, sg_rules):
     reversed_rules = []
     seq = 0
     for rule_info in sg_rules:
-        if 'ip_set' in rule_info:
-            for ip in rule_info['ip_set']:
-                rule = _create_rule(builder, rule_info, ip,
-                                    name='remote security group')
-                rules.append(rule.build(seq))
-                seq += 10
-                reversed_rules.append(rule.reverse())
-        else:
-            rule = _create_rule(builder, rule_info, name='regular')
-            rules.append(rule.build(seq))
-            seq += 10
-            reversed_rules.append(rule.reverse())
+        rule = _create_rule(builder, rule_info, name='regular')
+        rules.append(rule.build(seq))
+        seq += 10
+        reversed_rules.append(rule.reverse())
 
     for r in reversed_rules:
         rules.append(r.build(seq))
