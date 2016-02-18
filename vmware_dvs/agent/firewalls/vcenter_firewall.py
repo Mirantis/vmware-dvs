@@ -56,11 +56,11 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                                   port['binding:vif_details']['dvs_port_key'])
         self._apply_sg_rules_for_port(port)
 
-    def remove_port_filter(self, ports):
-        for port in ports:
-            self.dvs_ports.pop(port['device'], None)
-            for port_set in self.dvs_port_map.values():
-                port_set.discard(port['id'])
+    def remove_port_filter(self, port):
+        self._remove_sg_from_dvs_port(port)
+        self.dvs_ports.pop(port['device'], None)
+        for port_set in self.dvs_port_map.values():
+            port_set.discard(port['id'])
 
     @property
     def ports(self):
