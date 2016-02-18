@@ -21,18 +21,8 @@ LOG = logging.getLogger(__name__)
 
 class DVSSecurityGroupRpc(securitygroups_rpc.SecurityGroupAgentRpc):
 
-    def _update_security_group_info(self, security_groups,
-                                    security_group_member_ips):
-        if security_group_member_ips and security_groups:
-            self.firewall.update_security_group_rules_and_members(
-                security_groups, security_group_member_ips)
-            LOG.debug("Update security group members and security group rules "
-                      "information")
-        else:
-            for sg_id, sg_rules in security_groups.items():
-                self.firewall.update_security_group_rules(sg_id, sg_rules)
-            LOG.debug("Update security group information")
-            for remote_sg_id, member_ips in security_group_member_ips.items():
-                self.firewall.update_security_group_members(
-                    remote_sg_id, member_ips)
-                LOG.debug("Update security group members information")
+    @property
+    def use_enhanced_rpc(self):
+        if self._use_enhanced_rpc is None:
+            self._use_enhanced_rpc = False
+        return self._use_enhanced_rpc

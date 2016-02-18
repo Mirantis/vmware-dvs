@@ -58,6 +58,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         # Called for setting port in dvs_port_map
         self._get_dvs_for_port_id(port['id'],
                                   port['binding:vif_details']['dvs_port_key'])
+        self._apply_sg_rules_for_port(port)
 
     def remove_port_filter(self, port):
         self._remove_sg_from_dvs_port(port)
@@ -69,59 +70,17 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     def ports(self):
         return self.dvs_ports
 
-    @dvs_util.wrap_retry
     def update_security_group_rules(self, sg_id, sg_rules):
-        self._apply_ip_set(sg_rules)
-        if sg_id in self.sg_rules and self.sg_rules[sg_id] == sg_rules:
-            return
-        self.sg_rules[sg_id] = sg_rules
-        self._update_sg_rules_for_ports(set([sg_id]))
-        LOG.debug("Update rules of security group (%s)", sg_id)
+        pass
 
-    @dvs_util.wrap_retry
     def update_security_group_members(self, sg_id, sg_members):
-        updated_sgs = self._get_set_of_updated_sg(sg_id, sg_members)
-        self.sg_members[sg_id] = sg_members
-        if updated_sgs:
-            self._update_sg_rules_for_ports(updated_sgs)
-        LOG.debug("Update members of security group (%s)", sg_id)
+        pass
 
     def security_group_updated(self, action_type, sec_group_ids,
                                device_id=None):
         pass
 
-    def update_security_group_rules_and_members(self, security_groups,
-                                                security_group_member_ips):
-        updated_sg = set()
-        for remote_sg_id, member_ips in security_group_member_ips.items():
-            self.sg_members[remote_sg_id] = member_ips
-            updated_sg |= self._get_set_of_updated_sg(remote_sg_id, member_ips)
-        for sg_id, sg_rules in security_groups.items():
-            self._apply_ip_set(sg_rules)
-            self.sg_rules[sg_id] = sg_rules
-        updated_sg |= set(security_groups.keys())
-        self._update_sg_rules_for_ports(updated_sg)
-
-    def _apply_ip_set(self, rules):
-        for rule in rules:
-            for sg_id, members in self.sg_members.iteritems():
-                if rule.get('remote_group_id') == sg_id:
-                    ethertype = rule['ethertype']
-                    if members.get(ethertype):
-                        rule['ip_set'] = members[ethertype]
-
-    def _get_set_of_updated_sg(self, sg_id, sg_members):
-        updated_sgs = set()
-        for sg, rules in self.sg_rules.items():
-            for rule in rules:
-                if rule.get('remote_group_id') == sg_id:
-                    ethertype = rule['ethertype']
-                    if (sg_members.get(ethertype) and
-                            rule.get('ip_set') != sg_members[ethertype]):
-                        rule['ip_set'] = sg_members[ethertype]
-                        updated_sgs.add(sg)
-        return updated_sgs
-
+    @dvs_util.wrap_retry
     def _apply_sg_rules_for_port(self, port):
         dev = port['device']
         sg_rules = 'security_group_rules'
@@ -165,20 +124,6 @@ class DVSFirewallDriver(firewall.FirewallDriver):
             self.dvs_port_map[dvs] = set()
         self.dvs_port_map[dvs].add(port_id)
         return dvs
-
-    def _update_sg_rules_for_ports(self, sg_ids):
-        ports_to_update = []
-        for port in self.dvs_ports.values():
-            for sg_id in sg_ids:
-                if sg_id in port['security_groups']:
-                    port['security_group_rules'] = self.sg_rules[sg_id]
-                    ports_to_update.append(port)
-
-        port_ids = {p['id']: p for p in ports_to_update}
-        for dvs, port_list in self.dvs_port_map.iteritems():
-            p = [port_ids[id] for id in port_list if id in port_ids.keys()]
-            if p:
-                sg_util.update_port_rules(dvs, p)
 
     def _remove_sg_from_dvs_port(self, port):
         port['security_group_rules'] = []
