@@ -100,8 +100,7 @@ class DVSAgentTestCase(base.BaseTestCase):
                           self.agent.update_port_postcommit,
                           self.port_context.current,
                           self.port_context.original,
-                          self.port_context.network.network_segments[0],
-                          self.sg_info)
+                          self.port_context.network.network_segments[0])
         self.assertTrue(is_valid_dvs.called)
         self.assertFalse(self.dvs.switch_port_blocked_state.called)
 
@@ -117,9 +116,7 @@ class DVSAgentTestCase(base.BaseTestCase):
         self.agent.update_port_postcommit(
             self.port_context.current,
             self.port_context.original,
-            self.port_context.network.network_segments[0],
-            self.sg_info
-        )
+            self.port_context.network.network_segments[0])
         self.assertTrue(is_valid_dvs.called)
         self.assertTrue(self.dvs.switch_port_blocked_state.called)
         self.assertIn(current_port_id, self.agent.added_ports)
@@ -135,8 +132,7 @@ class DVSAgentTestCase(base.BaseTestCase):
                           self.agent.delete_port_postcommit,
                           self.port_context.current,
                           self.port_context.original,
-                          self.port_context.network.network_segments[0],
-                          self.sg_info)
+                          self.port_context.network.network_segments[0])
         self.assertTrue(is_valid_dvs.called)
         self.assertFalse(self.dvs.release_port.called)
 
@@ -148,8 +144,7 @@ class DVSAgentTestCase(base.BaseTestCase):
         self.agent.delete_port_postcommit(
             self.port_context.current,
             self.port_context.original,
-            self.port_context.network.network_segments[0],
-            self.sg_info
+            self.port_context.network.network_segments[0]
         )
         self.assertTrue(is_valid_dvs.called)
         self.assertTrue(self.dvs.release_port.called)

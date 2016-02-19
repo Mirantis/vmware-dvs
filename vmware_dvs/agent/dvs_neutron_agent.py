@@ -153,7 +153,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         return None
 
     @dvs_util.wrap_retry
-    def update_port_postcommit(self, current, original, segment, sg_info):
+    def update_port_postcommit(self, current, original, segment):
         try:
             dvs = self._lookup_dvs_for_context(segment)
             if current['id'] in self.booked_ports:
@@ -173,7 +173,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             # TODO SlOPS: update security groups on girect call
 
     @dvs_util.wrap_retry
-    def delete_port_postcommit(self, current, original, segment, sg_info):
+    def delete_port_postcommit(self, current, original, segment):
         try:
             dvs = self._lookup_dvs_for_context(segment)
         except exceptions.NotSupportedNetworkType as e:

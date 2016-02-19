@@ -94,14 +94,14 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     @port_belongs_to_vmware
     def bind_port(self, context):
-        print context.host
-        b_port = self.dvs_notifier.bind_port_call(context.current,
-                                         context.network.network_segments,
-                                         context.network.current, context.host)
-        # TODO(ekosareva): currently a hack, need to check results from agent
-        #                  and store port_key
+        booked_port_key = self.dvs_notifier.bind_port_call(
+            context.current,
+            context.network.network_segments,
+            context.network.current,
+            context.host
+        )
         vif_details = dict(self.vif_details)
-        vif_details['dvs_port_key'] = b_port
+        vif_details['dvs_port_key'] = booked_port_key
         for segment in context.network.network_segments:
             context.set_binding(
                 segment[driver_api.ID],
@@ -116,11 +116,12 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     @port_belongs_to_vmware
     def update_port_postcommit(self, context):
-        security_group_info = self._get_security_group_info(context)
-        self.dvs_notifier.update_postcommit_port_cast(
-            context.current, context.original,
-            context.network.network_segments[0], security_group_info)
-
+        self.dvs_notifier.update_postcommit_port_call(
+            context.current,
+            context.original,
+            context.network.network_segments[0],
+            context.host
+        )
         # TODO(ekosareva): removed one more condition(is it really needed?):
         #                  'dvs_port_key' in port['binding:vif_details']
         if (context.current['binding:vif_type'] == 'unbound' and
@@ -132,10 +133,9 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     @port_belongs_to_vmware
     def delete_port_postcommit(self, context):
-        security_group_info = self._get_security_group_info(context)
-        self.dvs_notifier.delete_port_cast(context.current, context.original,
+        self.dvs_notifier.delete_port_call(context.current, context.original,
                                            context.network.network_segments[0],
-                                           security_group_info)
+                                           context.host)
 
     def _get_security_group_info(self, context):
         current_security_group = list(set(context.current['security_groups']))
