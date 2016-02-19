@@ -73,37 +73,26 @@ class TestDVSFirewallDriver(base.BaseTestCase):
         with mock.patch.object(self.firewall, '_get_dvs_for_port_id',
             return_value=self.dvs), \
             mock.patch.object(sg_utils, 'update_port_rules') as update_port:
-            self.firewall.prepare_port_filter(port)
+            self.firewall.prepare_port_filter([port])
             update_port.assert_called_once_with(self.dvs, [port])
             self.assertEqual({port['device']: port}, self.firewall.dvs_ports)
 
     def test_remove_port_filter(self):
         port = self._fake_port('12345', [FAKE_SG_RULE_IPV4_PORT,
                                          FAKE_SG_RULE_IPV6])
+        self.firewall.dvs_ports[port['id']] = port
         with mock.patch.object(self.firewall, '_get_dvs_for_port_id',
                                return_value=self.dvs), \
                 mock.patch.object(sg_utils,
                                   'update_port_rules') as update_port:
-            self.firewall.remove_port_filter(port)
-            expected_port = port
-            expected_port['security_group_rules'] = []
-            update_port.assert_called_once_with(self.dvs, [expected_port])
+            self.firewall.remove_port_filter([port['id']])
+            update_port.assert_called_once_with(self.dvs, [port])
             self.assertNotIn(port['id'], self.firewall.dvs_port_map.values())
 
-    def test_update_security_group_rules_no_action(self):
-        sg_rules = [FAKE_SG_RULE_IPV6, FAKE_SG_RULE_IPV4_PORT]
-        self.firewall.sg_rules = {'1234': sg_rules}
-        self.firewall.update_security_group_rules('1234', sg_rules)
-        self.assertEqual({'1234': sg_rules}, self.firewall.sg_rules)
-
     def test__apply_sg_rules_for_port(self):
-        self.firewall.sg_rules = {'1234': [FAKE_SG_RULE_IPV6,
-                                           FAKE_SG_RULE_IPV4_PORT]}
         with mock.patch.object(sg_utils, 'update_port_rules') as update_port:
-            self.firewall._apply_sg_rules_for_port(self.port)
+            self.firewall._apply_sg_rules_for_port([self.port])
             update_port.assert_called_once_with(self.dvs, [self.port])
-            self.assertEqual([FAKE_SG_RULE_IPV6, FAKE_SG_RULE_IPV4_PORT],
-                             self.port['security_group_rules'])
 
     def test__get_dvs_for_port_id(self):
         dvs = self.firewall._get_dvs_for_port_id(self.port['id'])
