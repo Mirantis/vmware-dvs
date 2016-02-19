@@ -253,6 +253,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         LOG.debug("Agent caught SIGTERM, quitting daemon loop.")
         self.run_daemon_loop = False
 
+    @dvs_util.wrap_retry
     def _clean_up_vsphere_extra_ports(self, connected_ports):
         LOG.debug("Cleanup vsphere extra ports...")
         vsphere_not_connected_ports_maps = {}
