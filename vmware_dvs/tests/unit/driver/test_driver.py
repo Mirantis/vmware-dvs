@@ -76,27 +76,20 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
             cast_mock.assert_called_once_with(
                 context.current, context.network_segments[0], context.original)
 
-    @mock.patch('vmware_dvs.driver.dvs_mechanism_driver.'
-                'VMwareDVSMechanismDriver._get_security_group_info')
     @mock.patch('vmware_dvs.utils.compute_util.get_hypervisors_by_host')
-    def test_update_port_postcommit(self, hypervisor_by_host, get_sg_info):
+    def test_update_port_postcommit(self, hypervisor_by_host):
         hypervisor_by_host.return_value = mock.Mock(
             hypervisor_type=VALID_HYPERVISOR_TYPE)
-        sg_info = {
-            'devices': [],
-            'security_groups': [],
-            'sg_member_ips': {},
-        }
-        get_sg_info.return_value = sg_info
+
         current = self._create_port_dict(vif_type='unbound',
                                          status=n_const.PORT_STATUS_DOWN)
         port_ctx = self._create_port_context(current=current)
         segment = port_ctx.network.network_segments[0]
         with mock.patch('vmware_dvs.api.dvs_agent_rpc_api.DVSClientAPI.'
-                        'update_postcommit_port_cast') as cast_mock:
+                        'update_postcommit_port_call') as call_mock:
             self.driver.update_port_postcommit(port_ctx)
-            cast_mock.assert_called_once_with(
-                current, port_ctx.original, segment, sg_info)
+            call_mock.assert_called_once_with(
+                current, port_ctx.original, segment, port_ctx.host)
 
     @mock.patch('vmware_dvs.utils.compute_util.get_hypervisors_by_host')
     def test_update_port_postcommit_non_vmware_port(self, hypervisor_by_host):
@@ -104,9 +97,9 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
             hypervisor_type=INVALID_HYPERVISOR_TYPE)
         port_context = self._create_port_context()
         with mock.patch('vmware_dvs.api.dvs_agent_rpc_api.DVSClientAPI.'
-                        'update_postcommit_port_cast') as cast_mock:
+                        'update_postcommit_port_call') as call_mock:
             self.driver.update_port_postcommit(port_context)
-            self.assertEqual(cast_mock.call_count, 0)
+            self.assertEqual(call_mock.call_count, 0)
 
     @mock.patch('vmware_dvs.utils.compute_util.get_hypervisors_by_host')
     def test__port_belongs_to_vmware__unbinded_port(self, get_hypervisor):
@@ -142,29 +135,21 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         self.assertFalse(func.called)
         self.assertTrue(get_hypervisor.called)
 
-    @mock.patch('vmware_dvs.driver.dvs_mechanism_driver.'
-                'VMwareDVSMechanismDriver._get_security_group_info')
     @mock.patch('vmware_dvs.utils.compute_util.get_hypervisors_by_host')
-    def test_delete_port_postcommit_when_KeyError(self, hypervisor_by_host,
-                                                  get_sg_info):
+    def test_delete_port_postcommit_when_KeyError(self, hypervisor_by_host):
         hypervisor_by_host.return_value = mock.Mock(
             hypervisor_type=VALID_HYPERVISOR_TYPE)
-        sg_info = {
-            'devices': [],
-            'security_groups': [],
-            'sg_member_ips': {},
-        }
-        get_sg_info.return_value = sg_info
+
         current = self._create_port_dict(vif_type='unbound',
                                          status=n_const.PORT_STATUS_DOWN)
         port_ctx = self._create_port_context(current=current)
         segment = port_ctx.network.network_segments[0]
         self.driver._bound_ports = set([1, 2])
         with mock.patch('vmware_dvs.api.dvs_agent_rpc_api.DVSClientAPI.'
-                        'delete_port_cast') as cast_mock:
+                        'delete_port_call') as call_mock:
             self.driver.delete_port_postcommit(port_ctx)
-            cast_mock.assert_called_once_with(
-                current, port_ctx.original, segment, sg_info)
+            call_mock.assert_called_once_with(
+                current, port_ctx.original, segment, port_ctx.host)
 
         self.assertEqual(set([1, 2]), self.driver._bound_ports)
 

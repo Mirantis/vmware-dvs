@@ -33,11 +33,11 @@ class ExtendAPI(object):
     def bind_port(self, context, current, network_segments, network_current):
         return self.book_port(current, network_segments, network_current)
 
-    def post_update_port(self, context, current, original, segment, sg_info):
-        self.update_port_postcommit(current, original, segment, sg_info)
+    def post_update_port(self, context, current, original, segment):
+        self.update_port_postcommit(current, original, segment)
 
-    def delete_port(self, context, current, original, segment, sg_info):
-        self.delete_port_postcommit(current, original, segment, sg_info)
+    def delete_port(self, context, current, original, segment):
+        self.delete_port_postcommit(current, original, segment)
 
 
 class DVSClientAPI(object):
@@ -77,17 +77,16 @@ class DVSClientAPI(object):
                                       original=original)
 
     def bind_port_call(self, current, network_segments, network_current, host):
-        return self._get_cctxt_direct(host).call(self.context, 'bind_port',
-                                      current=current,
-                                      network_segments=network_segments,
-                                      network_current=network_current)
+        return self._get_cctxt_direct(host).call(
+            self.context, 'bind_port', current=current,
+            network_segments=network_segments, network_current=network_current)
 
-    def update_postcommit_port_cast(self, current, original, segment, sg_info):
-        return self._get_cctxt().cast(self.context, 'post_update_port',
-                                      current=current, original=original,
-                                      segment=segment, sg_info=sg_info)
+    def update_postcommit_port_call(self, current, original, segment, host):
+        return self._get_cctxt_direct(host).call(
+            self.context, 'post_update_port', current=current,
+            original=original, segment=segment)
 
-    def delete_port_cast(self, current, original, segment, sg_info):
-        return self._get_cctxt().cast(self.context, 'delete_port',
-                                      current=current, original=original,
-                                      segment=segment, sg_info=sg_info)
+    def delete_port_call(self, current, original, segment, host):
+        return self._get_cctxt_direct(host).call(
+            self.context, 'delete_port', current=current, original=original,
+            segment=segment)
