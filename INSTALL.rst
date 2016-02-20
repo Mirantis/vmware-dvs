@@ -9,20 +9,15 @@ You can just install it via pip:
 
 .. code:: bash
 
-  $ pip install git+git://github.com/Mirantis/vmware-dvs.git
+  $ pip install git+git://github.com/Mirantis/vmware-dvs.git@liberty
 
-If you want version compatible with mos v.6.1 (neutron v2014.2.2).
-You have to install vmware-dvs from branch "mos-6.1":
-
-.. code:: bash
-
-  $ pip install git+git://github.com/Mirantis/vmware-dvs.git@mos-6.1
 
 VSphere configuration
 =====================
 
 Usage of the driver is determined by manual creation of DVS switches on
-VMware vSphere infrastructure first.
+VMware vSphere infrastructure first. Each cluster must have independent
+set of DVS switches.
 
 Neutron configuration
 =====================
@@ -46,9 +41,6 @@ To enable vmware-dvs driver you have to update neutron configuration like this:
   nova_admin_password = <nova admin password>
   nova_admin_tenant_id = <nova admin tenant_id>
 
-  notification_driver = messagingv2
-  notification_topics = notifications,vmware_dvs
-
 On Compute node that proxies requests to vCenter apply
 nova patch: https://github.com/Mirantis/vmware-dvs/blob/master/nova.patch
 and restart nova-compute
@@ -58,3 +50,23 @@ On Controller update python package "suds" to this version: https://github.com/y
 For further configuration options that needs to be set look into:
 /etc/neutron/plugins/ml2/ml2_conf.ini please read etc/ml2_conf_vmware_dvs.ini
 in this repository.
+
+
+Agents configuration
+====================
+
+For each cluster create /etc/neutron/plugins/ml2/ml2_conf_ClusterName.ini
+Create section
+
+[DEFAULT]
+host=<HostName>
+
+HostName must be the same as host name at default section of nova-compute.conf for cluster
+
+update 
+
+[ml2_vmware]
+vsphere_login=<login>
+network_maps=<physnet_name>:<DVS_name>
+vsphere_hostname=<ip or name of vSphere server>
+vsphere_password=<password>
