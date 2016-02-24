@@ -58,12 +58,15 @@ class TrafficRuleBuilder(object):
 
         self.name = name
 
-    def reverse(self):
+    def reverse(self, cidr_bool):
         """Returns reversed rule"""
         name = 'reversed' + ' ' + (self.name or '')
         rule = self.reverse_class(self.factory, self.ethertype,
                                   self.protocol, name=name.strip())
-        rule.cidr = self.cidr
+        if cidr_bool:
+            rule.cidr = self.cidr
+        else:
+            rule.cidr = '0.0.0.0/0'
         rule.port_range = self.backward_port_range
         rule.backward_port_range = self.port_range
         return rule
@@ -224,7 +227,13 @@ def port_configuration(builder, port_key, sg_rules):
         rule = _create_rule(builder, rule_info, name='regular')
         rules.append(rule.build(seq))
         seq += 10
-        reversed_rules.append(rule.reverse())
+        cidr_revert = True
+        if rule.ethertype == 'IPv4' and rule.direction == \
+                'incomingPackets' and rule.protocol == 'udp':
+            if rule.backward_port_range == (67, 67) and rule.port_range == \
+                (68, 68):
+                cidr_revert = False
+        reversed_rules.append(rule.reverse(cidr_revert))
 
     for r in reversed_rules:
         rules.append(r.build(seq))
