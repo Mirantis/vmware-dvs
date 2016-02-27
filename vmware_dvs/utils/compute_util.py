@@ -33,17 +33,12 @@ def get_hypervisors_by_host(cfg, host):
 
 
 def _make_nova_client(cfg):
-    bypass_url = None
-    if cfg.nova_admin_tenant_id:
-        bypass_url = '%s/%s' % (cfg.nova_url,
-                                cfg.nova_admin_tenant_id)
 
     params = dict(
         username=cfg.nova.username,
         api_key=cfg.nova.password,
         project_id=cfg.nova.tenant_name,
         auth_url=cfg.nova.auth_url + "v2.0/",
-        bypass_url=bypass_url,
     )
 
     try:
