@@ -97,18 +97,34 @@ class DVSController(object):
 
     def delete_network(self, network):
         name = self._get_net_name(self.dvs_name, network)
+        try:
+            pg_ref = self._get_pg_by_name(name)
+        except exceptions.PortGroupNotFound:
+            LOG.debug('Network %s not present in vcenter.' % name)
+            return
+        self._delete_port_group(pg_ref, name)
+
+    def delete_networks_without_active_ports(self, pg_keys_with_active_ports):
+        for pg_ref in self._get_all_port_groups():
+            if pg_ref.value not in pg_keys_with_active_ports:
+                # check name
+                name = self.connection.invoke_api(
+                    vim_util, 'get_object_property',
+                    self.connection.vim, pg_ref, 'name')
+                name_tokens = name.split(self.dvs_name)
+                if (len(name_tokens) == 2 and not name_tokens[0] and
+                        self._valid_uuid(name_tokens[1])):
+                    self._delete_port_group(pg_ref, name)
+
+    def _delete_port_group(self, pg_ref, name):
         while True:
             try:
-                pg_ref = self._get_pg_by_name(name)
                 pg_delete_task = self.connection.invoke_api(
                     self.connection.vim,
                     'Destroy_Task',
                     pg_ref)
                 self.connection.wait_for_task(pg_delete_task)
                 LOG.info(_LI('Network %(name)s deleted.') % {'name': name})
-                break
-            except exceptions.PortGroupNotFound:
-                LOG.debug('Network %s not present in vcenter.' % name)
                 break
             except vmware_exceptions.VimException as e:
                 raise exceptions.wrap_wmvare_vim_exception(e)
@@ -237,18 +253,20 @@ class DVSController(object):
 
     def _get_pg_by_name(self, pg_name):
         """Get the dpg ref by name"""
-        net_list = self.connection.invoke_api(
-            vim_util, 'get_object_property', self.connection.vim,
-            self._datacenter, 'network').ManagedObjectReference
-        type_value = 'DistributedVirtualPortgroup'
-        pg_list = self._get_object_by_type(net_list, type_value)
-        for pg in pg_list:
+        for pg in self._get_all_port_groups():
             name = self.connection.invoke_api(
                 vim_util, 'get_object_property',
                 self.connection.vim, pg, 'name')
             if pg_name == name:
                 return pg
         raise exceptions.PortGroupNotFound(pg_name=pg_name)
+
+    def _get_all_port_groups(self):
+        net_list = self.connection.invoke_api(
+            vim_util, 'get_object_property', self.connection.vim,
+            self._datacenter, 'network').ManagedObjectReference
+        type_value = 'DistributedVirtualPortgroup'
+        return self._get_object_by_type(net_list, type_value)
 
     def _get_or_create_pg(self, pg_name, network, segment):
         try:
