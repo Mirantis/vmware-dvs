@@ -13,8 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from networking_vsphere.api import dvs_agent_rpc_api
 from networking_vsphere.common import constants as dvs_const
+from networking_vsphere.common import dvs_agent_rpc_api
 from networking_vsphere.common import dvs_driver_config as config
 from networking_vsphere.common import exceptions
 from networking_vsphere.utils import compute_util
