@@ -41,7 +41,7 @@ from networking_vsphere.utils import dvs_util
 
 LOG = logging.getLogger(__name__)
 cfg.CONF.import_group('DVS_AGENT',
-                      'networking_vsphere.agent.common.vmware_conf')
+                      'networking_vsphere.common.vmware_conf')
 
 
 class DVSPluginApi(agent_rpc.PluginApi):

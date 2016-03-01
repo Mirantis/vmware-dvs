@@ -17,7 +17,7 @@ from neutron.agent import firewall
 from neutron.i18n import _LW, _LI
 from oslo_log import log as logging
 
-from networking_vsphere.common import dvs_driver_config as config
+from networking_vsphere.common import vmware_conf as config
 from networking_vsphere.utils import dvs_util
 from networking_vsphere.utils import security_group_utils as sg_util
 
@@ -32,7 +32,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     """DVS Firewall Driver."""
     def __init__(self):
         self.networking_map = dvs_util.create_network_map_from_config(
-            CONF.ml2_vmware)
+            CONF.ML2_VMWARE)
         self.dvs_ports = {}
         self._defer_apply = False
         # Map for known ports and dvs it is connected to.

@@ -27,8 +27,8 @@ from oslo_log import log
 
 from networking_vsphere.common import constants as dvs_const
 from networking_vsphere.common import dvs_agent_rpc_api
-from networking_vsphere.common import dvs_driver_config as config
 from networking_vsphere.common import exceptions
+from networking_vsphere.common import vmware_conf as config
 from networking_vsphere.utils import compute_util
 
 CONF = config.CONF
