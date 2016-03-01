@@ -93,6 +93,6 @@ vmware_opts = [
                help=_("Vsphere password.")),
 ]
 
-cfg.CONF.register_opts(agent_opts, "AGENT")
+cfg.CONF.register_opts(agent_opts, "DVS_AGENT")
 cfg.CONF.register_opts(vmware_opts, "ML2_VMWARE")
 config.register_agent_state_opts_helper(cfg.CONF)

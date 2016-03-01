@@ -13,8 +13,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from networking_vsphere.common import constants as dvs_const
-from networking_vsphere.common import exceptions
+import six
+from time import sleep
+import uuid
 
 from neutron.i18n import _LI, _LW
 from oslo_log import log
@@ -22,9 +23,8 @@ from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
 
-import six
-from time import sleep
-import uuid
+from networking_vsphere.common import constants as dvs_const
+from networking_vsphere.common import exceptions
 
 
 LOG = log.getLogger(__name__)
@@ -496,10 +496,7 @@ def get_dvs_by_id_and_key(dvs_list, port_id, port_key):
 
 
 def wrap_retry(func):
-
-    # Retry operation on dvs when concurrent modification by another operation
-    # was discovered
-
+    """Retry operation on dvs when concurrent modification was discovered."""
     @six.wraps(func)
     def wrapper(*args, **kwargs):
         login_failures = 0

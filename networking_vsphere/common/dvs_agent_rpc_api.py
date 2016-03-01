@@ -15,9 +15,9 @@
 
 from neutron.common import rpc as n_rpc
 from neutron.common import topics
-
 import oslo_messaging
-from vmware_dvs.common import constants as dvs_const
+
+from networking_vsphere.common import constants as dvs_const
 
 
 class ExtendAPI(object):
