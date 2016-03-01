@@ -14,12 +14,9 @@
 #    under the License.
 
 import itertools
-
-from networking_vsphere.agent.firewalls import dvs_securitygroup_rpc as dvs_rpc
-from networking_vsphere.common import constants as dvs_const
-from networking_vsphere.common import dvs_agent_rpc_api
-from networking_vsphere.common import exceptions
-from networking_vsphere.utils import dvs_util
+import signal
+import sys
+import time
 
 from neutron.agent.common import polling
 from neutron.agent import rpc as agent_rpc
@@ -31,18 +28,20 @@ from neutron.common import utils
 from neutron import context
 from neutron.i18n import _, _LE, _LI
 from neutron.plugins.common import constants
-
 from oslo_config import cfg
 from oslo_log import log as logging
 import oslo_messaging
 from oslo_service import loopingcall
 
-import signal
-import sys
-import time
+from networking_vsphere.agent.firewalls import dvs_securitygroup_rpc as dvs_rpc
+from networking_vsphere.common import constants as dvs_const
+from networking_vsphere.common import dvs_agent_rpc_api
+from networking_vsphere.common import exceptions
+from networking_vsphere.utils import dvs_util
 
 LOG = logging.getLogger(__name__)
-cfg.CONF.import_group('AGENT', 'networking_vsphere.agent.common.vmware_conf')
+cfg.CONF.import_group('DVS_AGENT',
+                      'networking_vsphere.agent.common.vmware_conf')
 
 
 class DVSPluginApi(agent_rpc.PluginApi):

@@ -14,16 +14,15 @@
 #    under the License.
 
 import abc
-
-from networking_vsphere.common import constants as dvs_const
-from networking_vsphere.common import exceptions
-from networking_vsphere.utils import dvs_util
+import six
 
 from neutron.i18n import _LI, _LW
 from oslo_log import log
 from oslo_vmware import exceptions as vmware_exceptions
 
-import six
+from networking_vsphere.common import constants as dvs_const
+from networking_vsphere.common import exceptions
+from networking_vsphere.utils import dvs_util
 
 LOG = log.getLogger(__name__)
 

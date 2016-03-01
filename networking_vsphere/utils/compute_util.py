@@ -38,7 +38,7 @@ def _make_nova_client(cfg):
         username=cfg.nova.username,
         api_key=cfg.nova.password,
         project_id=cfg.nova.tenant_name,
-        auth_url=cfg.nova.auth_url + "v2.0/",
+        auth_url=cfg.nova.auth_url + "v2.0/"
     )
 
     try:

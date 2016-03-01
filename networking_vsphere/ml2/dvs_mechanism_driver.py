@@ -13,11 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from networking_vsphere.common import constants as dvs_const
-from networking_vsphere.common import dvs_agent_rpc_api
-from networking_vsphere.common import dvs_driver_config as config
-from networking_vsphere.common import exceptions
-from networking_vsphere.utils import compute_util
+import six
 
 from neutron.agent import securitygroups_rpc
 from neutron.common import constants as n_const
@@ -27,10 +23,13 @@ from neutron.i18n import _LI
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api
 from neutron.plugins.ml2.drivers import mech_agent
-
 from oslo_log import log
-import six
 
+from networking_vsphere.common import constants as dvs_const
+from networking_vsphere.common import dvs_agent_rpc_api
+from networking_vsphere.common import dvs_driver_config as config
+from networking_vsphere.common import exceptions
+from networking_vsphere.utils import compute_util
 
 CONF = config.CONF
 LOG = log.getLogger(__name__)
