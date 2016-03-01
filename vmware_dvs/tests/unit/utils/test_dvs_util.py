@@ -649,18 +649,18 @@ class UtilTestCase(base.BaseTestCase):
         self.addCleanup(patch.stop)
 
     def test_empty_map_if_config_network_maps_is_empty(self):
-        CONF.set_override('network_maps', [], 'ml2_vmware')
+        CONF.set_override('network_maps', [], 'ML2_VMWARE')
         self.assertDictEqual(
             {},
-            dvs_util.create_network_map_from_config(CONF.ml2_vmware))
+            dvs_util.create_network_map_from_config(CONF.ML2_VMWARE))
 
     @mock.patch('vmware_dvs.utils.dvs_util.DVSController._get_dvs',
                 return_value=(mock.Mock(), 'datacenter1'))
     def test_creates_network_map_from_conf(self, *args):
         network_map = ['physnet1:dvSwitch', 'physnet2:dvSwitch1']
         CONF.set_override(
-            'network_maps', network_map, 'ml2_vmware')
-        actual = dvs_util.create_network_map_from_config(CONF.ml2_vmware)
+            'network_maps', network_map, 'ML2_VMWARE')
+        actual = dvs_util.create_network_map_from_config(CONF.ML2_VMWARE)
 
         self.assertEqual(len(network_map), len(actual))
 
@@ -668,7 +668,7 @@ class UtilTestCase(base.BaseTestCase):
             controller = actual[net]
             self.assertEqual('session', controller.connection)
 
-        vmware_conf = config.CONF.ml2_vmware
+        vmware_conf = config.CONF.ML2_VMWARE
         self.session_mock.assert_called_once_with(
             vmware_conf.vsphere_hostname,
             vmware_conf.vsphere_login,

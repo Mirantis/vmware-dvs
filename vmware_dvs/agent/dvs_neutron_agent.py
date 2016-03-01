@@ -39,7 +39,7 @@ from vmware_dvs.api import dvs_agent_rpc_api
 from vmware_dvs.agent.firewalls import dvs_securitygroup_rpc as dvs_rpc
 
 LOG = logging.getLogger(__name__)
-cfg.CONF.import_group('AGENT', 'vmware_dvs.agent.common.vmware_conf')
+cfg.CONF.import_group('AGENT', 'vmware_dvs.common.config')
 
 
 class DVSPluginApi(agent_rpc.PluginApi):

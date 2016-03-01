@@ -31,7 +31,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     """
     def __init__(self):
         self.networking_map = dvs_util.create_network_map_from_config(
-            CONF.ml2_vmware)
+            CONF.ML2_VMWARE)
         self.dvs_ports = {}
         self._defer_apply = False
         # Map for known ports and dvs it is connected to.
