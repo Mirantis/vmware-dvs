@@ -1,7 +1,6 @@
 from oslo_config import cfg
 
 from neutron.agent.common import config
-from neutron.plugins.common import constants
 
 DEFAULT_BRIDGE_MAPPINGS = []
 DEFAULT_VLAN_RANGES = []
