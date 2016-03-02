@@ -52,10 +52,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
     target = oslo_messaging.Target(version='1.2')
 
     def __init__(self, vsphere_hostname, vsphere_login, vsphere_password,
-                 bridge_mappings, polling_interval, veth_mtu=None,
-                 minimize_polling=False, quitting_rpc_timeout=None):
+                 bridge_mappings, polling_interval, quitting_rpc_timeout=None):
         super(DVSAgent, self).__init__()
-        self.veth_mtu = veth_mtu
 
         self.agent_state = {
             'binary': 'neutron-dvs-agent',
@@ -76,7 +74,6 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             heartbeat.start(interval=report_interval)
 
         self.polling_interval = polling_interval
-        self.minimize_polling = minimize_polling
         # Security group agent support
         self.sg_agent = dvs_rpc.DVSSecurityGroupRpc(self.context,
                 self.sg_plugin_rpc, defer_refresh_firewall=True)
@@ -408,8 +405,6 @@ def create_agent_config_map(config):
         vsphere_password=config.ML2_VMWARE.vsphere_password,
         bridge_mappings=bridge_mappings,
         polling_interval=config.AGENT.polling_interval,
-        minimize_polling=config.AGENT.minimize_polling,
-        veth_mtu=config.AGENT.veth_mtu,
         quitting_rpc_timeout=config.AGENT.quitting_rpc_timeout,
     )
     return kwargs
