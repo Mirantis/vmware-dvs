@@ -254,34 +254,54 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         self.run_daemon_loop = False
 
     @dvs_util.wrap_retry
-    def _clean_up_vsphere_extra_ports(self, connected_ports):
-        LOG.debug("Cleanup vsphere extra ports...")
+    def _clean_up_vsphere_extra_resources(self, connected_ports):
+        LOG.debug("Cleanup vsphere extra ports and networks...")
         vsphere_not_connected_ports_maps = {}
+        network_with_active_ports = {}
+        network_with_known_not_active_ports = {}
         for phys_net, dvs in self.network_map.items():
-            all_dvs_ports = set([p.config.name for p in dvs.get_ports(False)])
-            not_connected_dvs_ports = all_dvs_ports - connected_ports
+            phys_net_active_network = \
+                network_with_active_ports.setdefault(phys_net, set())
+            phys_net_not_active_network = \
+                network_with_known_not_active_ports.setdefault(phys_net, {})
+            not_connected_dvs_ports = set()
+            for port in dvs.get_ports(False):
+                port_name = getattr(port.config, 'name', None)
+                if not port_name:
+                    continue
+                if port_name not in connected_ports:
+                    not_connected_dvs_ports.add(port_name)
+                    phys_net_not_active_network[port_name] = port.portgroupKey
+
+                phys_net_active_network.add(port.portgroupKey)
+
             vsphere_not_connected_ports_maps.update(
                 {port_id: phys_net for port_id in not_connected_dvs_ports})
 
-        if not vsphere_not_connected_ports_maps:
-            return
+        if vsphere_not_connected_ports_maps:
+            devices_details_list = (
+                self.plugin_rpc.get_devices_details_list_and_failed_devices(
+                    self.context,
+                    vsphere_not_connected_ports_maps.keys(),
+                    self.agent_id,
+                    cfg.CONF.host))
+            neutron_ports = set([
+                p['port_id'] for p in itertools.chain(
+                    devices_details_list['devices'],
+                    devices_details_list['failed_devices']) if p.get('port_id')
+            ])
 
-        devices_details_list = (
-            self.plugin_rpc.get_devices_details_list_and_failed_devices(
-                self.context,
-                vsphere_not_connected_ports_maps.keys(),
-                self.agent_id,
-                cfg.CONF.host))
-        neutron_ports = set([
-            p['port_id'] for p in itertools.chain(
-                devices_details_list['devices'],
-                devices_details_list['failed_devices']) if p.get('port_id')
-        ])
+            for port_id, phys_net in vsphere_not_connected_ports_maps.items():
+                if port_id not in neutron_ports:
+                    dvs = self.network_map[phys_net]
+                    dvs.release_port({'id': port_id})
+                else:
+                    network_with_active_ports[phys_net].add(
+                        network_with_known_not_active_ports[phys_net][port_id])
 
-        for port_id, phys_net in vsphere_not_connected_ports_maps.items():
-            if port_id not in neutron_ports:
-                dvs = self.network_map[phys_net]
-                dvs.release_port({'id': port_id})
+        for phys_net, dvs in self.network_map.items():
+            dvs.delete_networks_without_active_ports(
+                network_with_active_ports.get(phys_net, []))
 
     def daemon_loop(self):
         with polling.get_polling_manager() as pm:
@@ -300,7 +320,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                 LOG.info(_LI("Agent out of sync with plugin!"))
                 connected_ports = self._get_dvs_ports()
                 self.added_ports = connected_ports - self.known_ports
-                self._clean_up_vsphere_extra_ports(connected_ports)
+                self._clean_up_vsphere_extra_resources(connected_ports)
                 self.fullsync = False
                 polling_manager.force_polling()
             if self._agent_has_updates(polling_manager):
