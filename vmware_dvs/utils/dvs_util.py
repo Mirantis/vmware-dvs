@@ -373,7 +373,8 @@ class DVSController(object):
             self.connection.vim,
             'FetchDVPorts',
             self._dvs, criteria=criteria)
-        return port_info[0]
+        if port_info:
+            return port_info[0]
 
     def get_port_info_by_name(self, name, port_list=None):
         if port_list is None:
