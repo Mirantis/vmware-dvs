@@ -81,7 +81,9 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         return agent['configurations'].get('bridge_mappings', {})
 
     def create_network_precommit(self, context):
-        self.dvs_notifier.create_network_cast(context.current,
+        if CONF.DVS.precreate_networks:
+            LOG.info(_LI('Precreate network'))
+            self.dvs_notifier.create_network_cast(context.current,
                                               context.network_segments[0])
 
     def update_network_precommit(self, context):
