@@ -361,13 +361,16 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             self.added_ports = set()
         else:
             possible_ports = set()
+        upd_ports = self.updated_ports.copy()
         self.sg_agent.setup_port_filters(possible_ports,
-                                         self.updated_ports)
+                                         upd_ports)
+        self.updated_ports = self.updated_ports - upd_ports
         self.known_ports |= possible_ports
 
     def port_update(self, context, **kwargs):
         port = kwargs.get('port')
-        self.updated_ports.add(port['id'])
+        if port['id'] in self.known_ports:
+            self.updated_ports.add(port['id'])
         LOG.debug("port_update message processed for port %s", port['id'])
 
     def port_delete(self, context, **kwargs):
