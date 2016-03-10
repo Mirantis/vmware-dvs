@@ -274,8 +274,8 @@ def _create_rule(builder, rule_info, ip=None, name=None):
         rule.port_range = (rule_info.get('port_range_min'),
                            rule_info.get('port_range_max'))
         rule.backward_port_range = (
-            rule_info.get('source_port_range_min') or
-                          dvs_const.MIN_EPHEMERAL_PORT,
-            rule_info.get('source_port_range_max') or
-                          dvs_const.MAX_EPHEMERAL_PORT)
+            rule_info.get(
+                'source_port_range_min') or dvs_const.MIN_EPHEMERAL_PORT,
+            rule_info.get(
+                'source_port_range_max') or dvs_const.MAX_EPHEMERAL_PORT)
     return rule
