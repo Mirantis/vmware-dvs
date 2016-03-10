@@ -38,6 +38,16 @@ vmware_opts = [
                help=_("Vsphere password.")),
 ]
 
+dvs_opts = [
+    cfg.BoolOpt('clean_on_restart',
+               default=True,
+               help=_("Run DVS cleaning procedure on agent restart.")),
+    cfg.BoolOpt('precreate_networks',
+               default=True,
+               help=_("Precreate networks on DVS")),
+]
+
+cfg.CONF.register_opts(dvs_opts, "DVS")
 cfg.CONF.register_opts(agent_opts, "AGENT")
 cfg.CONF.register_opts(vmware_opts, "ML2_VMWARE")
 config.register_agent_state_opts_helper(cfg.CONF)

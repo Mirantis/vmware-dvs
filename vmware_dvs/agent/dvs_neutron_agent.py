@@ -167,7 +167,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             )
         else:
             self._update_admin_state_up(dvs, original, current)
-            # TODO SlOPS: update security groups on girect call
+            # TODO SlOPS: update security groups on direct call
 
     @dvs_util.wrap_retry
     def delete_port_postcommit(self, current, original, segment):
@@ -183,7 +183,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                 'no mapping from network to DVS.') % {'port_id': current['id']}
             )
         else:
-            # TODO SlOPS: update security groups on girect call
+            # TODO SlOPS: update security groups on direct call
             dvs.release_port(current)
 
     def _lookup_dvs_for_context(self, segment):
@@ -317,7 +317,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                 LOG.info(_LI("Agent out of sync with plugin!"))
                 connected_ports = self._get_dvs_ports()
                 self.added_ports = connected_ports - self.known_ports
-                self._clean_up_vsphere_extra_resources(connected_ports)
+                if cfg.CONF.DVS.clean_on_restart:
+                    self._clean_up_vsphere_extra_resources(connected_ports)
                 self.fullsync = False
                 polling_manager.force_polling()
             if self._agent_has_updates(polling_manager):
