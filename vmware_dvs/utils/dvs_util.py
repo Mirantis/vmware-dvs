@@ -151,9 +151,10 @@ class DVSController(object):
             self._dvs, port=[update_spec])
         self.connection.wait_for_task(update_task)
 
-    def book_port(self, network, port_name, segment):
+    def book_port(self, network, port_name, segment, net_name=None):
         try:
-            net_name = self._get_net_name(self.dvs_name, network)
+            if not net_name:
+                net_name = self._get_net_name(self.dvs_name, network)
             pg = self._get_or_create_pg(net_name, network, segment)
             while True:
                 try:

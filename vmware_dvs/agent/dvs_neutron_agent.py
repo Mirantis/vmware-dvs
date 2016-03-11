@@ -144,7 +144,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                 dvs = self._lookup_dvs_for_context(segment)
                 dvs_segment = segment
         if dvs:
-            port = dvs.book_port(network_current, current['id'], dvs_segment)
+            port = dvs.book_port(network_current, current['id'],
+                                 dvs_segment, current.get('portgroup_name'))
             self.booked_ports.add(current['id'])
             return port
         return None
