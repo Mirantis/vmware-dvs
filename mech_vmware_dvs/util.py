@@ -302,11 +302,14 @@ class DVSController(object):
         type_value = 'DistributedVirtualPortgroup'
         pg_list = self._get_object_by_type(net_list, type_value)
         for pg in pg_list:
-            name = self.connection.invoke_api(
-                vim_util, 'get_object_property',
-                self.connection.vim, pg, 'name')
-            if pg_name == name:
-                return pg
+            try:
+                name = self.connection.invoke_api(
+                    vim_util, 'get_object_property',
+                    self.connection.vim, pg, 'name')
+                if pg_name == name:
+                    return pg
+            except vmware_exceptions.VimException:
+                pass
         raise exceptions.PortGroupNotFound(pg_name=pg_name)
 
     def _get_config_by_ref(self, ref):
