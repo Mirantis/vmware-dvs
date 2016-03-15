@@ -184,11 +184,18 @@ class DVSController(object):
             raise exceptions.wrap_wmvare_vim_exception(e)
 
     def release_port(self, port):
-        port_info = self.get_port_info_by_name(port['id'])
+        vif_details = port.get('binding:vif_details')
+        key = None
+        if vif_details:
+            key = vif_details.get('dvs_port_key')
+            port_info = self._get_port_info_by_portkey(key)
+        if not key:
+            port_info = self.get_port_info_by_name(port['id'])
+            key = port_info.key
         builder = SpecBuilder(self.connection.vim.client.factory)
         update_spec = builder.port_config_spec(
             port_info.config.configVersion, name='')
-        update_spec.key = port_info.key
+        update_spec.key = key
         update_task = self.connection.invoke_api(
             self.connection.vim, 'ReconfigureDVPort_Task',
             self._dvs, port=[update_spec])
