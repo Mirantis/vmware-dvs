@@ -255,11 +255,14 @@ class DVSController(object):
     def _get_pg_by_name(self, pg_name):
         """Get the dpg ref by name"""
         for pg in self._get_all_port_groups():
-            name = self.connection.invoke_api(
-                vim_util, 'get_object_property',
-                self.connection.vim, pg, 'name')
-            if pg_name == name:
-                return pg
+            try:
+                name = self.connection.invoke_api(
+                    vim_util, 'get_object_property',
+                    self.connection.vim, pg, 'name')
+                if pg_name == name:
+                    return pg
+            except vmware_exceptions.VimException:
+                pass
         raise exceptions.PortGroupNotFound(pg_name=pg_name)
 
     def _get_all_port_groups(self):
