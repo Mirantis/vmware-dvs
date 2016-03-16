@@ -136,20 +136,19 @@ class DVSController(object):
 
     def switch_port_blocked_state(self, port):
         state = not port['admin_state_up']
+        port_info = self._get_port_info(port)
+        if port_info:
+            builder = SpecBuilder(self.connection.vim.client.factory)
+            port_settings = builder.port_setting()
+            port_settings.blocked = builder.blocked(state)
 
-        port_info = self.get_port_info_by_name(port['id'])
-
-        builder = SpecBuilder(self.connection.vim.client.factory)
-        port_settings = builder.port_setting()
-        port_settings.blocked = builder.blocked(state)
-
-        update_spec = builder.port_config_spec(
-            port_info.config.configVersion, port_settings)
-        update_spec.key = port_info.key
-        update_task = self.connection.invoke_api(
-            self.connection.vim, 'ReconfigureDVPort_Task',
-            self._dvs, port=[update_spec])
-        self.connection.wait_for_task(update_task)
+            update_spec = builder.port_config_spec(
+                port_info.config.configVersion, port_settings)
+            update_spec.key = port_info.key
+            update_task = self.connection.invoke_api(
+                self.connection.vim, 'ReconfigureDVPort_Task',
+                self._dvs, port=[update_spec])
+            self.connection.wait_for_task(update_task)
 
     def book_port(self, network, port_name, segment, net_name=None):
         try:
@@ -184,24 +183,18 @@ class DVSController(object):
             raise exceptions.wrap_wmvare_vim_exception(e)
 
     def release_port(self, port):
-        vif_details = port.get('binding:vif_details')
-        key = None
-        if vif_details:
-            key = vif_details.get('dvs_port_key')
-            port_info = self._get_port_info_by_portkey(key)
-        if not key:
-            port_info = self.get_port_info_by_name(port['id'])
-            key = port_info.key
-        builder = SpecBuilder(self.connection.vim.client.factory)
-        update_spec = builder.port_config_spec(
-            port_info.config.configVersion, name='')
-        update_spec.key = key
-        update_task = self.connection.invoke_api(
-            self.connection.vim, 'ReconfigureDVPort_Task',
-            self._dvs, port=[update_spec])
-        task_result = self.connection.wait_for_task(update_task)
-        if task_result.state == "success":
-            self._blocked_ports.discard(port_info.key)
+        port_info = self._get_port_info(port)
+        if port_info:
+            builder = SpecBuilder(self.connection.vim.client.factory)
+            update_spec = builder.port_config_spec(
+                port_info.config.configVersion, name='')
+            update_spec.key = port_info.key
+            update_task = self.connection.invoke_api(
+                self.connection.vim, 'ReconfigureDVPort_Task',
+                self._dvs, port=[update_spec])
+            task_result = self.connection.wait_for_task(update_task)
+            if task_result.state == "success":
+                self._blocked_ports.discard(port_info.key)
 
     def _build_pg_create_spec(self, name, vlan_tag, blocked):
         builder = SpecBuilder(self.connection.vim.client.factory)
@@ -315,32 +308,6 @@ class DVSController(object):
             vim_util, 'get_object_property',
             self.connection.vim, pg, 'portKeys')[0]
 
-    def _lookup_unbound_port_untested(self, port_group):
-        builder = SpecBuilder(self.connection.vim.client.factory)
-        criteria = builder.port_criteria(port_group_key=port_group.value,
-                                         connected=None)
-        all_port_keys = self.connection.invoke_api(
-            self.connection.vim,
-            'FetchDVPortKeys',
-            self._dvs, criteria=criteria)
-        criteria = builder.port_criteria(port_group_key=port_group.value,
-                                         connected=True)
-        print 'all keys', all_port_keys
-        connected_port_keys = self.connection.invoke_api(
-            self.connection.vim,
-            'FetchDVPortKeys',
-            self._dvs, criteria=criteria)
-        free_keys = [x for x in all_port_keys if x not in connected_port_keys]
-        print 'free keys', free_keys
-        print 'blocked ', self._blocked_ports
-        port_keys = [x for x in free_keys if x not in self._blocked_ports]
-        print 'port keys', port_keys
-        if len(port_keys) > 0:
-            print "Port key", port_keys[0]
-            self._blocked_ports.add(port_keys[0])
-            return self._get_port_info_by_portkey(port_keys[0])
-        raise exceptions.UnboundPortNotFound()
-
     def _lookup_unbound_port(self, port_group):
         builder = SpecBuilder(self.connection.vim.client.factory)
         criteria = builder.port_criteria(port_group_key=port_group.value)
@@ -367,14 +334,16 @@ class DVSController(object):
             port_group, spec=pg_spec)
         self.connection.wait_for_task(pg_update_task)
 
-    # def _get_port_info(self, port_key):
-    #     """pg - ManagedObjectReference of Port Group"""
-    #     builder = SpecBuilder(self.connection.vim.client.factory)
-    #     criteria = builder.port_criteria(port_key=port_key)
-    #     return self.connection.invoke_api(
-    #         self.connection.vim,
-    #         'FetchDVPorts',
-    #         self._dvs, criteria=criteria)[0]
+    def _get_port_info(self, port):
+        vif_details = port.get('binding:vif_details')
+        port_info = None
+        if vif_details:
+            key = vif_details.get('dvs_port_key')
+            if key:
+                port_info = self._get_port_info_by_portkey(key)
+        if not port_info:
+            port_info = self.get_port_info_by_name(port['id'])
+        return port_info
 
     def _get_port_info_by_portkey(self, port_key):
         """pg - ManagedObjectReference of Port Group"""
