@@ -192,13 +192,9 @@ def update_port_rules(dvs, ports):
         port_config_list = []
         for port in ports:
             try:
-                if port['binding:vif_details'].get('dvs_port_key') is not None:
-                    port_info = dvs._get_port_info_by_portkey(
-                        port['binding:vif_details']['dvs_port_key'])
-                else:
-                    port_info = dvs.get_port_info_by_name(port['id'])
+                port_info = dvs.get_port_info(port)
             except exceptions.PortNotFound:
-                LOG.warn(_LW("Port %s was not found. Security rules can not be"
+                LOG.warn(_LW("Port %s not found. Security rules can not be"
                              " applied."), port['id'])
                 continue
 
