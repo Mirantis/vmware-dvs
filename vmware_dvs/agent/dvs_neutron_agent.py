@@ -39,7 +39,7 @@ from vmware_dvs.api import dvs_agent_rpc_api
 from vmware_dvs.agent.firewalls import dvs_securitygroup_rpc as dvs_rpc
 
 LOG = logging.getLogger(__name__)
-cfg.CONF.import_group('AGENT', 'vmware_dvs.agent.common.vmware_conf')
+cfg.CONF.import_group('AGENT', 'vmware_dvs.common.config')
 
 
 class DVSPluginApi(agent_rpc.PluginApi):
@@ -52,10 +52,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
     target = oslo_messaging.Target(version='1.2')
 
     def __init__(self, vsphere_hostname, vsphere_login, vsphere_password,
-                 bridge_mappings, polling_interval, veth_mtu=None,
-                 minimize_polling=False, quitting_rpc_timeout=None):
+                 bridge_mappings, polling_interval, quitting_rpc_timeout=None):
         super(DVSAgent, self).__init__()
-        self.veth_mtu = veth_mtu
 
         self.agent_state = {
             'binary': 'neutron-dvs-agent',
@@ -76,7 +74,6 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             heartbeat.start(interval=report_interval)
 
         self.polling_interval = polling_interval
-        self.minimize_polling = minimize_polling
         # Security group agent support
         self.sg_agent = dvs_rpc.DVSSecurityGroupRpc(self.context,
                 self.sg_plugin_rpc, defer_refresh_firewall=True)
@@ -147,7 +144,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                 dvs = self._lookup_dvs_for_context(segment)
                 dvs_segment = segment
         if dvs:
-            port = dvs.book_port(network_current, current['id'], dvs_segment)
+            port = dvs.book_port(network_current, current['id'],
+                                 dvs_segment, current.get('portgroup_name'))
             self.booked_ports.add(current['id'])
             return port
         return None
@@ -170,7 +168,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             )
         else:
             self._update_admin_state_up(dvs, original, current)
-            # TODO SlOPS: update security groups on girect call
+            # TODO SlOPS: update security groups on direct call
 
     @dvs_util.wrap_retry
     def delete_port_postcommit(self, current, original, segment):
@@ -186,7 +184,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                 'no mapping from network to DVS.') % {'port_id': current['id']}
             )
         else:
-            # TODO SlOPS: update security groups on girect call
+            # TODO SlOPS: update security groups on direct call
             dvs.release_port(current)
 
     def _lookup_dvs_for_context(self, segment):
@@ -254,34 +252,54 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         self.run_daemon_loop = False
 
     @dvs_util.wrap_retry
-    def _clean_up_vsphere_extra_ports(self, connected_ports):
-        LOG.debug("Cleanup vsphere extra ports...")
+    def _clean_up_vsphere_extra_resources(self, connected_ports):
+        LOG.debug("Cleanup vsphere extra ports and networks...")
         vsphere_not_connected_ports_maps = {}
+        network_with_active_ports = {}
+        network_with_known_not_active_ports = {}
         for phys_net, dvs in self.network_map.items():
-            all_dvs_ports = set([p.config.name for p in dvs.get_ports(False)])
-            not_connected_dvs_ports = all_dvs_ports - connected_ports
+            phys_net_active_network = \
+                network_with_active_ports.setdefault(phys_net, set())
+            phys_net_not_active_network = \
+                network_with_known_not_active_ports.setdefault(phys_net, {})
+            not_connected_dvs_ports = set()
+            for port in dvs.get_ports(False):
+                port_name = getattr(port.config, 'name', None)
+                if not port_name:
+                    continue
+                if port_name not in connected_ports:
+                    not_connected_dvs_ports.add(port_name)
+                    phys_net_not_active_network[port_name] = port.portgroupKey
+
+                phys_net_active_network.add(port.portgroupKey)
+
             vsphere_not_connected_ports_maps.update(
                 {port_id: phys_net for port_id in not_connected_dvs_ports})
 
-        if not vsphere_not_connected_ports_maps:
-            return
+        if vsphere_not_connected_ports_maps:
+            devices_details_list = (
+                self.plugin_rpc.get_devices_details_list_and_failed_devices(
+                    self.context,
+                    vsphere_not_connected_ports_maps.keys(),
+                    self.agent_id,
+                    cfg.CONF.host))
+            neutron_ports = set([
+                p['port_id'] for p in itertools.chain(
+                    devices_details_list['devices'],
+                    devices_details_list['failed_devices']) if p.get('port_id')
+            ])
 
-        devices_details_list = (
-            self.plugin_rpc.get_devices_details_list_and_failed_devices(
-                self.context,
-                vsphere_not_connected_ports_maps.keys(),
-                self.agent_id,
-                cfg.CONF.host))
-        neutron_ports = set([
-            p['port_id'] for p in itertools.chain(
-                devices_details_list['devices'],
-                devices_details_list['failed_devices']) if p.get('port_id')
-        ])
+            for port_id, phys_net in vsphere_not_connected_ports_maps.items():
+                if port_id not in neutron_ports:
+                    dvs = self.network_map[phys_net]
+                    dvs.release_port({'id': port_id})
+                else:
+                    network_with_active_ports[phys_net].add(
+                        network_with_known_not_active_ports[phys_net][port_id])
 
-        for port_id, phys_net in vsphere_not_connected_ports_maps.items():
-            if port_id not in neutron_ports:
-                dvs = self.network_map[phys_net]
-                dvs.release_port({'id': port_id})
+        for phys_net, dvs in self.network_map.items():
+            dvs.delete_networks_without_active_ports(
+                network_with_active_ports.get(phys_net, []))
 
     def daemon_loop(self):
         with polling.get_polling_manager() as pm:
@@ -300,7 +318,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                 LOG.info(_LI("Agent out of sync with plugin!"))
                 connected_ports = self._get_dvs_ports()
                 self.added_ports = connected_ports - self.known_ports
-                self._clean_up_vsphere_extra_ports(connected_ports)
+                if cfg.CONF.DVS.clean_on_restart:
+                    self._clean_up_vsphere_extra_resources(connected_ports)
                 self.fullsync = False
                 polling_manager.force_polling()
             if self._agent_has_updates(polling_manager):
@@ -344,13 +363,16 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             self.added_ports = set()
         else:
             possible_ports = set()
+        upd_ports = self.updated_ports.copy()
         self.sg_agent.setup_port_filters(possible_ports,
-                                         self.updated_ports)
+                                         upd_ports)
+        self.updated_ports = self.updated_ports - upd_ports
         self.known_ports |= possible_ports
 
     def port_update(self, context, **kwargs):
         port = kwargs.get('port')
-        self.updated_ports.add(port['id'])
+        if port['id'] in self.known_ports:
+            self.updated_ports.add(port['id'])
         LOG.debug("port_update message processed for port %s", port['id'])
 
     def port_delete(self, context, **kwargs):
@@ -388,8 +410,6 @@ def create_agent_config_map(config):
         vsphere_password=config.ML2_VMWARE.vsphere_password,
         bridge_mappings=bridge_mappings,
         polling_interval=config.AGENT.polling_interval,
-        minimize_polling=config.AGENT.minimize_polling,
-        veth_mtu=config.AGENT.veth_mtu,
         quitting_rpc_timeout=config.AGENT.quitting_rpc_timeout,
     )
     return kwargs

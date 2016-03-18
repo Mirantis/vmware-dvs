@@ -171,27 +171,90 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
         self.assertEqual(expect, self.controller._get_net_name(self.dvs_name,
                                                                fake_network))
 
-    @mock.patch(
-        'vmware_dvs.utils.dvs_util.DVSController.get_port_info_by_name')
+    @mock.patch('vmware_dvs.utils.dvs_util.DVSController.get_port_info')
     def test_release_port(self, get_port_info_mock):
-        dvs_port = mock.Mock()
-        dvs_port.config.configVersion = 'config_version'
-        dvs_port.key = fake_port['dvs_port_key']
+        dvs_port = mock.Mock(key=fake_port['dvs_port_key'])
         get_port_info_mock.return_value = dvs_port
-
-        self.connection.wait_for_task.return_value = mock.Mock(state="success")
-        self.controller._blocked_ports = set(['1', '3', '10'])
-        self.controller.release_port(fake_port)
-        self.assertEqual(self.controller._blocked_ports, set(['1', '3', '10']))
 
         self.controller._blocked_ports.add(dvs_port.key)
         self.connection.wait_for_task.return_value = mock.Mock(state="error")
         self.controller.release_port(fake_port)
         self.assertIn(dvs_port.key, self.controller._blocked_ports)
 
+        get_port_info_mock.assert_called_once_with(fake_port)
+        self.assertEqual(1, self.connection.invoke_api.call_count)
+        self.assertEqual(
+            mock.call(self.vim, 'ReconfigureDVPort_Task', self.dvs,
+                      port=mock.ANY),
+            self.connection.invoke_api.call_args)
+        args, kwargs = self.connection.invoke_api.call_args
+        update_spec = kwargs['port'][0]
+        self.assertEqual(dvs_port.key, update_spec.key)
+        self.assertEqual('edit', update_spec.operation)
+
         self.connection.wait_for_task.return_value = mock.Mock(state="success")
         self.controller.release_port(fake_port)
         self.assertNotIn(dvs_port.key, self.controller._blocked_ports)
+
+    @mock.patch('vmware_dvs.utils.dvs_util.DVSController.get_port_info',
+                side_effect=exceptions.PortNotFound())
+    def test_release_port_not_found(self, get_port_info_mock):
+        self.controller.release_port(fake_port)
+        get_port_info_mock.assert_called_once_with(fake_port)
+        self.connection.invoke_api.assert_not_called()
+
+    def test_get_port_info(self):
+        port_with_dvs_key = {'binding:vif_details': {'dvs_port_key': 0},
+                             'id': 'port_with_dvs_key'}
+        port = {'id': 'fake_port_id'}
+
+        with mock.patch.object(self.controller,
+            '_get_port_info_by_portkey') as get_port_info_by_key_mock, \
+                mock.patch.object(self.controller,
+                    '_get_port_info_by_name') as get_port_info_by_name_mock:
+            self.controller.get_port_info(port_with_dvs_key)
+            get_port_info_by_key_mock.assert_called_once_with(0)
+            get_port_info_by_name_mock.assert_not_called()
+
+            get_port_info_by_key_mock.reset_mock()
+            get_port_info_by_name_mock.reset_mock()
+            self.controller.get_port_info(port)
+            get_port_info_by_key_mock.assert_not_called()
+            get_port_info_by_name_mock.assert_called_once_with(port['id'])
+
+    def test_get_port_info_for_port_with_dvs_key(self):
+        port = {'binding:vif_details': {'dvs_port_key': 0},
+                'id': 'fake_port_id'}
+
+        self.connection.invoke_api = mock.Mock(return_value=[])
+        self.assertRaises(exceptions.PortNotFound,
+                          self.controller.get_port_info,
+                          port)
+
+        port_info = mock.Mock()
+        self.connection.invoke_api = mock.Mock(return_value=[port_info])
+        result = self.controller.get_port_info(port)
+        self.assertEqual(result, port_info)
+
+    def test_get_port_info_without_port_list(self):
+        port = {'id': 'fake_port_id'}
+
+        dummy_port_config = mock.Mock()
+        dummy_port_config.name = 'dummy_port_id'
+        dummy_port = mock.Mock(key='dummmy_port_key', config=dummy_port_config)
+
+        with mock.patch.object(self.controller, 'get_ports') as get_ports_mock:
+            get_ports_mock.return_value = [dummy_port]
+            self.assertRaises(exceptions.PortNotFound,
+                              self.controller.get_port_info,
+                              port)
+
+            port_config = mock.Mock()
+            port_config.name = 'fake_port_id'
+            fake_port_info = mock.Mock(key='fake_port_key', config=port_config)
+            get_ports_mock.return_value = [fake_port_info, dummy_port]
+            result = self.controller.get_port_info(port)
+            self.assertEqual(result, fake_port_info)
 
     def _get_connection_mock(self, dvs_name):
         return mock.Mock(vim=self.vim)
@@ -501,14 +564,15 @@ class DVSControllerNetworkDeletionTestCase(DVSControllerBaseTestCase):
 class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
 
     def test_switch_port_blocked_state(self):
-        neutron_port = fake_port.copy()
-        neutron_port['admin_state_up'] = False
+        port = fake_port.copy()
+        port['admin_state_up'] = False
         dvs_port = mock.Mock()
         dvs_port.config.setting.blocked.value = True
 
-        with mock.patch.object(self.controller, 'get_port_info_by_name',
-                               return_value=dvs_port):
-            self.controller.switch_port_blocked_state(neutron_port)
+        with mock.patch.object(self.controller, 'get_port_info',
+                               return_value=dvs_port) as get_port_info_mock:
+            self.controller.switch_port_blocked_state(port)
+            get_port_info_mock.called_once_with(port)
 
         self.assertEqual(1, self.connection.invoke_api.call_count)
         self.assertEqual(
@@ -520,8 +584,21 @@ class DVSControllerPortUpdateTestCase(DVSControllerBaseTestCase):
         update_spec = kwargs['port'][0]
         self.assertEqual(dvs_port.key, update_spec.key)
         self.assertEqual('edit', update_spec.operation)
-
+        self.assertTrue(update_spec.settings.blocked)
         self.assertEqual(1, self.connection.wait_for_task.call_count)
+
+    def test_switch_port_blocked_state_failed(self):
+        port = {'id': 'fake_port_id'}
+        with mock.patch.object(self.controller,
+                               'get_port_info') as get_port_info_mock:
+            get_port_info_mock.side_effect = exceptions.PortNotFound(id='')
+            self.controller.switch_port_blocked_state(port)
+            self.connection.invoke_api.assert_not_called()
+
+            get_port_info_mock.side_effect = vmware_exceptions.VimException()
+            self.assertRaises(exceptions.VMWareDVSException,
+                              self.controller.switch_port_blocked_state,
+                              port)
 
     def _get_connection_mock(self, dvs_name):
         return mock.Mock(vim=self.vim)
@@ -543,7 +620,7 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
     #     port_info = {'config': {'configVersion': '_config_version_'},
     #                  'key': '_dvs_port_key_'}
     #     self.use_patch('vmware_dvs.util.DVSController'
-    #                    '.get_port_info_by_name', return_value=port_info)
+    #                    '._get_port_info_by_name', return_value=port_info)
     #     self.use_patch('vmware_dvs.util.DVSController.get_ports',
     #                    return_value=ports)
     #     self.controller.update_port_rules(ports)
@@ -649,18 +726,18 @@ class UtilTestCase(base.BaseTestCase):
         self.addCleanup(patch.stop)
 
     def test_empty_map_if_config_network_maps_is_empty(self):
-        CONF.set_override('network_maps', [], 'ml2_vmware')
+        CONF.set_override('network_maps', [], 'ML2_VMWARE')
         self.assertDictEqual(
             {},
-            dvs_util.create_network_map_from_config(CONF.ml2_vmware))
+            dvs_util.create_network_map_from_config(CONF.ML2_VMWARE))
 
     @mock.patch('vmware_dvs.utils.dvs_util.DVSController._get_dvs',
                 return_value=(mock.Mock(), 'datacenter1'))
     def test_creates_network_map_from_conf(self, *args):
         network_map = ['physnet1:dvSwitch', 'physnet2:dvSwitch1']
         CONF.set_override(
-            'network_maps', network_map, 'ml2_vmware')
-        actual = dvs_util.create_network_map_from_config(CONF.ml2_vmware)
+            'network_maps', network_map, 'ML2_VMWARE')
+        actual = dvs_util.create_network_map_from_config(CONF.ML2_VMWARE)
 
         self.assertEqual(len(network_map), len(actual))
 
@@ -668,7 +745,7 @@ class UtilTestCase(base.BaseTestCase):
             controller = actual[net]
             self.assertEqual('session', controller.connection)
 
-        vmware_conf = config.CONF.ml2_vmware
+        vmware_conf = config.CONF.ML2_VMWARE
         self.session_mock.assert_called_once_with(
             vmware_conf.vsphere_hostname,
             vmware_conf.vsphere_login,
