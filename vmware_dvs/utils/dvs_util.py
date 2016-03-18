@@ -169,9 +169,11 @@ class DVSController(object):
                     except (vmware_exceptions.VMwareDriverException,
                             exceptions.VMWareDVSException) as e:
                         if dvs_const.CONCURRENT_MODIFICATION_TEXT in e.message:
-                            LOG.info(_LI('Concurent modification on '
+                            LOG.info(_LI('Concurrent modification on '
                                          'increase port group.'))
                             continue
+                        raise e
+
             builder = SpecBuilder(self.connection.vim.client.factory)
             port_settings = builder.port_setting()
             port_settings.blocked = builder.blocked(False)
