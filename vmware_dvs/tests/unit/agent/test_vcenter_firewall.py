@@ -78,13 +78,8 @@ class TestDVSFirewallDriver(base.BaseTestCase):
         port = self._fake_port('12345', [FAKE_SG_RULE_IPV4_PORT,
                                          FAKE_SG_RULE_IPV6])
         self.firewall.dvs_ports[port['id']] = port
-        with mock.patch.object(self.firewall, '_get_dvs_for_port_id',
-                               return_value=self.dvs), \
-                mock.patch.object(sg_utils,
-                                  'update_port_rules') as update_port:
-            self.firewall.remove_port_filter([port['id']])
-            update_port.assert_called_once_with(self.dvs, [port])
-            self.assertNotIn(port['id'], self.firewall.dvs_port_map.values())
+        self.firewall.remove_port_filter([port['id']])
+        self.assertNotIn(port['id'], self.firewall.dvs_port_map.values())
 
     def test__apply_sg_rules_for_port(self):
         with mock.patch.object(sg_utils, 'update_port_rules') as update_port:
@@ -104,13 +99,3 @@ class TestDVSFirewallDriver(base.BaseTestCase):
             self.assertEqual(new_dvs, dvs)
             self.assertDictSupersetOf({new_dvs: set([port['id']])},
                                       self.firewall.dvs_port_map)
-
-    def test__remove_sg_from_dvs_port(self):
-        port = self._fake_port('4567', [FAKE_SG_RULE_IPV6], id=uuid.uuid4())
-        with mock.patch.object(self.firewall, '_get_dvs_for_port_id',
-                               return_value=self.dvs), \
-                mock.patch.object(sg_utils,
-                                  'update_port_rules') as update_port:
-            self.firewall._remove_sg_from_dvs_port(port)
-            update_port.assert_called_once_with(self.dvs, [port])
-            self.assertEqual([], port['security_group_rules'])
