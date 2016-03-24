@@ -176,8 +176,10 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
         dvs_port = mock.Mock(key=fake_port['dvs_port_key'])
         get_port_info_mock.return_value = dvs_port
 
+        self.controller._blocked_ports.add(dvs_port.key)
         self.connection.wait_for_task.return_value = mock.Mock(state="error")
         self.controller.release_port(fake_port)
+        self.assertIn(dvs_port.key, self.controller._blocked_ports)
 
         get_port_info_mock.assert_called_once_with(fake_port)
         self.assertEqual(1, self.connection.invoke_api.call_count)
@@ -190,7 +192,9 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
         self.assertEqual(dvs_port.key, update_spec.key)
         self.assertEqual('edit', update_spec.operation)
 
+        self.connection.wait_for_task.return_value = mock.Mock(state="success")
         self.controller.release_port(fake_port)
+        self.assertNotIn(dvs_port.key, self.controller._blocked_ports)
 
     @mock.patch('vmware_dvs.utils.dvs_util.DVSController.get_port_info',
                 side_effect=exceptions.PortNotFound())
