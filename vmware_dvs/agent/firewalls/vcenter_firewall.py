@@ -59,7 +59,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         for p_id in ports:
             port = self.dvs_ports.get(p_id)
             if port is not None:
-                key = port.get('binding:vif_details').get('dvs_port_key')
+                key = port.get('binding:vif_details', {}).get('dvs_port_key')
                 dvs = self._get_dvs_for_port_id(p_id, key)
                 dvs.release_port(port)
                 self.dvs_ports.pop(port['device'], None)

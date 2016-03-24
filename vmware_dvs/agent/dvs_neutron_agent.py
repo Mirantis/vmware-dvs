@@ -169,7 +169,6 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         else:
             self._update_admin_state_up(dvs, original, current)
 
-    @dvs_util.wrap_retry
     def delete_port_postcommit(self, current, original, segment):
         try:
             dvs = self._lookup_dvs_for_context(segment)
@@ -183,7 +182,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                 'no mapping from network to DVS.') % {'port_id': current['id']}
             )
         else:
-            key = current.get('binding:vif_details').get('dvs_port_key')
+            key = current.get('binding:vif_details', {}).get('dvs_port_key')
             if key:
                 dvs.remove_block(key)
 
