@@ -172,20 +172,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
 
     @dvs_util.wrap_retry
     def delete_port_postcommit(self, current, original, segment):
-        try:
-            dvs = self._lookup_dvs_for_context(segment)
-        except exceptions.NotSupportedNetworkType as e:
-            LOG.info(_LI('Port %(id)s not deleted. Reason: %(reason)s') % {
-                'id': current['id'],
-                'reason': e.message})
-        except exceptions.NoDVSForPhysicalNetwork:
-            raise exceptions.InvalidSystemState(details=_(
-                'Port %(port_id)s belong to VMWare VM, but there is '
-                'no mapping from network to DVS.') % {'port_id': current['id']}
-            )
-        else:
-            # TODO SlOPS: update security groups on direct call
-            dvs.release_port(current)
+        pass
 
     def _lookup_dvs_for_context(self, segment):
         if segment['network_type'] == constants.TYPE_VLAN:
