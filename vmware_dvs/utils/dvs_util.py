@@ -38,8 +38,6 @@ class DVSController(object):
         try:
             self.dvs_name = dvs_name
             self._dvs, self._datacenter = self._get_dvs(dvs_name, connection)
-            # (SlOPS) To do release blocked port after use
-            self._blocked_ports = set()
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
@@ -201,9 +199,7 @@ class DVSController(object):
             update_task = self.connection.invoke_api(
                 self.connection.vim, 'ReconfigureDVPort_Task',
                 self._dvs, port=[update_spec])
-            task_result = self.connection.wait_for_task(update_task)
-            if task_result.state == "success":
-                self._blocked_ports.discard(port_info.key)
+            self.connection.wait_for_task(update_task)
         except exceptions.PortNotFound:
             LOG.debug("Port %s was not found. Nothing to delete." % port['id'])
         except vmware_exceptions.VimException as e:
@@ -330,9 +326,7 @@ class DVSController(object):
             'FetchDVPorts',
             self._dvs, criteria=criteria)
         for port in ports:
-            if (not getattr(port.config, 'name', None) and
-                    port.key not in self._blocked_ports):
-                self._blocked_ports.add(port.key)
+            if not getattr(port.config, 'name', None):
                 return port
         raise exceptions.UnboundPortNotFound()
 
