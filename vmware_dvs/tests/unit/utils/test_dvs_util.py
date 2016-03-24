@@ -194,7 +194,6 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
 
         self.connection.wait_for_task.return_value = mock.Mock(state="success")
         self.controller.release_port(fake_port)
-        self.assertNotIn(dvs_port.key, self.controller._blocked_ports)
 
     @mock.patch('vmware_dvs.utils.dvs_util.DVSController.get_port_info',
                 side_effect=exceptions.PortNotFound())
