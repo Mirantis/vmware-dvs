@@ -183,7 +183,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             )
         else:
             if sg_rpc.is_firewall_enabled():
-                key = current.get('binding:vif_details').get('dvs_port_key')
+                key = current.get('binding:vif_details',
+                    {}).get('dvs_port_key')
                 if key:
                     dvs.remove_block(key)
             else:
