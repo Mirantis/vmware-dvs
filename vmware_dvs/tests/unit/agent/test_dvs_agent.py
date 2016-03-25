@@ -122,33 +122,6 @@ class DVSAgentTestCase(base.BaseTestCase):
         self.assertIn(current_port_id, self.agent.added_ports)
         self.assertNotIn(current_port_id, self.agent.booked_ports)
 
-    @mock.patch('vmware_dvs.agent.dvs_neutron_agent.DVSAgent.'
-                '_lookup_dvs_for_context')
-    def test_delete_port_postcommit_uncontrolled_dvs(self, is_valid_dvs):
-        is_valid_dvs.side_effect = exceptions.NoDVSForPhysicalNetwork(
-            physical_network='_dummy_physical_net_')
-
-        self.assertRaises(exceptions.InvalidSystemState,
-                          self.agent.delete_port_postcommit,
-                          self.port_context.current,
-                          self.port_context.original,
-                          self.port_context.network.network_segments[0])
-        self.assertTrue(is_valid_dvs.called)
-        self.assertFalse(self.dvs.release_port.called)
-
-    @mock.patch('vmware_dvs.agent.dvs_neutron_agent.DVSAgent.'
-                '_lookup_dvs_for_context')
-    def test_delete_port_postcommit(self, is_valid_dvs):
-        is_valid_dvs.return_value = self.dvs
-
-        self.agent.delete_port_postcommit(
-            self.port_context.current,
-            self.port_context.original,
-            self.port_context.network.network_segments[0]
-        )
-        self.assertTrue(is_valid_dvs.called)
-        self.assertTrue(self.dvs.release_port.called)
-
     def _create_ports(self, security_groups=None):
         ports = [
             self._create_port_dict(),

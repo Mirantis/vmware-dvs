@@ -53,11 +53,15 @@ class DVSFirewallDriver(firewall.FirewallDriver):
             self.dvs_ports[port['device']] = port
         self._apply_sg_rules_for_port(ports)
 
+    @dvs_util.wrap_retry
     def remove_port_filter(self, ports):
         LOG.info(_LI("Clean up security group rules on deleted ports"))
         for p_id in ports:
             port = self.dvs_ports.get(p_id)
             if port is not None:
+                key = port.get('binding:vif_details', {}).get('dvs_port_key')
+                dvs = self._get_dvs_for_port_id(p_id, key)
+                dvs.release_port(port)
                 self.dvs_ports.pop(port['device'], None)
                 for port_set in self.dvs_port_map.values():
                     port_set.discard(port['id'])

@@ -195,16 +195,20 @@ class DVSController(object):
             update_spec = builder.port_config_spec(
                 port_info.config.configVersion, name='')
             update_spec.key = port_info.key
+            setting = builder.port_setting()
+            setting.filterPolicy = builder.filter_policy([])
+            update_spec.setting = setting
             update_task = self.connection.invoke_api(
                 self.connection.vim, 'ReconfigureDVPort_Task',
                 self._dvs, port=[update_spec])
-            task_result = self.connection.wait_for_task(update_task)
-            if task_result.state == "success":
-                self._blocked_ports.discard(port_info.key)
+            self.connection.wait_for_task(update_task)
         except exceptions.PortNotFound:
             LOG.debug("Port %s was not found. Nothing to delete." % port['id'])
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
+
+    def remove_block(self, port_key):
+        self._blocked_ports.discard(port_key)
 
     def _build_pg_create_spec(self, name, vlan_tag, blocked):
         builder = SpecBuilder(self.connection.vim.client.factory)

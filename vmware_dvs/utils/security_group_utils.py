@@ -17,7 +17,7 @@ import abc
 
 import six
 from oslo_log import log
-from neutron.i18n import _LI, _LW
+from neutron.i18n import _LI
 from oslo_vmware import exceptions as vmware_exceptions
 
 from vmware_dvs.common import constants as dvs_const, exceptions
@@ -191,18 +191,11 @@ def update_port_rules(dvs, ports):
         builder = dvs_util.SpecBuilder(dvs.connection.vim.client.factory)
         port_config_list = []
         for port in ports:
-            try:
-                port_info = dvs.get_port_info(port)
-            except exceptions.PortNotFound:
-                LOG.warn(_LW("Port %s not found. Security rules can not be"
-                             " applied."), port['id'])
-                continue
-
-            port_config = port_configuration(builder,
-                                             str(port_info['key']),
-                                             port['security_group_rules'])
-            port_config.configVersion = port_info['config']['configVersion']
-            port_config_list.append(port_config)
+            key = port.get('binding:vif_details', {}).get('dvs_port_key')
+            if key:
+                port_config = port_configuration(builder, key,
+                    port['security_group_rules'])
+                port_config_list.append(port_config)
         if port_config_list:
             task = dvs.connection.invoke_api(
                 dvs.connection.vim,

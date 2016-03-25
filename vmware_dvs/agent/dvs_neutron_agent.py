@@ -168,9 +168,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             )
         else:
             self._update_admin_state_up(dvs, original, current)
-            # TODO SlOPS: update security groups on direct call
 
-    @dvs_util.wrap_retry
     def delete_port_postcommit(self, current, original, segment):
         try:
             dvs = self._lookup_dvs_for_context(segment)
@@ -184,8 +182,9 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                 'no mapping from network to DVS.') % {'port_id': current['id']}
             )
         else:
-            # TODO SlOPS: update security groups on direct call
-            dvs.release_port(current)
+            key = current.get('binding:vif_details', {}).get('dvs_port_key')
+            if key:
+                dvs.remove_block(key)
 
     def _lookup_dvs_for_context(self, segment):
         if segment['network_type'] == constants.TYPE_VLAN:
