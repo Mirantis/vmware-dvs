@@ -182,9 +182,12 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                 'no mapping from network to DVS.') % {'port_id': current['id']}
             )
         else:
-            key = current.get('binding:vif_details', {}).get('dvs_port_key')
-            if key:
-                dvs.remove_block(key)
+            if sg_rpc.is_firewall_enabled():
+                key = current.get('binding:vif_details').get('dvs_port_key')
+                if key:
+                    dvs.remove_block(key)
+            else:
+                dvs.release_port(current)
 
     def _lookup_dvs_for_context(self, segment):
         if segment['network_type'] == constants.TYPE_VLAN:
