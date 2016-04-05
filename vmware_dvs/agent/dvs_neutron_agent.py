@@ -80,8 +80,6 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         self.run_daemon_loop = True
         self.iter_num = 0
         self.fullsync = True
-        # The initialization is complete; we can start receiving messages
-        self.connection.consume_in_threads()
 
         self.quitting_rpc_timeout = quitting_rpc_timeout
         self.network_map = dvs_util.create_network_map_from_config(
@@ -91,6 +89,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         self.known_ports = set()
         self.added_ports = set()
         self.booked_ports = set()
+        # The initialization is complete; we can start receiving messages
+        self.connection.consume_in_threads()
 
     @dvs_util.wrap_retry
     def create_network_precommit(self, current, segment):
