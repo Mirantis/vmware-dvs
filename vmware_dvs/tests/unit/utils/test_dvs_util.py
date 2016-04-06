@@ -190,11 +190,10 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
         args, kwargs = self.connection.invoke_api.call_args
         update_spec = kwargs['port'][0]
         self.assertEqual(dvs_port.key, update_spec.key)
-        self.assertEqual('edit', update_spec.operation)
+        self.assertEqual('remove', update_spec.operation)
 
         self.connection.wait_for_task.return_value = mock.Mock(state="success")
         self.controller.release_port(fake_port)
-        self.assertNotIn(dvs_port.key, self.controller._blocked_ports)
 
     @mock.patch('vmware_dvs.utils.dvs_util.DVSController.get_port_info',
                 side_effect=exceptions.PortNotFound())

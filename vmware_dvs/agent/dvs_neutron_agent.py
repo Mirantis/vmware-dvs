@@ -80,8 +80,6 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         self.run_daemon_loop = True
         self.iter_num = 0
         self.fullsync = True
-        # The initialization is complete; we can start receiving messages
-        self.connection.consume_in_threads()
 
         self.quitting_rpc_timeout = quitting_rpc_timeout
         self.network_map = dvs_util.create_network_map_from_config(
@@ -91,6 +89,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         self.known_ports = set()
         self.added_ports = set()
         self.booked_ports = set()
+        # The initialization is complete; we can start receiving messages
+        self.connection.consume_in_threads()
 
     @dvs_util.wrap_retry
     def create_network_precommit(self, current, segment):
@@ -168,9 +168,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             )
         else:
             self._update_admin_state_up(dvs, original, current)
-            # TODO SlOPS: update security groups on direct call
 
-    @dvs_util.wrap_retry
     def delete_port_postcommit(self, current, original, segment):
         try:
             dvs = self._lookup_dvs_for_context(segment)
@@ -184,8 +182,13 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                 'no mapping from network to DVS.') % {'port_id': current['id']}
             )
         else:
-            # TODO SlOPS: update security groups on direct call
-            dvs.release_port(current)
+            if sg_rpc.is_firewall_enabled():
+                key = current.get('binding:vif_details',
+                    {}).get('dvs_port_key')
+                if key:
+                    dvs.remove_block(key)
+            else:
+                dvs.release_port(current)
 
     def _lookup_dvs_for_context(self, segment):
         if segment['network_type'] == constants.TYPE_VLAN:
@@ -219,7 +222,6 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                                                        True)
             if agent_status == n_const.AGENT_REVIVED:
                 LOG.info(_LI('Agent has just revived. Do a full sync.'))
-                self.fullsync = True
             self.agent_state.pop('start_flag', None)
         except Exception:
             LOG.exception(_LE("Failed reporting state!"))
@@ -228,7 +230,6 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         self.agent_id = 'dvs-agent-%s' % cfg.CONF.host
         self.topic = topics.AGENT
         self.plugin_rpc = DVSPluginApi(topics.PLUGIN)
-        # self.agentside_rpc = ServerAPI()
         self.sg_plugin_rpc = sg_rpc.SecurityGroupServerRpcApi(topics.PLUGIN)
         self.state_rpc = agent_rpc.PluginReportStateAPI(topics.REPORTS)
 
@@ -262,19 +263,18 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                 network_with_active_ports.setdefault(phys_net, set())
             phys_net_not_active_network = \
                 network_with_known_not_active_ports.setdefault(phys_net, {})
-            not_connected_dvs_ports = set()
             for port in dvs.get_ports(False):
                 port_name = getattr(port.config, 'name', None)
                 if not port_name:
                     continue
                 if port_name not in connected_ports:
-                    not_connected_dvs_ports.add(port_name)
+                    vsphere_not_connected_ports_maps[port_name] = {
+                        'phys_net': phys_net,
+                        'port_key': port.key
+                    }
                     phys_net_not_active_network[port_name] = port.portgroupKey
-
-                phys_net_active_network.add(port.portgroupKey)
-
-            vsphere_not_connected_ports_maps.update(
-                {port_id: phys_net for port_id in not_connected_dvs_ports})
+                else:
+                    phys_net_active_network.add(port.portgroupKey)
 
         if vsphere_not_connected_ports_maps:
             devices_details_list = (
@@ -289,10 +289,16 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                     devices_details_list['failed_devices']) if p.get('port_id')
             ])
 
-            for port_id, phys_net in vsphere_not_connected_ports_maps.items():
+            for port_id, port_data in vsphere_not_connected_ports_maps.items():
+                phys_net = port_data['phys_net']
                 if port_id not in neutron_ports:
                     dvs = self.network_map[phys_net]
-                    dvs.release_port({'id': port_id})
+                    dvs.release_port({
+                        'id': port_id,
+                        'binding:vif_details': {
+                            'dvs_port_key': port_data['port_key']
+                        }
+                    })
                 else:
                     network_with_active_ports[phys_net].add(
                         network_with_known_not_active_ports[phys_net][port_id])
