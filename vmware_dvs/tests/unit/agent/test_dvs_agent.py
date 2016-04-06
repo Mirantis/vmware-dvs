@@ -21,13 +21,6 @@ from neutron.tests import base
 from vmware_dvs.agent import dvs_neutron_agent
 from vmware_dvs.common import constants as dvs_const, exceptions
 
-NOT_SUPPORTED_TYPES = [
-    constants.TYPE_FLAT,
-    constants.TYPE_GRE,
-    constants.TYPE_LOCAL,
-    constants.TYPE_VXLAN,
-    constants.TYPE_NONE]
-
 
 VALID_HYPERVISOR_TYPE = 'VMware vCenter Server'
 INVALID_HYPERVISOR_TYPE = '_invalid_hypervisor_'

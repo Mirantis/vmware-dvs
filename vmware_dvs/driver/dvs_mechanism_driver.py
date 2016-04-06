@@ -99,7 +99,7 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     @port_belongs_to_vmware
     def bind_port(self, context):
-        if self._check_net_port(context):
+        if self._check_net_type(context):
             booked_port_key = self.dvs_notifier.bind_port_call(
                 context.current,
                 context.network.network_segments,
@@ -126,7 +126,7 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     @port_belongs_to_vmware
     def update_port_postcommit(self, context):
-        if self._check_net_port(context):
+        if self._check_net_type(context):
             self.dvs_notifier.update_postcommit_port_call(
                 context.current,
                 context.original,
@@ -144,18 +144,17 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     @port_belongs_to_vmware
     def delete_port_postcommit(self, context):
-        if self._check_net_port(context):
+        if self._check_net_type(context):
             self.dvs_notifier.delete_port_call(context.current,
                                            context.original,
                                            context.network.network_segments[0],
                                            context.host)
 
     def _check_net_type(self, context):
-        n_type = context.network_segments[0]['network_type']
-        return n_type == constants.TYPE_VLAN
-
-    def _check_net_port(self, context):
-        n_type = context.network.network_segments[0]['network_type']
+        if 'network_segments' in dir(context):
+            n_type = context.network_segments[0]['network_type']
+        else:
+            n_type = context.network.network_segments[0]['network_type']
         return n_type == constants.TYPE_VLAN
 
     def _get_security_group_info(self, context):
