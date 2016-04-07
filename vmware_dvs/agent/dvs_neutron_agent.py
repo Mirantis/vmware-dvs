@@ -191,18 +191,14 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                 dvs.release_port(current)
 
     def _lookup_dvs_for_context(self, segment):
-        if segment['network_type'] == constants.TYPE_VLAN:
-            physical_network = segment['physical_network']
-            try:
-                return self.network_map[physical_network]
-            except KeyError:
-                LOG.debug('No dvs mapped for physical '
-                          'network: %s' % physical_network)
-                raise exceptions.NoDVSForPhysicalNetwork(
-                    physical_network=physical_network)
-        else:
-            raise exceptions.NotSupportedNetworkType(
-                network_type=segment['network_type'])
+        physical_network = segment['physical_network']
+        try:
+            return self.network_map[physical_network]
+        except KeyError:
+            LOG.debug('No dvs mapped for physical '
+                      'network: %s' % physical_network)
+            raise exceptions.NoDVSForPhysicalNetwork(
+                physical_network=physical_network)
 
     def _update_admin_state_up(self, dvs, original, current):
         try:
