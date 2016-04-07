@@ -281,6 +281,7 @@ class DVSController(object):
                 network_folder, 'childEntity')
             if results:
                 networks = results.ManagedObjectReference
+                # Search between top-level dvswitches, if any
                 dvswitches = self._get_object_by_type(
                     networks, 'VmwareDistributedVirtualSwitch')
                 for dvs in dvswitches:
@@ -289,7 +290,29 @@ class DVSController(object):
                         connection.vim, dvs, 'name')
                     if name == dvs_name:
                         return dvs, datacenter
+                # if we still haven't found it, search sub-folders
+                dvswitches = self._search_inside_folders(networks,
+                                                         connection)
+                for dvs in dvswitches:
+                    name = connection.invoke_api(
+                        vim_util, 'get_object_property',
+                        connection.vim, dvs, 'name')
+                    if name == dvs_name:
+                        return dvs, datacenter
         raise exceptions.DVSNotFound(dvs_name=dvs_name)
+
+    def _search_inside_folders(self, net_folders, connection):
+        dvs_list = []
+        folders = self._get_object_by_type(net_folders, 'Folder')
+        for folder in folders:
+            results = connection.invoke_api(
+                vim_util, 'get_object_property', connection.vim,
+                folder, 'childEntity').ManagedObjectReference
+            dvs = self._get_object_by_type(results,
+                                           'VmwareDistributedVirtualSwitch')
+            if dvs:
+                dvs_list += dvs
+        return dvs_list
 
     def _get_pg_by_name(self, pg_name):
         if self.use_pg_cache:
