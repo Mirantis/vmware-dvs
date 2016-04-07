@@ -81,11 +81,10 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         return agent['configurations'].get('bridge_mappings', {})
 
     def create_network_precommit(self, context):
-        if CONF.DVS.precreate_networks:
-            if self._check_net_type(context):
-                LOG.info(_LI('Precreate network cast'))
-                self.dvs_notifier.create_network_cast(context.current,
-                                              context.network_segments[0])
+        if CONF.DVS.precreate_networks and self._check_net_type(context):
+            LOG.info(_LI('Precreate network cast'))
+            self.dvs_notifier.create_network_cast(context.current,
+                context.network_segments[0])
 
     def update_network_precommit(self, context):
         if self._check_net_type(context):
@@ -94,12 +93,12 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     def delete_network_postcommit(self, context):
         if self._check_net_type(context):
-            self.dvs_notifier.delete_network_cast(context.current,
-                                              context.network_segments[0])
+            self.dvs_notifier.delete_network_cast(
+                context.current, context.network_segments[0])
 
     @port_belongs_to_vmware
     def bind_port(self, context):
-        if self._check_net_type(context):
+        if self._check_net_type(context.network):
             booked_port_key = self.dvs_notifier.bind_port_call(
                 context.current,
                 context.network.network_segments,
@@ -116,8 +115,7 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                     status=n_const.PORT_STATUS_ACTIVE)
         else:
             nt = context.network.network_segments[0]['network_type']
-            raise exceptions.NotSupportedNetworkType(
-                network_type=nt)
+            raise exceptions.NotSupportedNetworkType(network_type=nt)
 
     @port_belongs_to_vmware
     def update_port_precommit(self, context):
@@ -126,7 +124,7 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     @port_belongs_to_vmware
     def update_port_postcommit(self, context):
-        if self._check_net_type(context):
+        if self._check_net_type(context.network):
             self.dvs_notifier.update_postcommit_port_call(
                 context.current,
                 context.original,
@@ -144,18 +142,16 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     @port_belongs_to_vmware
     def delete_port_postcommit(self, context):
-        if self._check_net_type(context):
-            self.dvs_notifier.delete_port_call(context.current,
-                                           context.original,
-                                           context.network.network_segments[0],
-                                           context.host)
+        if self._check_net_type(context.network):
+            self.dvs_notifier.delete_port_call(
+                context.current,
+                context.original,
+                context.network.network_segments[0],
+                context.host)
 
-    def _check_net_type(self, context):
-        if 'network_segments' in dir(context):
-            n_type = context.network_segments[0]['network_type']
-        else:
-            n_type = context.network.network_segments[0]['network_type']
-        return n_type == constants.TYPE_VLAN
+    def _check_net_type(self, network_context):
+        network_type = network_context.network_segments[0]['network_type']
+        return network_type == constants.TYPE_VLAN
 
     def _get_security_group_info(self, context):
         current_security_group = list(set(context.current['security_groups']))
