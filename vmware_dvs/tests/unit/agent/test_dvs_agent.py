@@ -21,13 +21,6 @@ from neutron.tests import base
 from vmware_dvs.agent import dvs_neutron_agent
 from vmware_dvs.common import constants as dvs_const, exceptions
 
-NOT_SUPPORTED_TYPES = [
-    constants.TYPE_FLAT,
-    constants.TYPE_GRE,
-    constants.TYPE_LOCAL,
-    constants.TYPE_VXLAN,
-    constants.TYPE_NONE]
-
 
 VALID_HYPERVISOR_TYPE = 'VMware vCenter Server'
 INVALID_HYPERVISOR_TYPE = '_invalid_hypervisor_'
@@ -65,13 +58,6 @@ class DVSAgentTestCase(base.BaseTestCase):
         self.update_port_rules_mock = sg_util_patch.start()
 
     def test_look_up_dvs_failed(self):
-        for type_ in NOT_SUPPORTED_TYPES:
-            self.assertRaisesRegexp(exceptions.NotSupportedNetworkType,
-                                    "VMWare DVS driver don't support %s "
-                                    "network" % type_,
-                                    self.agent._lookup_dvs_for_context,
-                                    {'network_type': type_})
-
         segment = {'network_type': constants.TYPE_VLAN,
                    'physical_network': 'wrong_network'}
         self.assertRaisesRegexp(exceptions.NoDVSForPhysicalNetwork,
