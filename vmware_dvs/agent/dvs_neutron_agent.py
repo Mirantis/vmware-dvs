@@ -16,7 +16,6 @@
 import signal
 import sys
 import time
-import itertools
 
 from neutron import context
 from neutron.agent import rpc as agent_rpc
@@ -27,7 +26,6 @@ from neutron.common import constants as n_const
 from neutron.common import utils
 from neutron.common import topics
 from neutron.i18n import _, _LE, _LI
-from neutron.plugins.common import constants
 from neutron.openstack.common import loopingcall
 from oslo_config import cfg
 from oslo_log import log as logging
