@@ -78,7 +78,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                 port['id'], port['binding:vif_details']['dvs_port_key'])
 
         for dvs, port_id_list in self.dvs_port_map.iteritems():
-            port_list = [p for p in self.dvs_ports.values()
+            port_list = [p for p in ports
                          if p['id'] in port_id_list]
             sg_util.update_port_rules(dvs, port_list)
 
