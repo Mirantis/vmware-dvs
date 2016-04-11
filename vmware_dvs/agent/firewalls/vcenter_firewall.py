@@ -59,9 +59,9 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         for p_id in ports:
             port = self.dvs_ports.get(p_id)
             if port is not None:
-                key = port.get('binding:vif_details', {}).get('dvs_port_key')
-                dvs = self._get_dvs_for_port_id(p_id, key)
-                dvs.release_port(port)
+                dvs = self._get_dvs_for_port_id(port)
+                if dvs:
+                    dvs.release_port(port)
                 self.dvs_ports.pop(port['device'], None)
                 for port_set in self.dvs_port_map.values():
                     port_set.discard(port['id'])
@@ -72,14 +72,9 @@ class DVSFirewallDriver(firewall.FirewallDriver):
 
     @dvs_util.wrap_retry
     def _apply_sg_rules_for_port(self, ports):
-        for port in ports:
-            # Call _get_dvs_for_port_id to set up dvs port map for ports
-            self._get_dvs_for_port_id(
-                port['id'], port['binding:vif_details']['dvs_port_key'])
-
+        self._update_dvs_port_map(ports)
         for dvs, port_id_list in self.dvs_port_map.iteritems():
-            port_list = [p for p in ports
-                         if p['id'] in port_id_list]
+            port_list = [p for p in ports if p['id'] in port_id_list]
             sg_util.update_port_rules(dvs, port_list)
 
     def update_security_group_rules(self, sg_id, sg_rules):
@@ -92,24 +87,29 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                                device_id=None):
         pass
 
-    def _get_dvs_for_port_id(self, port_id, p_key=None):
-        # Check if port is already known
+    def _update_dvs_port_map(self, ports):
         known_ports = (set.union(*self.dvs_port_map.values())
                        if self.dvs_port_map.values() else {})
-        # If port is not known - get fresh port_map from vCenter
-        if port_id not in known_ports:
-            if p_key:
-                dvs = dvs_util.get_dvs_by_id_and_key(
-                    self.networking_map.values(), port_id, p_key)
+        unknown_ports_network_dvs_map = {}
+        for port in ports:
+            port_id = port['id']
+            if port_id not in known_ports:
+                port_network = port['network_id']
+                if port_network in unknown_ports_network_dvs_map:
+                    dvs = unknown_ports_network_dvs_map[port_network]
+                else:
+                    dvs = dvs_util.get_dvs_by_network(
+                        self.networking_map.values(), port_network)
+                    unknown_ports_network_dvs_map[port_network] = dvs
                 if dvs:
-                    return self._get_dvs_and_put_dvs_in_port_map(dvs, port_id)
-            port_map = dvs_util.create_port_map(self.networking_map.values())
-        else:
-            port_map = self.dvs_port_map
-        for dvs, port_list in port_map.iteritems():
-            if port_id in port_list:
-                return self._get_dvs_and_put_dvs_in_port_map(dvs, port_id)
-        LOG.warning(_LW("Cannot find dvs for port %s"), port_id)
+                    self._get_dvs_and_put_dvs_in_port_map(dvs, port_id)
+
+    def _get_dvs_for_port_id(self, port):
+        self._update_dvs_port_map([port])
+        for dvs, port_list in self.dvs_port_map.iteritems():
+            if port['id'] in port_list:
+                return dvs
+        LOG.warning(_LW("Cannot find dvs for port %s"), port['id'])
 
     def _get_dvs_and_put_dvs_in_port_map(self, dvs, port_id):
         # Check if dvs is known, otherwise add it in port_map with
