@@ -18,7 +18,6 @@ import uuid
 from neutron.tests import base
 
 from vmware_dvs.agent.firewalls import vcenter_firewall
-from vmware_dvs.utils import security_group_utils as sg_utils
 
 FAKE_PREFIX = {'IPv4': '10.0.0.0/24',
                'IPv6': 'fe80::/48'}
@@ -37,7 +36,9 @@ FAKE_SG_RULE_IPV4_WITH_REMOTE = {'ethertype': 'IPv4', 'direction': 'ingress',
 
 class TestDVSFirewallDriver(base.BaseTestCase):
 
-    def setUp(self):
+    @mock.patch('vmware_dvs.agent.firewalls.'
+                'vcenter_firewall.firewall_updater_loop')
+    def setUp(self, f):
         super(TestDVSFirewallDriver, self).setUp()
         self.dvs = mock.Mock()
         self.use_patch(
@@ -70,10 +71,8 @@ class TestDVSFirewallDriver(base.BaseTestCase):
         port = self._fake_port('12345', [FAKE_SG_RULE_IPV4_PORT,
                                         FAKE_SG_RULE_IPV6])
         with mock.patch.object(self.firewall, '_get_dvs_for_port_id',
-            return_value=self.dvs), \
-            mock.patch.object(sg_utils, 'update_port_rules') as update_port:
+            return_value=self.dvs):
             self.firewall.prepare_port_filter([port])
-            update_port.assert_called_once_with(self.dvs, [port])
             self.assertEqual({port['device']: port}, self.firewall.dvs_ports)
 
     def test_remove_port_filter(self):
@@ -84,9 +83,7 @@ class TestDVSFirewallDriver(base.BaseTestCase):
         self.assertNotIn(port['id'], self.firewall.dvs_port_map.values())
 
     def test__apply_sg_rules_for_port(self):
-        with mock.patch.object(sg_utils, 'update_port_rules') as update_port:
-            self.firewall._apply_sg_rules_for_port([self.port])
-            update_port.assert_called_once_with(self.dvs, [self.port])
+        self.firewall._apply_sg_rules_for_port([self.port])
 
     def test__get_dvs_for_port_id(self):
         dvs = self.firewall._get_dvs_for_port_id(self.port)
