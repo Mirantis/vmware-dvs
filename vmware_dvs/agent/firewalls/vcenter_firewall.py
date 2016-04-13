@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from multiprocessing import Process, Queue
+
 from neutron.agent import firewall
 from neutron.i18n import _LW, _LI
 from oslo_log import log as logging
@@ -26,6 +28,20 @@ LOG = logging.getLogger(__name__)
 CONF = config.CONF
 
 
+def firewall_updater_loop(q):
+    networking_map = dvs_util.create_network_map_from_config(
+            CONF.ML2_VMWARE)
+    while True:
+        request = q.get()
+        for physnet in request:
+            updater(networking_map[physnet], request[physnet])
+
+
+@dvs_util.wrap_retry
+def updater(dvs, port_list):
+    sg_util.update_port_rules(dvs, port_list)
+
+
 class DVSFirewallDriver(firewall.FirewallDriver):
     """DVS Firewall Driver.
     """
@@ -36,6 +52,9 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         self._defer_apply = False
         # Map for known ports and dvs it is connected to.
         self.dvs_port_map = {}
+        self.q = Queue()
+        self.p = Process(target=firewall_updater_loop, args=(self.q,))
+        self.p.start()
 
     def prepare_port_filter(self, ports):
         self._process_port_filter(ports)
@@ -75,7 +94,10 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         self._update_dvs_port_map(ports)
         for dvs, port_id_list in self.dvs_port_map.iteritems():
             port_list = [p for p in ports if p['id'] in port_id_list]
-            sg_util.update_port_rules(dvs, port_list)
+            for physnet, dvs_item in self.networking_map.iteritems():
+                if dvs_item == dvs:
+                    self.q.put({physnet: port_list})
+                    break
 
     def update_security_group_rules(self, sg_id, sg_rules):
         pass
