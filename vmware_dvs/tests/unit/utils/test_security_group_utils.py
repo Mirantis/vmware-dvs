@@ -16,7 +16,7 @@
 import mock
 from neutron.tests import base
 
-from vmware_dvs.utils import security_group_utils as sg_util, dvs_util
+from vmware_dvs.utils import security_group_utils as sg_util
 from vmware_dvs.tests.unit.utils import test_dvs_util
 from vmware_dvs.common import constants as dvs_const
 
@@ -34,6 +34,7 @@ class TrafficRuleBuilderBaseTestCase(test_dvs_util.UtilBaseTestCase):
             'ns0:SingleIp',
             'ns0:DvsSingleIpPort',
             'ns0:DvsIpPortRange'))
+        self.spec_builder = sg_util.PortConfigSpecBuilder(self.spec_factory)
 
 
 class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
@@ -51,7 +52,7 @@ class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
                 pass
 
         return ConcreteTrafficRuleBuilder(
-            self.spec_factory, ethertype, protocol, name)
+            self.spec_builder, ethertype, protocol, name)
 
     def test_build_sequence(self):
         name = '_name_'
@@ -138,7 +139,7 @@ class SpecBuilderSecurityGroupsTestCase(base.BaseTestCase):
         self.spec = mock.Mock(name='spec')
         self.factory = mock.Mock(name='factory')
         self.factory.create.return_value = self.spec
-        self.builder = dvs_util.SpecBuilder(self.factory)
+        self.builder = sg_util.PortConfigSpecBuilder(self.factory)
 
     def test__create_rule_egress(self):
         rule = self._create_rule(direction='egress')
