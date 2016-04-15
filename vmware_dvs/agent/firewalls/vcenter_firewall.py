@@ -14,6 +14,8 @@
 #    under the License.
 
 from multiprocessing import Process, Queue
+import threading
+import time
 
 from neutron.agent import firewall
 from neutron.i18n import _LW, _LI
@@ -28,13 +30,50 @@ LOG = logging.getLogger(__name__)
 CONF = config.CONF
 
 
-def firewall_updater_loop(q):
-    networking_map = dvs_util.create_network_map_from_config(
-            CONF.ML2_VMWARE)
+def firewall_updater_loop(list_queues):
+    pq = PortQueue(list_queues)
+    pq.port_updater_loop()
     while True:
-        request = q.get()
-        for physnet in request:
-            updater(networking_map[physnet], request[physnet])
+        dvs, ports = pq.get_tasks(5)
+        if dvs and len(ports) > 0:
+            updater(dvs, ports)
+        else:
+            time.sleep(1)
+
+
+class PortQueue(object):
+    def __init__(self, list_queues):
+        self.list_queues = list_queues
+        self.taskstore = {}
+        self.networking_map = dvs_util.create_network_map_from_config(
+            CONF.ML2_VMWARE)
+
+    # Todo: add roundrobin for active DVS. SlOPS
+    def get_tasks(self, number=0):
+        for dvs, tasks in self.taskstore.iteritems():
+            if tasks:
+                ret = tasks[:number]
+                self.taskstore[dvs] = tasks[number:]
+                return dvs, ret
+        return None, []
+
+    # Todo: add port delete queue. SlOPS
+    def port_updater_loop(self):
+        for queue in self.list_queues:
+            while not queue.empty():
+                request = queue.get()
+                for physnet in request:
+                    stored_tasks = self.taskstore.get(
+                        self.networking_map[physnet], [])
+                    for port in request[physnet]:
+                        if port['id'] in [p['id'] for p in stored_tasks]:
+                            index = [p['id'] for p in stored_tasks].index(
+                                port['id'])
+                            stored_tasks[index] = port
+                        else:
+                            stored_tasks.append(port)
+                    self.taskstore[self.networking_map[physnet]] = stored_tasks
+        threading.Timer(1, self.port_updater_loop).start()
 
 
 @dvs_util.wrap_retry
@@ -52,9 +91,12 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         self._defer_apply = False
         # Map for known ports and dvs it is connected to.
         self.dvs_port_map = {}
-        self.q = Queue()
-        self.p = Process(target=firewall_updater_loop, args=(self.q,))
-        self.p.start()
+        self.list_queues = []
+        for x in xrange(10):
+            self.list_queues.append(Queue())
+        self.fw_process = Process(target=firewall_updater_loop,
+            args=(self.list_queues,))
+        self.fw_process.start()
 
     def prepare_port_filter(self, ports):
         self._process_port_filter(ports)
@@ -96,8 +138,22 @@ class DVSFirewallDriver(firewall.FirewallDriver):
             port_list = [p for p in ports if p['id'] in port_id_list]
             for physnet, dvs_item in self.networking_map.iteritems():
                 if dvs_item == dvs:
-                    self.q.put({physnet: port_list})
+                    for port in port_list:
+                        queue = self._getfreequeue()
+                        queue.put({physnet: [{'id': port['id'],
+                        'security_group_rules': port['security_group_rules'],
+                        'binding:vif_details': port['binding:vif_details']}]})
                     break
+
+    def _getfreequeue(self):
+        shortest_queue = self.list_queues[0]
+        for queue in self.list_queues:
+            queue_size = queue.qsize()
+            if queue_size == 0:
+                return queue
+            if queue_size < shortest_queue.qsize():
+                shortest_queue = queue
+        return shortest_queue
 
     def update_security_group_rules(self, sg_id, sg_rules):
         pass
