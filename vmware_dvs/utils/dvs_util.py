@@ -424,9 +424,10 @@ class SpecBuilder(object):
         spec.policy = policy
         return spec
 
-    def port_config_spec(self, version, setting=None, name=None):
+    def port_config_spec(self, version=None, setting=None, name=None):
         spec = self.factory.create('ns0:DVPortConfigSpec')
-        spec.configVersion = version
+        if version:
+            spec.configVersion = version
         spec.operation = 'edit'
         if setting:
             spec.setting = setting
