@@ -27,6 +27,9 @@ class ExtendAPI(object):
     def delete_network(self, context, current, segment):
         self.delete_network_postcommit(current, segment)
 
+    def network_delete(self, context, network_id):
+        pass
+
     def update_network(self, context, current, segment, original):
         self.update_network_precommit(current, segment, original)
 
