@@ -30,8 +30,8 @@ LOG = logging.getLogger(__name__)
 CONF = config.CONF
 
 
-def firewall_updater_loop(list_queues):
-    pq = PortQueue(list_queues)
+def firewall_updater_loop(list_queues, remove_queue):
+    pq = PortQueue(list_queues, remove_queue)
     pq.port_updater_loop()
     while True:
         dvs, ports = pq.get_tasks(5)
@@ -42,8 +42,10 @@ def firewall_updater_loop(list_queues):
 
 
 class PortQueue(object):
-    def __init__(self, list_queues):
+    def __init__(self, list_queues, remove_queue):
         self.list_queues = list_queues
+        self.remove_queue = remove_queue
+        self.removed = []
         self.taskstore = {}
         self.networking_map = dvs_util.create_network_map_from_config(
             CONF.ML2_VMWARE)
@@ -73,6 +75,12 @@ class PortQueue(object):
                         else:
                             stored_tasks.append(port)
                     self.taskstore[self.networking_map[physnet]] = stored_tasks
+        while not self.remove_queue.empty():
+            self.removed.append(self.remove_queue.get())
+        for dvs in self.taskstore:
+            for item in self.taskstore[dvs]:
+                if item['id'] in self.removed:
+                    self.taskstore[dvs].remove(item)
         threading.Timer(1, self.port_updater_loop).start()
 
 
@@ -85,6 +93,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     """DVS Firewall Driver.
     """
     def __init__(self):
+        # Todo: remove networking map to reduse memory usage
         self.networking_map = dvs_util.create_network_map_from_config(
             CONF.ML2_VMWARE)
         self.dvs_ports = {}
@@ -94,8 +103,9 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         self.list_queues = []
         for x in xrange(10):
             self.list_queues.append(Queue())
+        self.remove_queue = Queue()
         self.fw_process = Process(target=firewall_updater_loop,
-            args=(self.list_queues,))
+            args=(self.list_queues, self.remove_queue))
         self.fw_process.start()
 
     def prepare_port_filter(self, ports):
@@ -122,6 +132,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
             if port is not None:
                 dvs = self._get_dvs_for_port_id(port)
                 if dvs:
+                    self.remove_queue.put(port['id'])
                     dvs.release_port(port)
                 self.dvs_ports.pop(port['device'], None)
                 for port_set in self.dvs_port_map.values():

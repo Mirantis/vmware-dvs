@@ -232,7 +232,10 @@ def update_port_rules(dvs, ports):
             )
             dvs.connection.wait_for_task(task)
     except vmware_exceptions.VimException as e:
-        raise exceptions.wrap_wmvare_vim_exception(e)
+        if 'The object or item referred to could not be found' in str(e):
+            pass
+        else:
+            raise exceptions.wrap_wmvare_vim_exception(e)
 
 
 def port_configuration(builder, port_key, sg_rules, hashed_rules):
