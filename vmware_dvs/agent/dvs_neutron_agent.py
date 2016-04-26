@@ -65,17 +65,20 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             'agent_type': 'DVS agent',
             'start_flag': True}
 
-        self.setup_rpc()
         report_interval = cfg.CONF.AGENT.report_interval
+
+        self.polling_interval = polling_interval
+        # Security group agent support
+        self.context = context.get_admin_context_without_session()
+        self.sg_plugin_rpc = sg_rpc.SecurityGroupServerRpcApi(topics.PLUGIN)
+        self.sg_agent = dvs_rpc.DVSSecurityGroupRpc(self.context,
+                self.sg_plugin_rpc, defer_refresh_firewall=True)
+
+        self.setup_rpc()
         if report_interval:
             heartbeat = loopingcall.FixedIntervalLoopingCall(
                 self._report_state)
             heartbeat.start(interval=report_interval)
-
-        self.polling_interval = polling_interval
-        # Security group agent support
-        self.sg_agent = dvs_rpc.DVSSecurityGroupRpc(self.context,
-                self.sg_plugin_rpc, defer_refresh_firewall=True)
         self.run_daemon_loop = True
         self.iter_num = 0
         self.fullsync = True
@@ -225,11 +228,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         self.agent_id = 'dvs-agent-%s' % cfg.CONF.host
         self.topic = topics.AGENT
         self.plugin_rpc = DVSPluginApi(topics.PLUGIN)
-        self.sg_plugin_rpc = sg_rpc.SecurityGroupServerRpcApi(topics.PLUGIN)
         self.state_rpc = agent_rpc.PluginReportStateAPI(topics.REPORTS)
 
-        # RPC network init
-        self.context = context.get_admin_context_without_session()
         # Handle updates from service
         self.endpoints = [self]
         # Define the listening consumers for the agent

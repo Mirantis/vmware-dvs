@@ -17,7 +17,6 @@ from time import sleep
 import uuid
 import six
 
-
 from neutron.i18n import _LI, _LW
 from oslo_log import log
 from oslo_vmware import api
@@ -324,6 +323,26 @@ class DVSController(object):
             self.connection.vim, pg, 'portKeys')[0]
 
     def _lookup_unbound_port(self, port_group):
+        builder = SpecBuilder(self.connection.vim.client.factory)
+        criteria = builder.port_criteria(port_group_key=port_group.value)
+        all_port_keys = self.connection.invoke_api(
+            self.connection.vim,
+            'FetchDVPortKeys',
+            self._dvs, criteria=criteria)
+        criteria = builder.port_criteria(port_group_key=port_group.value,
+                                         connected=True)
+        connected_port_keys = self.connection.invoke_api(
+            self.connection.vim,
+            'FetchDVPortKeys',
+            self._dvs, criteria=criteria)
+        for port_key in all_port_keys:
+            if (port_key not in connected_port_keys and
+                    port_key not in self._blocked_ports):
+                self._blocked_ports.add(port_key)
+                return self._get_port_info_by_portkey(port_key)
+        raise exceptions.UnboundPortNotFound()
+
+    def _lookup_unbound_port_old(self, port_group):
         builder = SpecBuilder(self.connection.vim.client.factory)
         criteria = builder.port_criteria(port_group_key=port_group.value)
 
