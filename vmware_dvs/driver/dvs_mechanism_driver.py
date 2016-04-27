@@ -51,7 +51,7 @@ def port_belongs_to_vmware(func):
             # need to make research, about all possible and suitable values
             if hypervisor.hypervisor_type != dvs_const.VMWARE_HYPERVISOR_TYPE:
                 raise exceptions.HypervisorNotFound
-        except exceptions.ResourceNotFond:
+        except exceptions.ResourceNotFound:
             return False
         return func(self, context)
     return _port_belongs_to_vmware

@@ -204,6 +204,8 @@ class DVSController(object):
             self.connection.wait_for_task(update_task)
         except exceptions.PortNotFound:
             LOG.debug("Port %s was not found. Nothing to delete." % port['id'])
+        except exceptions.ResourceInUse:
+            LOG.debug("Port %s in use. Nothing to delete." % port['id'])
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
