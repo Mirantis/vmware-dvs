@@ -34,16 +34,16 @@ class DVSController(object):
 
     def __init__(self, dvs_name, connection):
         self.connection = connection
+        self.dvs_name = dvs_name
+        self._blocked_ports = set()
+        self.builder = SpecBuilder(self.connection.vim.client.factory)
         try:
-            self.dvs_name = dvs_name
             self._dvs, self._datacenter = self._get_dvs(dvs_name, connection)
-            # (SlOPS) To do release blocked port after use
-            self._blocked_ports = set()
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
     def create_network(self, network, segment):
-        name = self._get_net_name(self.dvs_name, network)
+        name = self._get_net_name(network)
         blocked = not network['admin_state_up']
 
         try:
@@ -66,36 +66,34 @@ class DVSController(object):
             return pg
 
     def update_network(self, network, original=None):
-        if original:
-            name = self._get_net_name(self.dvs_name, original)
-        else:
-            name = self._get_net_name(self.dvs_name, network)
+        original_name = self._get_net_name(original) if original else None
+        current_name = self._get_net_name(network)
         blocked = not network['admin_state_up']
         try:
-            pg_ref = self._get_pg_by_name(name)
+            pg_ref = self._get_pg_by_name(original_name or current_name)
             pg_config_info = self._get_config_by_ref(pg_ref)
-
             if (pg_config_info.defaultPortConfig.blocked.value != blocked or
-                    (original and original['name'] != network['name'])):
+                    (original_name and original_name != current_name)):
                 # we upgrade only defaultPortConfig, because it is inherited
-                # by all ports in PortGroup, unless they are explicite
+                # by all ports in PortGroup, unless they are explicit
                 # overwritten on specific port.
                 pg_spec = self._build_pg_update_spec(
                     pg_config_info.configVersion,
                     blocked=blocked)
-                pg_spec.name = self._get_net_name(self.dvs_name, network)
+                pg_spec.name = current_name
                 pg_update_task = self.connection.invoke_api(
                     self.connection.vim,
                     'ReconfigureDVPortgroup_Task',
                     pg_ref, spec=pg_spec)
 
                 self.connection.wait_for_task(pg_update_task)
-                LOG.info(_LI('Network %(name)s updated'), {'name': name})
+                LOG.info(_LI('Network %(name)s updated'),
+                         {'name': current_name})
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
     def delete_network(self, network):
-        name = self._get_net_name(self.dvs_name, network)
+        name = self._get_net_name(network)
         try:
             pg_ref = self._get_pg_by_name(name)
         except exceptions.PortGroupNotFound:
@@ -140,12 +138,11 @@ class DVSController(object):
     def switch_port_blocked_state(self, port):
         try:
             port_info = self.get_port_info(port)
-            builder = SpecBuilder(self.connection.vim.client.factory)
-            port_settings = builder.port_setting()
+            port_settings = self.builder.port_setting()
             state = not port['admin_state_up']
-            port_settings.blocked = builder.blocked(state)
+            port_settings.blocked = self.builder.blocked(state)
 
-            update_spec = builder.port_config_spec(
+            update_spec = self.builder.port_config_spec(
                 port_info.config.configVersion, port_settings)
             update_spec.key = port_info.key
             update_task = self.connection.invoke_api(
@@ -177,16 +174,15 @@ class DVSController(object):
     def book_port(self, network, port_name, segment, net_name=None):
         try:
             if not net_name:
-                net_name = self._get_net_name(self.dvs_name, network)
+                net_name = self._get_net_name(network)
             pg = self._get_or_create_pg(net_name, network, segment)
             for iter in range(0, 4):
                 try:
                     port_info = self._lookup_unbound_port_or_increse_pg(pg)
 
-                    builder = SpecBuilder(self.connection.vim.client.factory)
-                    port_settings = builder.port_setting()
-                    port_settings.blocked = builder.blocked(False)
-                    update_spec = builder.port_config_spec(
+                    port_settings = self.builder.port_setting()
+                    port_settings.blocked = self.builder.blocked(False)
+                    update_spec = self.builder.port_config_spec(
                         port_info.config.configVersion, port_settings,
                         name=port_name)
                     update_spec.key = port_info.key
@@ -204,12 +200,11 @@ class DVSController(object):
     def release_port(self, port):
         try:
             port_info = self.get_port_info(port)
-            builder = SpecBuilder(self.connection.vim.client.factory)
-            update_spec = builder.port_config_spec(
+            update_spec = self.builder.port_config_spec(
                 port_info.config.configVersion, name='')
             update_spec.key = port_info.key
-            #setting = builder.port_setting()
-            #setting.filterPolicy = builder.filter_policy([])
+            #setting = self.builder.port_setting()
+            #setting.filterPolicy = self.builder.filter_policy([])
             #update_spec.setting = setting
             update_spec.operation = 'remove'
             update_task = self.connection.invoke_api(
@@ -227,15 +222,14 @@ class DVSController(object):
         self._blocked_ports.discard(port_key)
 
     def _build_pg_create_spec(self, name, vlan_tag, blocked):
-        builder = SpecBuilder(self.connection.vim.client.factory)
-        port_setting = builder.port_setting()
+        port_setting = self.builder.port_setting()
 
-        port_setting.vlan = builder.vlan(vlan_tag)
-        port_setting.blocked = builder.blocked(blocked)
+        port_setting.vlan = self.builder.vlan(vlan_tag)
+        port_setting.blocked = self.builder.blocked(blocked)
 
-        port_setting.filterPolicy = builder.filter_policy([])
+        port_setting.filterPolicy = self.builder.filter_policy([])
 
-        pg = builder.pg_config(port_setting)
+        pg = self.builder.pg_config(port_setting)
         pg.name = name
         pg.numPorts = 0
 
@@ -247,11 +241,10 @@ class DVSController(object):
     def _build_pg_update_spec(self, config_version,
                               blocked=None,
                               ports_number=None):
-        builder = SpecBuilder(self.connection.vim.client.factory)
-        port = builder.port_setting()
+        port = self.builder.port_setting()
         if blocked is not None:
-            port.blocked = builder.blocked(blocked)
-        pg = builder.pg_config(port)
+            port.blocked = self.builder.blocked(blocked)
+        pg = self.builder.pg_config(port)
         if ports_number:
             pg.numPorts = ports_number
         pg.configVersion = config_version
@@ -316,12 +309,11 @@ class DVSController(object):
             vim_util, 'get_object_property',
             self.connection.vim, ref, 'config')
 
-    @staticmethod
-    def _get_net_name(dvs_name, network):
+    def _get_net_name(self, network):
         # TODO(dbogun): check network['bridge'] generation algorithm our
         # must match it
 
-        return dvs_name + network['id']
+        return self.dvs_name + network['id']
 
     @staticmethod
     def _get_object_by_type(results, type_value):
@@ -339,14 +331,13 @@ class DVSController(object):
             self.connection.vim, pg, 'portKeys')[0]
 
     def _lookup_unbound_port(self, port_group):
-        builder = SpecBuilder(self.connection.vim.client.factory)
-        criteria = builder.port_criteria(port_group_key=port_group.value)
+        criteria = self.builder.port_criteria(port_group_key=port_group.value)
         all_port_keys = self.connection.invoke_api(
             self.connection.vim,
             'FetchDVPortKeys',
             self._dvs, criteria=criteria)
-        criteria = builder.port_criteria(port_group_key=port_group.value,
-                                         connected=True)
+        criteria = self.builder.port_criteria(port_group_key=port_group.value,
+                                              connected=True)
         connected_port_keys = self.connection.invoke_api(
             self.connection.vim,
             'FetchDVPortKeys',
@@ -358,21 +349,6 @@ class DVSController(object):
                 p_info = self._get_port_info_by_portkey(port_key)
                 if not getattr(p_info.config, 'name', None):
                     return p_info
-        raise exceptions.UnboundPortNotFound()
-
-    def _lookup_unbound_port_old(self, port_group):
-        builder = SpecBuilder(self.connection.vim.client.factory)
-        criteria = builder.port_criteria(port_group_key=port_group.value)
-
-        ports = self.connection.invoke_api(
-            self.connection.vim,
-            'FetchDVPorts',
-            self._dvs, criteria=criteria)
-        for port in ports:
-            if (not getattr(port.config, 'name', None) and
-                    port.key not in self._blocked_ports):
-                self._blocked_ports.add(port.key)
-                return port
         raise exceptions.UnboundPortNotFound()
 
     def _increase_ports_on_portgroup(self, port_group):
@@ -396,8 +372,7 @@ class DVSController(object):
 
     def _get_port_info_by_portkey(self, port_key):
         """pg - ManagedObjectReference of Port Group"""
-        builder = SpecBuilder(self.connection.vim.client.factory)
-        criteria = builder.port_criteria(port_key=port_key)
+        criteria = self.builder.port_criteria(port_key=port_key)
         port_info = self.connection.invoke_api(
             self.connection.vim,
             'FetchDVPorts',
@@ -418,8 +393,7 @@ class DVSController(object):
 
     def get_ports(self, connect_flag=True):
         ports = []
-        builder = SpecBuilder(self.connection.vim.client.factory)
-        criteria = builder.port_criteria(connected=connect_flag)
+        criteria = self.builder.port_criteria(connected=connect_flag)
         ports = self.connection.invoke_api(
             self.connection.vim,
             'FetchDVPorts',
@@ -555,7 +529,7 @@ def create_port_map(dvs_list):
 def get_dvs_by_network(dvs_list, network_id):
     for dvs in dvs_list:
         try:
-            network_name = dvs._get_net_name(dvs.dvs_name, {'id': network_id})
+            network_name = dvs._get_net_name({'id': network_id})
             if dvs._get_pg_by_name(network_name):
                 return dvs
         except exceptions.PortGroupNotFound:
