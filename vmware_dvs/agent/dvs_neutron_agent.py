@@ -98,8 +98,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
     def create_network_precommit(self, current, segment):
         try:
             dvs = self._lookup_dvs_for_context(segment)
-        except (exceptions.NoDVSForPhysicalNetwork,
-                exceptions.NotSupportedNetworkType) as e:
+        except exceptions.NoDVSForPhysicalNetwork as e:
             LOG.info(_LI('Network %(id)s not created. Reason: %(reason)s') % {
                 'id': current['id'],
                 'reason': e.message})
@@ -112,8 +111,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
     def delete_network_postcommit(self, current, segment):
         try:
             dvs = self._lookup_dvs_for_context(segment)
-        except (exceptions.NoDVSForPhysicalNetwork,
-                exceptions.NotSupportedNetworkType) as e:
+        except exceptions.NoDVSForPhysicalNetwork as e:
             LOG.info(_LI('Network %(id)s not deleted. Reason: %(reason)s') % {
                 'id': current['id'],
                 'reason': e.message})
@@ -126,8 +124,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
     def update_network_precommit(self, current, segment, original):
         try:
             dvs = self._lookup_dvs_for_context(segment)
-        except (exceptions.NoDVSForPhysicalNetwork,
-                exceptions.NotSupportedNetworkType) as e:
+        except (exceptions.NoDVSForPhysicalNetwork) as e:
             LOG.info(_LI('Network %(id)s not updated. Reason: %(reason)s') % {
                 'id': current['id'],
                 'reason': e.message})
@@ -159,10 +156,6 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             if current['id'] in self.booked_ports:
                 self.added_ports.add(current['id'])
                 self.booked_ports.discard(current['id'])
-        except exceptions.NotSupportedNetworkType as e:
-            LOG.info(_LI('Port %(id)s not updated. Reason: %(reason)s') % {
-                'id': current['id'],
-                'reason': e.message})
         except exceptions.NoDVSForPhysicalNetwork:
             raise exceptions.InvalidSystemState(details=_(
                 'Port %(port_id)s belong to VMWare VM, but there is '
@@ -174,10 +167,6 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
     def delete_port_postcommit(self, current, original, segment):
         try:
             dvs = self._lookup_dvs_for_context(segment)
-        except exceptions.NotSupportedNetworkType as e:
-            LOG.info(_LI('Port %(id)s not deleted. Reason: %(reason)s') % {
-                'id': current['id'],
-                'reason': e.message})
         except exceptions.NoDVSForPhysicalNetwork:
             raise exceptions.InvalidSystemState(details=_(
                 'Port %(port_id)s belong to VMWare VM, but there is '
