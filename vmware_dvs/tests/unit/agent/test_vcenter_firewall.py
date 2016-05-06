@@ -67,14 +67,6 @@ class TestDVSFirewallDriver(base.BaseTestCase):
                 'fixed_ips': [FAKE_IP['IPv4'], FAKE_IP['IPv6']],
                 'binding:vif_details': {'dvs_port_key': '333'}}
 
-    def test_prepare_port_filter(self):
-        port = self._fake_port('12345', [FAKE_SG_RULE_IPV4_PORT,
-                                        FAKE_SG_RULE_IPV6])
-        with mock.patch.object(self.firewall, '_get_dvs_for_port_id',
-            return_value=self.dvs):
-            self.firewall.prepare_port_filter([port])
-            self.assertEqual({port['device']: port}, self.firewall.dvs_ports)
-
     def test_remove_port_filter(self):
         port = self._fake_port('12345', [FAKE_SG_RULE_IPV4_PORT,
                                          FAKE_SG_RULE_IPV6])
@@ -84,17 +76,3 @@ class TestDVSFirewallDriver(base.BaseTestCase):
 
     def test__apply_sg_rules_for_port(self):
         self.firewall._apply_sg_rules_for_port([self.port])
-
-    def test__get_dvs_for_port_id(self):
-        dvs = self.firewall._get_dvs_for_port_id(self.port)
-        self.assertEqual(self.dvs, dvs)
-
-    def test__get_dvs_for_port_id_new_dvs(self):
-        port = self._fake_port('1234', self.sg_rules, id=uuid.uuid4())
-        new_dvs = mock.Mock()
-        with mock.patch('vmware_dvs.utils.dvs_util.get_dvs_by_network',
-                        return_value=new_dvs):
-            dvs = self.firewall._get_dvs_for_port_id(port)
-            self.assertEqual(new_dvs, dvs)
-            self.assertDictSupersetOf({new_dvs: set([port['id']])},
-                                      self.firewall.dvs_port_map)
