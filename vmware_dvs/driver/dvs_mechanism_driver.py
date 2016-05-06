@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from time import sleep
 import six
 from neutron.agent import securitygroups_rpc
 from neutron import context
@@ -51,7 +52,7 @@ def port_belongs_to_vmware(func):
             # need to make research, about all possible and suitable values
             if hypervisor.hypervisor_type != dvs_const.VMWARE_HYPERVISOR_TYPE:
                 raise exceptions.HypervisorNotFound
-        except exceptions.ResourceNotFond:
+        except exceptions.ResourceNotFound:
             return False
         return func(self, context)
     return _port_belongs_to_vmware
@@ -85,16 +86,22 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             LOG.info(_LI('Precreate network cast'))
             self.dvs_notifier.create_network_cast(context.current,
                 context.network_segments[0])
+            #need to wait for agents. Cast message
+            sleep(2)
 
     def update_network_precommit(self, context):
         if self._check_net_type(context):
             self.dvs_notifier.update_network_cast(
                 context.current, context.network_segments[0], context.original)
+            #need to wait for agents. Cast message
+            sleep(2)
 
     def delete_network_postcommit(self, context):
         if self._check_net_type(context):
             self.dvs_notifier.delete_network_cast(
                 context.current, context.network_segments[0])
+            #need to wait for agents. Cast message
+            sleep(2)
 
     @port_belongs_to_vmware
     def bind_port(self, context):
@@ -139,6 +146,8 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                     context._plugin_context,
                     context.current['id'],
                     n_const.PORT_STATUS_ACTIVE)
+            # Save AMQP on high load
+            sleep(5)
 
     @port_belongs_to_vmware
     def delete_port_postcommit(self, context):
@@ -148,6 +157,8 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 context.original,
                 context.network.network_segments[0],
                 context.host)
+            # Save AMQP on high load
+            sleep(2)
 
     def _check_net_type(self, network_context):
         network_type = network_context.network_segments[0]['network_type']

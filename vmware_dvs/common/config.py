@@ -27,6 +27,11 @@ vmware_opts = [
         default=10,
         help=_('number of times an API must be retried upon '
                'session/connection related errors')),
+    cfg.IntOpt(
+        'connections_pool_size',
+        default=100,
+        help=_('number of vsphere connections pool '
+               'must be higher for intensive operations')),
     cfg.StrOpt('vsphere_login', default='administrator',
                help=_("Vsphere login.")),
     cfg.ListOpt('network_maps',

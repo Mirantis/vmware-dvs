@@ -107,13 +107,17 @@ class DVSController(object):
         for pg_ref in self._get_all_port_groups():
             if pg_ref.value not in pg_keys_with_active_ports:
                 # check name
-                name = self.connection.invoke_api(
-                    vim_util, 'get_object_property',
-                    self.connection.vim, pg_ref, 'name')
-                name_tokens = name.split(self.dvs_name)
-                if (len(name_tokens) == 2 and not name_tokens[0] and
-                        self._valid_uuid(name_tokens[1])):
-                    self._delete_port_group(pg_ref, name)
+                try:
+                    name = self.connection.invoke_api(
+                        vim_util, 'get_object_property',
+                        self.connection.vim, pg_ref, 'name')
+                    name_tokens = name.split(self.dvs_name)
+                    if (len(name_tokens) == 2 and not name_tokens[0] and
+                            self._valid_uuid(name_tokens[1])):
+                        self._delete_port_group(pg_ref, name)
+                except vmware_exceptions.VMwareDriverException as e:
+                    if dvs_const.DELETED_TEXT in e.message:
+                        pass
 
     def _delete_port_group(self, pg_ref, name):
         while True:
@@ -129,7 +133,7 @@ class DVSController(object):
                 raise exceptions.wrap_wmvare_vim_exception(e)
             except vmware_exceptions.VMwareDriverException as e:
                 if dvs_const.DELETED_TEXT in e.message:
-                    sleep(1)
+                    sleep(0.1)
                 else:
                     raise
 
@@ -153,37 +157,47 @@ class DVSController(object):
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
+    def _lookup_unbound_port_or_increse_pg(self, pg):
+        while True:
+            try:
+                port_info = self._lookup_unbound_port(pg)
+                break
+            except exceptions.UnboundPortNotFound:
+                try:
+                    self._increase_ports_on_portgroup(pg)
+                except (vmware_exceptions.VMwareDriverException,
+                        exceptions.VMWareDVSException) as e:
+                    if dvs_const.CONCURRENT_MODIFICATION_TEXT in e.message:
+                        LOG.info(_LI('Concurrent modification on '
+                                     'increase port group.'))
+                        continue
+                    raise e
+        return port_info
+
     def book_port(self, network, port_name, segment, net_name=None):
         try:
             if not net_name:
                 net_name = self._get_net_name(self.dvs_name, network)
             pg = self._get_or_create_pg(net_name, network, segment)
-            while True:
+            for iter in range(0, 4):
                 try:
-                    port_info = self._lookup_unbound_port(pg)
-                    break
-                except exceptions.UnboundPortNotFound:
-                    try:
-                        self._increase_ports_on_portgroup(pg)
-                    except (vmware_exceptions.VMwareDriverException,
-                            exceptions.VMWareDVSException) as e:
-                        if dvs_const.CONCURRENT_MODIFICATION_TEXT in e.message:
-                            LOG.info(_LI('Concurrent modification on '
-                                         'increase port group.'))
-                            continue
-                        raise e
+                    port_info = self._lookup_unbound_port_or_increse_pg(pg)
 
-            builder = SpecBuilder(self.connection.vim.client.factory)
-            port_settings = builder.port_setting()
-            port_settings.blocked = builder.blocked(False)
-            update_spec = builder.port_config_spec(
-                port_info.config.configVersion, port_settings, name=port_name)
-            update_spec.key = port_info.key
-            update_task = self.connection.invoke_api(
-                self.connection.vim, 'ReconfigureDVPort_Task',
-                self._dvs, port=[update_spec])
-            self.connection.wait_for_task(update_task)
-            return port_info.key
+                    builder = SpecBuilder(self.connection.vim.client.factory)
+                    port_settings = builder.port_setting()
+                    port_settings.blocked = builder.blocked(False)
+                    update_spec = builder.port_config_spec(
+                        port_info.config.configVersion, port_settings,
+                        name=port_name)
+                    update_spec.key = port_info.key
+                    update_task = self.connection.invoke_api(
+                        self.connection.vim, 'ReconfigureDVPort_Task',
+                        self._dvs, port=[update_spec])
+                    self.connection.wait_for_task(update_task)
+                    return port_info.key
+                except vmware_exceptions.VimException as e:
+                    sleep(0.1)
+            raise exceptions.wrap_wmvare_vim_exception(e)
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
@@ -204,6 +218,8 @@ class DVSController(object):
             self.connection.wait_for_task(update_task)
         except exceptions.PortNotFound:
             LOG.debug("Port %s was not found. Nothing to delete." % port['id'])
+        except exceptions.ResourceInUse:
+            LOG.debug("Port %s in use. Nothing to delete." % port['id'])
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
@@ -362,7 +378,9 @@ class DVSController(object):
             if (port_key not in connected_port_keys and
                     port_key not in self._blocked_ports):
                 self._blocked_ports.add(port_key)
-                return self._get_port_info_by_portkey(port_key)
+                p_info = self._get_port_info_by_portkey(port_key)
+                if not getattr(p_info.config, 'name', None):
+                    return p_info
         raise exceptions.UnboundPortNotFound()
 
     def _lookup_unbound_port_old(self, port_group):
@@ -534,12 +552,15 @@ class SpecBuilder(object):
 
 def create_network_map_from_config(config):
     """Creates physical network to dvs map from config"""
+    # It needs to increase connection pool for multiple
+    # requests
     connection = api.VMwareAPISession(
         config.vsphere_hostname,
         config.vsphere_login,
         config.vsphere_password,
         config.api_retry_count,
-        config.task_poll_interval)
+        config.task_poll_interval,
+        pool_size=config.connections_pool_size)
     network_map = {}
     for pair in config.network_maps:
         network, dvs = pair.split(':')
