@@ -751,7 +751,7 @@ class UtilTestCase(base.BaseTestCase):
             vmware_conf.vsphere_password,
             vmware_conf.api_retry_count,
             vmware_conf.task_poll_interval,
-            pool_size=100)
+            pool_size=vmware_conf.connections_pool_size)
 
     def test_wrap_retry_w_login_unsuccessful(self):
         func = mock.Mock()
