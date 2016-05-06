@@ -32,13 +32,17 @@ LOG = log.getLogger(__name__)
 class DVSController(object):
     """Controls one DVS."""
 
-    def __init__(self, dvs_name, connection):
+    def __init__(self, dvs_name, connection, use_pg_cache=False):
         self.connection = connection
         self.dvs_name = dvs_name
         self._blocked_ports = set()
         self.builder = SpecBuilder(self.connection.vim.client.factory)
+        self.use_pg_cache = use_pg_cache
+        self._pg_cache = {}
         try:
             self._dvs, self._datacenter = self._get_dvs(dvs_name, connection)
+            if self.use_pg_cache:
+                self._init_pg_cache()
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
@@ -61,6 +65,8 @@ class DVSController(object):
             raise exceptions.wrap_wmvare_vim_exception(e)
         else:
             pg = result.result
+            if self.use_pg_cache:
+                self._pg_cache[name] = pg
             LOG.info(_LI('Network %(name)s created \n%(pg_ref)s'),
                      {'name': name, 'pg_ref': pg})
             return pg
@@ -120,6 +126,8 @@ class DVSController(object):
     def _delete_port_group(self, pg_ref, name):
         while True:
             try:
+                if self.use_pg_cache and name in self._pg_cache:
+                    del self._pg_cache[name]
                 pg_delete_task = self.connection.invoke_api(
                     self.connection.vim,
                     'Destroy_Task',
@@ -250,6 +258,13 @@ class DVSController(object):
         pg.configVersion = config_version
         return pg
 
+    def _init_pg_cache(self):
+        for pg in self._get_all_port_groups():
+            name = self.connection.invoke_api(
+                vim_util, 'get_object_property',
+                self.connection.vim, pg, 'name')
+            self._pg_cache[name] = pg
+
     def _get_dvs(self, dvs_name, connection):
         """Get the dvs by name"""
         dcs = connection.invoke_api(
@@ -299,16 +314,19 @@ class DVSController(object):
         return dvs_list
 
     def _get_pg_by_name(self, pg_name):
-        """Get the dpg ref by name"""
-        for pg in self._get_all_port_groups():
-            try:
-                name = self.connection.invoke_api(
-                    vim_util, 'get_object_property',
-                    self.connection.vim, pg, 'name')
-                if pg_name == name:
-                    return pg
-            except vmware_exceptions.VimException:
-                pass
+        if self.use_pg_cache:
+            if pg_name in self._pg_cache:
+                return self._pg_cache[pg_name]
+        else:
+            for pg in self._get_all_port_groups():
+                try:
+                    name = self.connection.invoke_api(
+                        vim_util, 'get_object_property',
+                        self.connection.vim, pg, 'name')
+                    if pg_name == name:
+                        return pg
+                except vmware_exceptions.VimException:
+                    pass
         raise exceptions.PortGroupNotFound(pg_name=pg_name)
 
     def _get_all_port_groups(self):
@@ -524,7 +542,7 @@ class SpecBuilder(object):
         return spec
 
 
-def create_network_map_from_config(config):
+def create_network_map_from_config(config, pg_cache=False):
     """Creates physical network to dvs map from config"""
     # It needs to increase connection pool for multiple
     # requests
@@ -538,7 +556,7 @@ def create_network_map_from_config(config):
     network_map = {}
     for pair in config.network_maps:
         network, dvs = pair.split(':')
-        network_map[network] = DVSController(dvs, connection)
+        network_map[network] = DVSController(dvs, connection, pg_cache)
     return network_map
 
 

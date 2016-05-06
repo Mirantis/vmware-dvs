@@ -85,7 +85,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
 
         self.quitting_rpc_timeout = quitting_rpc_timeout
         self.network_map = dvs_util.create_network_map_from_config(
-            cfg.CONF.ML2_VMWARE)
+            cfg.CONF.ML2_VMWARE, pg_cache=True)
         self.updated_ports = set()
         self.deleted_ports = set()
         self.known_ports = set()
