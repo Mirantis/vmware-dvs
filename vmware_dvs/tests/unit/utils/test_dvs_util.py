@@ -168,8 +168,7 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
 
     def test__get_net_name(self):
         expect = self.dvs_name + fake_network['id']
-        self.assertEqual(expect, self.controller._get_net_name(self.dvs_name,
-                                                               fake_network))
+        self.assertEqual(expect, self.controller._get_net_name(fake_network))
 
     @mock.patch('vmware_dvs.utils.dvs_util.DVSController.get_port_info')
     def test_release_port(self, get_port_info_mock):
@@ -361,9 +360,7 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
 
     def assert_create_specification(self, spec):
         self.assertEqual(
-            self.controller._get_net_name(self.dvs_name, fake_network),
-            spec.name
-        )
+            self.controller._get_net_name(fake_network), spec.name)
         self.assertEqual('earlyBinding', spec.type)
         self.assertEqual('Managed By Neutron', spec.description)
         vlan_spec = spec.defaultPortConfig.vlan
@@ -462,8 +459,7 @@ class DVSControllerNetworkUpdateTestCase(DVSControllerBaseTestCase):
                     elif args == (vim, wrong_pg, 'name'):
                         return 'wrong_pg'
                     elif args == (vim, pg_to_update, 'name'):
-                        return dvs_util.DVSController._get_net_name(
-                            self.dvs_name, fake_network)
+                        return self.controller._get_net_name(fake_network)
                     elif args == (vim, not_pg, 'name'):
                         self.fail('Called with not pg')
                     elif args == (vim, pg_to_update, 'config'):
@@ -539,8 +535,7 @@ class DVSControllerNetworkDeletionTestCase(DVSControllerBaseTestCase):
                     elif args == (vim, wrong_pg, 'name'):
                         return 'wrong_pg'
                     elif args == (vim, pg_to_delete, 'name'):
-                        return dvs_util.DVSController._get_net_name(
-                            self.dvs_name, fake_network)
+                        return self.controller._get_net_name(fake_network)
                     elif args == (vim, not_pg, 'name'):
                         self.fail('Called with not pg')
             elif module == vim:
@@ -719,8 +714,9 @@ class UtilTestCase(base.BaseTestCase):
 
     def setUp(self):
         super(UtilTestCase, self).setUp()
+        self.oslo_connection_mock = mock.Mock()
         patch = mock.patch('oslo_vmware.api.VMwareAPISession',
-                           return_value='session')
+                           return_value=self.oslo_connection_mock)
         self.session_mock = patch.start()
         self.addCleanup(patch.stop)
 
@@ -742,7 +738,7 @@ class UtilTestCase(base.BaseTestCase):
 
         for net, dvs_name in [i.split(':') for i in network_map]:
             controller = actual[net]
-            self.assertEqual('session', controller.connection)
+            self.assertEqual(self.oslo_connection_mock, controller.connection)
 
         vmware_conf = config.CONF.ML2_VMWARE
         self.session_mock.assert_called_once_with(
