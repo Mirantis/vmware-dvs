@@ -233,7 +233,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                                                      start_listening=False)
 
     def _handle_sigterm(self, signum, frame):
-        LOG.debug("Agent caught SIGTERM, quitting daemon loop.")
+        LOG.info(_LI("Agent caught SIGTERM, quitting daemon loop."))
+        self.sg_agent.firewall.stop_all()
         self.run_daemon_loop = False
 
     @dvs_util.wrap_retry
