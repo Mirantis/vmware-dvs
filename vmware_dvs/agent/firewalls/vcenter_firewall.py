@@ -81,7 +81,7 @@ class PortQueue(object):
                         stored_tasks = self.update_store.get(dvs, [])
                         index = next((i for i, p in enumerate(stored_tasks)
                                       if p['id'] == port['id']), None)
-                        if index:
+                        if index is not None:
                             stored_tasks[index] = port
                         else:
                             stored_tasks.append(port)
