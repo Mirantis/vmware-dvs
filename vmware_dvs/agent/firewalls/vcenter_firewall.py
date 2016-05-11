@@ -14,6 +14,7 @@
 #    under the License.
 
 from multiprocessing import Process, Queue
+import signal
 import threading
 import time
 
@@ -31,19 +32,34 @@ CONF = config.CONF
 CLEANUP_REMOVE_TASKS_TIMEDELTA = 60
 
 
-def firewall_updater_loop(list_queues, remove_queue):
-    pq = PortQueue(list_queues, remove_queue)
-    pq.port_updater_loop()
-    while True:
-        r_ports = pq.get_remove_tasks()
-        if r_ports:
-            remover(pq, r_ports)
+def firewall_main(list_queues, remove_queue):
+    dvs_firewall = DVSFirewallUpdater(list_queues, remove_queue)
+    signal.signal(signal.SIGTERM, dvs_firewall._handle_sigterm)
+    dvs_firewall.updater_loop()
 
-        dvs, ports = pq.get_update_tasks()
-        if dvs and ports > 0:
-            updater(dvs, ports)
-        else:
-            time.sleep(1)
+
+class DVSFirewallUpdater(object):
+
+    def __init__(self, list_queues, remove_queue):
+        self.pq = PortQueue(list_queues, remove_queue)
+        self.run_daemon_loop = True
+        self.pq.port_updater_loop()
+
+    def updater_loop(self):
+        while self.run_daemon_loop:
+            r_ports = self.pq.get_remove_tasks()
+            if r_ports:
+                remover(self.pq, r_ports)
+
+            dvs, ports = self.pq.get_update_tasks()
+            if dvs and ports > 0:
+                updater(dvs, ports)
+            else:
+                time.sleep(1)
+
+    def _handle_sigterm(self, signum, frame):
+        LOG.info(_LI("Termination of firewall process called"))
+        self.run_daemon_loop = False
 
 
 class PortQueue(object):
@@ -141,9 +157,12 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         for x in xrange(10):
             self.list_queues.append(Queue())
         self.remove_queue = Queue()
-        self.fw_process = Process(target=firewall_updater_loop,
-            args=(self.list_queues, self.remove_queue))
+        self.fw_process = Process(
+            target=firewall_main, args=(self.list_queues, self.remove_queue))
         self.fw_process.start()
+
+    def stop_all(self):
+        self.fw_process.terminate()
 
     def prepare_port_filter(self, ports):
         self._process_port_filter(ports)
