@@ -14,13 +14,15 @@
 #    under the License.
 
 import mock
-from neutron.tests import base
 
+from neutron.tests import base
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
+
 from vmware_dvs.common import config
 from vmware_dvs.common import exceptions
 from vmware_dvs.utils import dvs_util
+from vmware_dvs.utils import spec_builder
 from vmware_dvs.common import constants as dvs_const
 
 CONF = config.CONF
@@ -178,7 +180,7 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
         self.controller._blocked_ports.add(dvs_port.key)
         self.connection.wait_for_task.return_value = mock.Mock(state="error")
         self.controller.release_port(fake_port)
-        self.assertIn(dvs_port.key, self.controller._blocked_ports)
+        self.assertNotIn(dvs_port.key, self.controller._blocked_ports)
 
         get_port_info_mock.assert_called_once_with(fake_port)
         self.assertEqual(1, self.connection.invoke_api.call_count)
@@ -675,8 +677,8 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
         with mock.patch.object(self.controller.connection, 'invoke_api'):
             self.controller._increase_ports_on_portgroup(pg)
 
-        _build_pg_update_spec.assert_called_once_with('_config_version_',
-                                                      ports_number=1)
+        _build_pg_update_spec.assert_called_once_with(
+            '_config_version_', ports_number=dvs_util.INIT_PG_PORTS_COUNT)
 
     def _get_connection_mock(self, dvs_name):
         return mock.Mock(vim=self.vim)
@@ -689,7 +691,7 @@ class SpecBuilderTestCase(base.BaseTestCase):
         self.spec = mock.Mock(name='spec')
         self.factory = mock.Mock(name='factory')
         self.factory.create.return_value = self.spec
-        self.builder = dvs_util.SpecBuilder(self.factory)
+        self.builder = spec_builder.SpecBuilder(self.factory)
 
     def test_port_criteria_with_port_key(self):
         criteria = self.builder.port_criteria(port_key='_some_port_')

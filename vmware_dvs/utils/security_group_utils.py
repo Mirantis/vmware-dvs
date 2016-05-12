@@ -23,6 +23,7 @@ from oslo_vmware import exceptions as vmware_exceptions
 
 from vmware_dvs.common import constants as dvs_const, exceptions
 from vmware_dvs.utils import dvs_util
+from vmware_dvs.utils import spec_builder
 
 LOG = log.getLogger(__name__)
 
@@ -40,7 +41,7 @@ HASHED_RULE_INFO_KEYS = [
 ]
 
 
-class PortConfigSpecBuilder(dvs_util.SpecBuilder):
+class PortConfigSpecBuilder(spec_builder.SpecBuilder):
     def __init__(self, spec_factory):
         super(PortConfigSpecBuilder, self).__init__(spec_factory)
         self.rule_obj = self.factory.create('ns0:DvsTrafficRule')
