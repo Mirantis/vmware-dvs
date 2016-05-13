@@ -37,7 +37,7 @@ FAKE_SG_RULE_IPV4_WITH_REMOTE = {'ethertype': 'IPv4', 'direction': 'ingress',
 class TestDVSFirewallDriver(base.BaseTestCase):
 
     @mock.patch('vmware_dvs.agent.firewalls.'
-                'vcenter_firewall.firewall_updater_loop')
+                'vcenter_firewall.firewall_main')
     def setUp(self, f):
         super(TestDVSFirewallDriver, self).setUp()
         self.dvs = mock.Mock()
