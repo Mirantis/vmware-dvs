@@ -262,6 +262,11 @@ def port_configuration(builder, port_key, sg_rules, hashed_rules):
                 rule.backward_port_range == (67, 67) and
                 rule.port_range == (68, 68)):
                     cidr_revert = False
+            if (rule.ethertype == 'IPv6' and rule.protocol == 'udp' and
+                rule.direction == 'incomingPackets' and
+                rule.backward_port_range == (547, 547) and
+                rule.port_range == (546, 546)):
+                    cidr_revert = False
             reverse_rule = rule.reverse(cidr_revert)
             built_reverse_rule = reverse_rule.build(reverse_seq)
             hashed_rules[rule_hash] = (built_rule, built_reverse_rule)
