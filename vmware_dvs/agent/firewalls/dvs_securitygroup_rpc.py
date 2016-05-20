@@ -16,15 +16,12 @@
 from threading import Timer
 from oslo_log import log as logging
 
-from neutron.agent import firewall
 from neutron.agent import securitygroups_rpc
-from neutron.i18n import _LI, _LW
+from neutron.i18n import _LI
 
 from vmware_dvs.utils.rpc_translator import update_rules
 
 LOG = logging.getLogger(__name__)
-
-sg_cfg = securitygroups_rpc.cfg.CONF.SECURITYGROUP
 
 
 class DVSSecurityGroupRpc(securitygroups_rpc.SecurityGroupAgentRpc):
@@ -33,26 +30,8 @@ class DVSSecurityGroupRpc(securitygroups_rpc.SecurityGroupAgentRpc):
                  defer_refresh_firewall=False):
         self.context = context
         self.plugin_rpc = plugin_rpc
+        self._devices_to_update = set()
         self.init_firewall(defer_refresh_firewall)
-
-    def init_firewall(self, defer_refresh_firewall=False):
-        firewall_driver = sg_cfg.firewall_driver or 'noop'
-        LOG.debug("Init firewall settings (driver=%s)", firewall_driver)
-        if not securitygroups_rpc._is_valid_driver_combination():
-            LOG.warn(_LW("Driver configuration doesn't match "
-                         "with enable_security_group"))
-        firewall_class = firewall.load_firewall_driver_class(firewall_driver)
-        self.firewall = firewall_class()
-        # The following flag will be set to true if port filter must not be
-        # applied as soon as a rule or membership notification is received
-        self.defer_refresh_firewall = defer_refresh_firewall
-        # Stores devices for which firewall should be refreshed when
-        # deferred refresh is enabled.
-        self.devices_to_refilter = set()
-        # Flag raised when a global refresh is needed
-        self.global_refresh_firewall = False
-        self._use_enhanced_rpc = None
-        self._dev_to_update = set()
 
     def prepare_devices_filter(self, device_ids):
         if not device_ids:
@@ -74,9 +53,9 @@ class DVSSecurityGroupRpc(securitygroups_rpc.SecurityGroupAgentRpc):
         LOG.info(_LI("Remove device filter for %r"), device_ids)
         self.firewall.remove_port_filter(device_ids)
 
-    def _port_refresh(self):
-        device_ids = self._dev_to_update
-        self._dev_to_update = self._dev_to_update - device_ids
+    def _refresh_ports(self):
+        device_ids = self._devices_to_update
+        self._devices_to_update = self._devices_to_update - device_ids
         if not device_ids:
             return
         if self.use_enhanced_rpc:
@@ -90,5 +69,6 @@ class DVSSecurityGroupRpc(securitygroups_rpc.SecurityGroupAgentRpc):
 
     def refresh_firewall(self, device_ids=None):
         LOG.info(_LI("Refresh firewall rules"))
-        self._dev_to_update |= device_ids
-        Timer(2, self._port_refresh).start()
+        self._devices_to_update |= device_ids
+        if device_ids:
+            Timer(2, self._refresh_ports).start()
