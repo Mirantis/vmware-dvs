@@ -106,6 +106,7 @@ if is_service_enabled vmware_dvs-server; then
     elif [[ "$1" == "stack" && "$2" == "install" ]]; then
         install_vmware_dvs_dependency
         install_networking_vsphere
+	pre_configure_vmware_dvs
     elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
         # no-op
 	:
@@ -132,9 +133,11 @@ if is_service_enabled vmware_dvs-agent; then
     elif [[ "$1" == "stack" && "$2" == "install" ]]; then
         install_vmware_dvs_dependency
         install_networking_vsphere
+	pre_configure_vmware_dvs
     elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
-	# no-op
-	:
+	add_vmware_dvs_config
+	configure_vmware_dvs_config
+	start_vmware_dvs_agent
     elif [[ "$1" == "stack" && "$2" == "post-extra" ]]; then
         # no-op
         :
