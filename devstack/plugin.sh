@@ -34,6 +34,7 @@ VMWARE_DVS_NETWORKING_DIR=$DEST/networking-vsphere
 # ------------
 
 function add_vmware_dvs_config {
+    echo "Networkin-vSphere: add_vmware_dvs_config"
     VMWARE_DVS_CONF_PATH=etc/neutron/plugins/ml2
     VMWARE_DVS_CONF_FILENAME=vmware_dvs_agent.ini
     mkdir -p /$VMWARE_DVS_CONF_PATH
@@ -43,7 +44,7 @@ function add_vmware_dvs_config {
 }
 
 function configure_vmware_dvs_config {
-    echo "Configuring vmware_dvs_agent.ini for Vmware_Dvs"
+    echo "Networkin-vSphere: configure_vmware_dvs_config"
     iniset /$VMWARE_DVS_CONF_FILE DEFAULT host $VMWAREAPI_CLUSTER
     iniset /$VMWARE_DVS_CONF_FILE securitygroup enable_security_group $VMWARE_DVS_ENABLE_SG
     iniset /$VMWARE_DVS_CONF_FILE securitygroup firewall_driver $VMWARE_DVS_FW_DRIVER
@@ -54,12 +55,14 @@ function configure_vmware_dvs_config {
 }
 
 function start_vmware_dvs_agent {
+    echo "Networkin-vSphere: start_vmware_dvs_agent"
     VMWARE_DVS_AGENT_BINARY="$NEUTRON_BIN_DIR/neutron-dvs-agent"
     echo "Starting Vmware_Dvs Agent"
     run_process vmware_dvs-agent "python $VMWARE_DVS_AGENT_BINARY --config-file $NEUTRON_CONF --config-file /$VMWARE_DVS_CONF_FILE"
 }
 
 function setup_vmware_dvs_bridges {
+    echo "Networkin-vSphere: setup_vmware_dvs_bridges"
     echo "Adding Bridges for Vmware_Dvs Agent"
     sudo ovs-vsctl --no-wait -- --may-exist add-br $INTEGRATION_BRIDGE
     if [ "$VMWARE_DVS_TENANT_NETWORK_TYPE" == "vxlan" ]; then
@@ -73,6 +76,7 @@ function setup_vmware_dvs_bridges {
 }
 
 function cleanup_vmware_dvs_bridges {
+    echo "Networkin-vSphere: cleanup_vmware_dvs_bridges"
     echo "Removing Bridges for Vmware_Dvs Agent"
     sudo ovs-vsctl del-br $INTEGRATION_BRIDGE
     sudo ovs-vsctl del-br $TUNNEL_BRIDGE
@@ -81,12 +85,14 @@ function cleanup_vmware_dvs_bridges {
 }
 
 function pre_configure_vmware_dvs {
+    echo "Networkin-vSphere: pre_configure_vmware_dvs"
     echo "Configuring Neutron for Vmware_Dvs Agent"
     configure_neutron
     _configure_neutron_service
 }
 
 function install_vmware_dvs_dependency {
+    echo "Networkin-vSphere: install_vmware_dvs_dependency"
     echo "Installing dependencies for VMware_DVS"
     install_nova
     install_neutron
@@ -94,6 +100,7 @@ function install_vmware_dvs_dependency {
 }
 
 function install_networking_vsphere {
+    echo "Networkin-vSphere: install_networking_vsphere"
     echo "Installing the Networking-vSphere"
     setup_develop $VMWARE_DVS_NETWORKING_DIR
 }
