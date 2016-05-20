@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from threading import Timer
 from oslo_log import log as logging
 
 from neutron.agent import firewall
@@ -51,6 +52,7 @@ class DVSSecurityGroupRpc(securitygroups_rpc.SecurityGroupAgentRpc):
         # Flag raised when a global refresh is needed
         self.global_refresh_firewall = False
         self._use_enhanced_rpc = None
+        self._dev_to_update = set()
 
     def prepare_devices_filter(self, device_ids):
         if not device_ids:
@@ -72,13 +74,11 @@ class DVSSecurityGroupRpc(securitygroups_rpc.SecurityGroupAgentRpc):
         LOG.info(_LI("Remove device filter for %r"), device_ids)
         self.firewall.remove_port_filter(device_ids)
 
-    def refresh_firewall(self, device_ids=None):
-        LOG.info(_LI("Refresh firewall rules"))
+    def _port_refresh(self):
+        device_ids = self._dev_to_update
+        self._dev_to_update = self._dev_to_update - device_ids
         if not device_ids:
-            device_ids = self.firewall.ports.keys()
-            if not device_ids:
-                LOG.info(_LI("No ports here to refresh firewall"))
-                return
+            return
         if self.use_enhanced_rpc:
             devices_info = self.plugin_rpc.security_group_info_for_devices(
                 self.context, device_ids)
@@ -87,3 +87,8 @@ class DVSSecurityGroupRpc(securitygroups_rpc.SecurityGroupAgentRpc):
             devices = self.plugin_rpc.security_group_rules_for_devices(
                 self.context, device_ids)
         self.firewall.update_port_filter(devices.values())
+
+    def refresh_firewall(self, device_ids=None):
+        LOG.info(_LI("Refresh firewall rules"))
+        self._dev_to_update |= device_ids
+        Timer(2, self._port_refresh).start()
