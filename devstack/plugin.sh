@@ -48,9 +48,9 @@ function configure_vmware_dvs_config {
     iniset /$VMWARE_DVS_CONF_FILE DEFAULT host $VMWAREAPI_CLUSTER
     iniset /$VMWARE_DVS_CONF_FILE securitygroup enable_security_group $VMWARE_DVS_ENABLE_SG
     iniset /$VMWARE_DVS_CONF_FILE securitygroup firewall_driver $VMWARE_DVS_FW_DRIVER
-    iniset /$VMWARE_DVS_CONF_FILE ml2_vmware vsphere_login $VMWARE_IP
-    iniset /$VMWARE_DVS_CONF_FILE ml2_vmware vsphere_hostname $VMWARE_USER
-    iniset /$VMWARE_DVS_CONF_FILE ml2_vmware vsphere_password $VMWARE_PASSWORD
+    iniset /$VMWARE_DVS_CONF_FILE ml2_vmware vsphere_login $VMWAREAPI_IP
+    iniset /$VMWARE_DVS_CONF_FILE ml2_vmware vsphere_hostname $VMWAREAPI_USER
+    iniset /$VMWARE_DVS_CONF_FILE ml2_vmware vsphere_password $VMWAREAPI_PASSWORD
     iniset /$VMWARE_DVS_CONF_FILE ml2_vmware network_maps $VMWARE_DVS_CLUSTER_DVS_MAPPING
 }
 
