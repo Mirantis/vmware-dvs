@@ -528,6 +528,15 @@ class DVSControllerWithCache(DVSController):
         self._pg_cache.pop(name, None)
 
     def _get_pg_by_name(self, pg_name):
+        if pg_name not in self._pg_cache:
+            # if pg not in cache, try to find port group on vsphere
+            pg = super(DVSControllerWithCache, self)._get_pg_by_name(pg_name)
+            self._pg_cache.setdefault(pg_name, {}).update({
+                'item': pg,
+                'status': READY_PG_STATUS,
+                'pg_key': pg.value
+            })
+            return pg
         if self._pg_cache.get(pg_name, {}).get('status') in (
                 READY_PG_STATUS, UPDATING_PG_STATUS, REMOVING_PG_STATUS):
             return self._pg_cache[pg_name]['item']
