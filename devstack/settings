@@ -50,15 +50,6 @@ VMWARE_DVS_BRIDGE_MAPPINGS=${VMWARE_DVS_BRIDGE_MAPPINGS:-physnet1:br-ethx}
 # Provide Integration Bridge.
 INTEGRATION_BRIDGE=${INTEGRATION_BRIDGE:-br-int}
 
-# Provide Tunnel Bridge.
-TUNNEL_BRIDGE=${TUNNEL_BRIDGE:-br-tun}
-
-# Provide Security Bridge.
-SECURITY_BRIDGE=${SECURITY_BRIDGE:-br-sec}
-
-# Provide to enable Fault Tolerance for VMware_DVS.
-ENABLE_VMWARE_DVS_MONITOR=${ENABLE_VMWARE_DVS_MONITOR:-False}
-
 case $VMWARE_DVS_MODE in
     allinone)
         enable_service vmware_dvs-server vmware_dvs-agent

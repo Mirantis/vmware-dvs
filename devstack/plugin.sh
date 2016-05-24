@@ -65,22 +65,14 @@ function setup_vmware_dvs_bridges {
     echo "Networkin-vSphere: setup_vmware_dvs_bridges"
     echo "Adding Bridges for Vmware_Dvs Agent"
     sudo ovs-vsctl --no-wait -- --may-exist add-br $INTEGRATION_BRIDGE
-    if [ "$VMWARE_DVS_TENANT_NETWORK_TYPE" == "vxlan" ]; then
-        sudo ovs-vsctl --no-wait -- --may-exist add-br $TUNNEL_BRIDGE
-    else
-        sudo ovs-vsctl --no-wait -- --may-exist add-br $VMWARE_DVS_PHYSICAL_BRIDGE
-        sudo ovs-vsctl --no-wait -- --may-exist add-port $VMWARE_DVS_PHYSICAL_BRIDGE $VMWARE_DVS_PHYSICAL_INTERFACE
-    fi
-    sudo ovs-vsctl --no-wait -- --may-exist add-br $SECURITY_BRIDGE
-    sudo ovs-vsctl --no-wait -- --may-exist add-port $SECURITY_BRIDGE $VMWARE_DVS_TRUNK_INTERFACE
+    sudo ovs-vsctl --no-wait -- --may-exist add-br $VMWARE_DVS_PHYSICAL_BRIDGE
+    sudo ovs-vsctl --no-wait -- --may-exist add-port $VMWARE_DVS_PHYSICAL_BRIDGE $VMWARE_DVS_PHYSICAL_INTERFACE
 }
 
 function cleanup_vmware_dvs_bridges {
     echo "Networkin-vSphere: cleanup_vmware_dvs_bridges"
     echo "Removing Bridges for Vmware_Dvs Agent"
     sudo ovs-vsctl del-br $INTEGRATION_BRIDGE
-    sudo ovs-vsctl del-br $TUNNEL_BRIDGE
-    sudo ovs-vsctl del-br $SECURITY_BRIDGE
     sudo ovs-vsctl del-br $VMWARE_DVS_PHYSICAL_BRIDGE
 }
 
@@ -144,6 +136,7 @@ if is_service_enabled vmware_dvs-agent; then
     elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
 	add_vmware_dvs_config
 	configure_vmware_dvs_config
+	setup_vmware_dvs_bridges
 	start_vmware_dvs_agent
     elif [[ "$1" == "stack" && "$2" == "post-extra" ]]; then
         # no-op
