@@ -17,11 +17,12 @@ from time import sleep
 import uuid
 import six
 
-from neutron.i18n import _LI, _LW
+from neutron.i18n import _LI, _LW, _LE
 from oslo_log import log
 from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
+from requests.exceptions import ConnectionError
 
 from vmware_dvs.common import constants as dvs_const
 from vmware_dvs.common import exceptions
@@ -595,15 +596,19 @@ class DVSControllerWithCache(DVSController):
 
 def create_network_map_from_config(config, pg_cache=False):
     """Creates physical network to dvs map from config"""
-    # It needs to increase connection pool for multiple
-    # requests
-    connection = api.VMwareAPISession(
-        config.vsphere_hostname,
-        config.vsphere_login,
-        config.vsphere_password,
-        config.api_retry_count,
-        config.task_poll_interval,
-        pool_size=config.connections_pool_size)
+    connection = None
+    while not connection:
+        try:
+            connection = api.VMwareAPISession(
+                config.vsphere_hostname,
+                config.vsphere_login,
+                config.vsphere_password,
+                config.api_retry_count,
+                config.task_poll_interval,
+                pool_size=config.connections_pool_size)
+        except ConnectionError:
+            LOG.error(_LE("No connection to vSphere"))
+            sleep(10)
     network_map = {}
     controller_class = DVSControllerWithCache if pg_cache else DVSController
     for pair in config.network_maps:
