@@ -26,24 +26,31 @@ from requests.exceptions import ConnectionError
 
 from vmware_dvs.common import constants as dvs_const
 from vmware_dvs.common import exceptions
+from vmware_dvs.utils import spec_builder
 
 LOG = log.getLogger(__name__)
+
+CREATING_PG_STATUS = 'creating'
+READY_PG_STATUS = 'ready'
+UPDATING_PG_STATUS = 'updating'
+REMOVING_PG_STATUS = 'removing'
+
+INIT_PG_PORTS_COUNT = 4
+TASK_POOL_INTERVAL = 0.5
+FREE_PORTS_CACHE_SIZE = 50
 
 
 class DVSController(object):
     """Controls one DVS."""
 
-    def __init__(self, dvs_name, connection, use_pg_cache=False):
+    def __init__(self, dvs_name, connection):
         self.connection = connection
         self.dvs_name = dvs_name
         self._blocked_ports = set()
-        self.builder = SpecBuilder(self.connection.vim.client.factory)
-        self.use_pg_cache = use_pg_cache
-        self._pg_cache = {}
+        self.builder = spec_builder.SpecBuilder(
+            self.connection.vim.client.factory)
         try:
             self._dvs, self._datacenter = self._get_dvs(dvs_name, connection)
-            if self.use_pg_cache:
-                self._init_pg_cache()
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
@@ -66,8 +73,6 @@ class DVSController(object):
             raise exceptions.wrap_wmvare_vim_exception(e)
         else:
             pg = result.result
-            if self.use_pg_cache:
-                self._pg_cache[name] = pg
             LOG.info(_LI('Network %(name)s created \n%(pg_ref)s'),
                      {'name': name, 'pg_ref': pg})
             return pg
@@ -104,7 +109,8 @@ class DVSController(object):
         try:
             pg_ref = self._get_pg_by_name(name)
         except exceptions.PortGroupNotFound:
-            LOG.debug('Network %s not present in vcenter.' % name)
+            LOG.debug('Network %s is not present in vcenter. '
+                      'Nothing to delete.' % name)
             return
         self._delete_port_group(pg_ref, name)
 
@@ -127,8 +133,6 @@ class DVSController(object):
     def _delete_port_group(self, pg_ref, name):
         while True:
             try:
-                if self.use_pg_cache and name in self._pg_cache:
-                    del self._pg_cache[name]
                 pg_delete_task = self.connection.invoke_api(
                     self.connection.vim,
                     'Destroy_Task',
@@ -163,7 +167,7 @@ class DVSController(object):
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
-    def _lookup_unbound_port_or_increse_pg(self, pg):
+    def _lookup_unbound_port_or_increase_pg(self, pg):
         while True:
             try:
                 port_info = self._lookup_unbound_port(pg)
@@ -187,7 +191,7 @@ class DVSController(object):
             pg = self._get_or_create_pg(net_name, network, segment)
             for iter in range(0, 4):
                 try:
-                    port_info = self._lookup_unbound_port_or_increse_pg(pg)
+                    port_info = self._lookup_unbound_port_or_increase_pg(pg)
 
                     port_settings = self.builder.port_setting()
                     port_settings.blocked = self.builder.blocked(False)
@@ -220,6 +224,7 @@ class DVSController(object):
                 self.connection.vim, 'ReconfigureDVPort_Task',
                 self._dvs, port=[update_spec])
             self.connection.wait_for_task(update_task)
+            self.remove_block(port_info.key)
         except exceptions.PortNotFound:
             LOG.debug("Port %s was not found. Nothing to delete." % port['id'])
         except exceptions.ResourceInUse:
@@ -259,13 +264,6 @@ class DVSController(object):
         pg.configVersion = config_version
         return pg
 
-    def _init_pg_cache(self):
-        for pg in self._get_all_port_groups():
-            name = self.connection.invoke_api(
-                vim_util, 'get_object_property',
-                self.connection.vim, pg, 'name')
-            self._pg_cache[name] = pg
-
     def _get_dvs(self, dvs_name, connection):
         """Get the dvs by name"""
         dcs = connection.invoke_api(
@@ -281,6 +279,7 @@ class DVSController(object):
                 network_folder, 'childEntity')
             if results:
                 networks = results.ManagedObjectReference
+                # Search between top-level dvswitches, if any
                 dvswitches = self._get_object_by_type(
                     networks, 'VmwareDistributedVirtualSwitch')
                 for dvs in dvswitches:
@@ -289,22 +288,41 @@ class DVSController(object):
                         connection.vim, dvs, 'name')
                     if name == dvs_name:
                         return dvs, datacenter
+                # if we still haven't found it, search sub-folders
+                dvswitches = self._search_inside_folders(networks,
+                                                         connection)
+                for dvs in dvswitches:
+                    name = connection.invoke_api(
+                        vim_util, 'get_object_property',
+                        connection.vim, dvs, 'name')
+                    if name == dvs_name:
+                        return dvs, datacenter
         raise exceptions.DVSNotFound(dvs_name=dvs_name)
 
+    def _search_inside_folders(self, net_folders, connection):
+        dvs_list = []
+        folders = self._get_object_by_type(net_folders, 'Folder')
+        for folder in folders:
+            results = connection.invoke_api(
+                vim_util, 'get_object_property', connection.vim,
+                folder, 'childEntity').ManagedObjectReference
+            dvs = self._get_object_by_type(results,
+                                           'VmwareDistributedVirtualSwitch')
+            if dvs:
+                dvs_list += dvs
+        return dvs_list
+
     def _get_pg_by_name(self, pg_name):
-        if self.use_pg_cache:
-            if pg_name in self._pg_cache:
-                return self._pg_cache[pg_name]
-        else:
-            for pg in self._get_all_port_groups():
-                try:
-                    name = self.connection.invoke_api(
-                        vim_util, 'get_object_property',
-                        self.connection.vim, pg, 'name')
-                    if pg_name == name:
-                        return pg
-                except vmware_exceptions.VimException:
-                    pass
+        """Get the dpg ref by name"""
+        for pg in self._get_all_port_groups():
+            try:
+                name = self.connection.invoke_api(
+                    vim_util, 'get_object_property',
+                    self.connection.vim, pg, 'name')
+                if pg_name == name:
+                    return pg
+            except vmware_exceptions.VimException:
+                pass
         raise exceptions.PortGroupNotFound(pg_name=pg_name)
 
     def _get_all_port_groups(self):
@@ -340,8 +358,7 @@ class DVSController(object):
 
         Get the desired object from the given objects result by the given type.
         """
-        return [obj for obj in results
-                if obj._type == type_value]
+        return [obj for obj in results if obj._type == type_value]
 
     def _get_ports_for_pg(self, pg_name):
         pg = self._get_pg_by_name(pg_name)
@@ -349,30 +366,32 @@ class DVSController(object):
             vim_util, 'get_object_property',
             self.connection.vim, pg, 'portKeys')[0]
 
+    def _get_free_pg_keys(self, port_group):
+        criteria = self.builder.port_criteria(
+            port_group_key=port_group.value)
+        all_port_keys = set(
+            self.connection.invoke_api(self.connection.vim,
+                                       'FetchDVPortKeys',
+                                       self._dvs, criteria=criteria))
+        criteria.connected = True
+        connected_port_keys = set(
+            self.connection.invoke_api(self.connection.vim,
+                                       'FetchDVPortKeys',
+                                       self._dvs, criteria=criteria))
+        return list(all_port_keys - connected_port_keys - self._blocked_ports)
+
     def _lookup_unbound_port(self, port_group):
-        criteria = self.builder.port_criteria(port_group_key=port_group.value)
-        all_port_keys = self.connection.invoke_api(
-            self.connection.vim,
-            'FetchDVPortKeys',
-            self._dvs, criteria=criteria)
-        criteria = self.builder.port_criteria(port_group_key=port_group.value,
-                                              connected=True)
-        connected_port_keys = self.connection.invoke_api(
-            self.connection.vim,
-            'FetchDVPortKeys',
-            self._dvs, criteria=criteria)
-        for port_key in all_port_keys:
-            if (port_key not in connected_port_keys and
-                    port_key not in self._blocked_ports):
-                self._blocked_ports.add(port_key)
-                p_info = self._get_port_info_by_portkey(port_key)
-                if not getattr(p_info.config, 'name', None):
-                    return p_info
+        for port_key in self._get_free_pg_keys(port_group):
+            self._blocked_ports.add(port_key)
+            p_info = self._get_port_info_by_portkey(port_key)
+            if not getattr(p_info.config, 'name', None):
+                return p_info
         raise exceptions.UnboundPortNotFound()
 
     def _increase_ports_on_portgroup(self, port_group):
         pg_info = self._get_config_by_ref(port_group)
-        ports_number = pg_info.numPorts * 2 if pg_info.numPorts else 1
+        #TODO(ekosareva): need to have max size of ports number
+        ports_number = max(INIT_PG_PORTS_COUNT, pg_info.numPorts * 2)
         pg_spec = self._build_pg_update_spec(
             pg_info.configVersion, ports_number=ports_number)
         pg_update_task = self.connection.invoke_api(
@@ -411,7 +430,6 @@ class DVSController(object):
         return ports[0]
 
     def get_ports(self, connect_flag=True):
-        ports = []
         criteria = self.builder.port_criteria(connected=connect_flag)
         ports = self.connection.invoke_api(
             self.connection.vim,
@@ -435,89 +453,145 @@ class DVSController(object):
         return True
 
 
-class SpecBuilder(object):
-    """Builds specs for vSphere API calls"""
+class DVSControllerWithCache(DVSController):
+    def __init__(self, dvs_name, connection):
+        super(DVSControllerWithCache, self).__init__(dvs_name, connection)
+        self._init_pg_cache()
 
-    def __init__(self, spec_factory):
-        self.factory = spec_factory
+    def _init_pg_cache(self):
+        self._pg_cache = {}
+        for pg in self._get_all_port_groups():
+            name = self.connection.invoke_api(
+                vim_util, 'get_object_property',
+                self.connection.vim, pg, 'name')
+            self._pg_cache[name] = {
+                'item': pg,
+                'status': READY_PG_STATUS,
+                'pg_key': pg.value
+            }
 
-    def pg_config(self, default_port_config):
-        spec = self.factory.create('ns0:DVPortgroupConfigSpec')
-        spec.defaultPortConfig = default_port_config
-        policy = self.factory.create('ns0:DVPortgroupPolicy')
-        policy.blockOverrideAllowed = '1'
-        policy.livePortMovingAllowed = '0'
-        policy.portConfigResetAtDisconnect = '1'
-        policy.shapingOverrideAllowed = '0'
-        policy.trafficFilterOverrideAllowed = '1'
-        policy.vendorConfigOverrideAllowed = '0'
-        spec.policy = policy
-        return spec
+    def _wait_port_group_stable_status(self, pg_name,
+                                       waiting_status_list=(READY_PG_STATUS,)):
+        while (pg_name in self._pg_cache and
+               self._pg_cache[pg_name]['status'] not in waiting_status_list):
+            sleep(TASK_POOL_INTERVAL)
 
-    def port_config_spec(self, version=None, setting=None, name=None):
-        spec = self.factory.create('ns0:DVPortConfigSpec')
-        if version:
-            spec.configVersion = version
-        spec.operation = 'edit'
-        if setting:
-            spec.setting = setting
+    def _create_missed_pg_by_ref(self, pg_ref):
+        pg_info = self._get_config_by_ref(pg_ref)
+        self._get_or_create_pg(
+            pg_ref.config.name,
+            {'id': pg_info.name.replace(self.dvs_name, '', 1),
+             'admin_state_up': pg_info.defaultPortConfig.blocked.value},
+            {'segmentation_id': pg_info.defaultPortConfig.vlan.vlanId}
+        )
 
-        if name is not None:
-            spec.name = name
-        return spec
+    def create_network(self, network, segment):
+        name = self._get_net_name(network)
+        self._wait_port_group_stable_status(
+            name, (READY_PG_STATUS, UPDATING_PG_STATUS))
+        if name in self._pg_cache:
+            return self._pg_cache[name]['item']
 
-    def port_lookup_criteria(self):
-        return self.factory.create('ns0:DistributedVirtualSwitchPortCriteria')
+        self._pg_cache.setdefault(name, {}).update(
+            {'status': CREATING_PG_STATUS})
+        try:
+            pg = super(DVSControllerWithCache, self).create_network(
+                network, segment)
+        except exceptions.VMWareDVSException as e:
+            if dvs_const.DUPLICATE_NAME in str(e):
+                pg = super(DVSControllerWithCache, self)._get_pg_by_name(name)
+            else:
+                self._pg_cache.pop(name)
+                raise e
+        self._pg_cache[name].update({
+            'item': pg,
+            'status': READY_PG_STATUS,
+            'pg_key': pg.value
+        })
+        return pg
 
-    def port_setting(self):
-        return self.factory.create('ns0:VMwareDVSPortSetting')
+    def _delete_port_group(self, pg_ref, name):
+        self._wait_port_group_stable_status(name)
+        if name not in self._pg_cache:
+            LOG.info(_LI('Network %(name)s has been already deleted. '
+                         'Nothing to do.'), {'name': name})
+            return
 
-    def filter_policy(self, rules):
-        filter_policy = self.factory.create('ns0:DvsFilterPolicy')
-        if rules:
-            traffic_ruleset = self.factory.create('ns0:DvsTrafficRuleset')
-            traffic_ruleset.enabled = '1'
-            traffic_ruleset.rules = rules
-            filter_config = self.factory.create('ns0:DvsTrafficFilterConfig')
-            filter_config.agentName = "dvfilter-generic-vmware"
-            filter_config.inherited = '0'
-            filter_config.trafficRuleset = traffic_ruleset
-            filter_policy.filterConfig = [filter_config]
-            filter_policy.inherited = '0'
-        else:
-            filter_policy.inherited = '1'
-        return filter_policy
+        self._pg_cache[name].update({'status': REMOVING_PG_STATUS})
+        try:
+            super(DVSControllerWithCache, self).\
+                _delete_port_group(pg_ref, name)
+        except Exception as e:
+            if dvs_const.DELETED_TEXT not in str(e):
+                self._pg_cache[name].update({'status': READY_PG_STATUS})
+                raise e
+        self._pg_cache.pop(name, None)
 
-    def port_criteria(self, port_key=None, port_group_key=None,
-                      connected=None):
-        criteria = self.factory.create(
-            'ns0:DistributedVirtualSwitchPortCriteria')
-        if port_key:
-            criteria.portKey = port_key
-        if port_group_key:
-            criteria.portgroupKey = port_group_key
-            criteria.inside = '1'
-        if connected:
-            criteria.connected = connected
-        return criteria
+    def _get_pg_by_name(self, pg_name):
+        if pg_name not in self._pg_cache:
+            # if pg not in cache, try to find port group on vsphere
+            pg = super(DVSControllerWithCache, self)._get_pg_by_name(pg_name)
+            self._pg_cache.setdefault(pg_name, {}).update({
+                'item': pg,
+                'status': READY_PG_STATUS,
+                'pg_key': pg.value
+            })
+            return pg
+        if self._pg_cache.get(pg_name, {}).get('status') in (
+                READY_PG_STATUS, UPDATING_PG_STATUS, REMOVING_PG_STATUS):
+            return self._pg_cache[pg_name]['item']
+        raise exceptions.PortGroupNotFound(pg_name=pg_name)
 
-    def vlan(self, vlan_tag):
-        spec_ns = 'ns0:VmwareDistributedVirtualSwitchVlanIdSpec'
-        spec = self.factory.create(spec_ns)
-        spec.inherited = '0'
-        spec.vlanId = vlan_tag
-        return spec
+    def _increase_ports_on_portgroup(self, port_group):
+        pg_name = next((name for name, pg in self._pg_cache.iteritems()
+                        if pg['pg_key'] == port_group.value), None)
+        prev_status = self._pg_cache.get(pg_name, {}).get('status')
+        self._wait_port_group_stable_status(pg_name)
+        if prev_status == UPDATING_PG_STATUS:
+            return
 
-    def blocked(self, value):
-        """Value should be True or False"""
-        spec = self.factory.create('ns0:BoolPolicy')
-        if value:
-            spec.inherited = '0'
-            spec.value = 'true'
-        else:
-            spec.inherited = '1'
-            spec.value = 'false'
-        return spec
+        if pg_name not in self._pg_cache:
+            self._create_missed_pg_by_ref(port_group)
+
+        self._pg_cache[pg_name].update({'status': UPDATING_PG_STATUS})
+        try:
+            super(DVSControllerWithCache, self).\
+                _increase_ports_on_portgroup(port_group)
+        finally:
+            self._pg_cache[pg_name].update({'status': READY_PG_STATUS})
+
+    def _refill_free_cached_ports(self, pg_name, port_group):
+        free_port_keys = self._get_free_pg_keys(port_group)
+        self._pg_cache[pg_name].update({
+            'free_ports_count': len(free_port_keys),
+            'free_cached_ports': free_port_keys[:FREE_PORTS_CACHE_SIZE]})
+
+    def _lookup_unbound_port(self, port_group):
+        pg_name = next((name for name, pg in self._pg_cache.iteritems()
+                        if pg['pg_key'] == port_group.value), None)
+        self._wait_port_group_stable_status(pg_name)
+
+        if pg_name not in self._pg_cache:
+            self._create_missed_pg_by_ref(port_group)
+
+        if not self._pg_cache[pg_name].get('free_cached_ports'):
+            self._refill_free_cached_ports(pg_name, port_group)
+
+        while self._pg_cache[pg_name]['free_ports_count'] > 0:
+            pg_cache_item = self._pg_cache[pg_name].get('free_cached_ports')
+            while pg_cache_item:
+                port_key = pg_cache_item.pop()
+                self._pg_cache[pg_name]['free_ports_count'] -= 1
+                if port_key not in self._blocked_ports:
+                    self._blocked_ports.add(port_key)
+                    p_info = self._get_port_info_by_portkey(port_key)
+                    if not getattr(p_info.config, 'name', None):
+                        return p_info
+            # free cached ports is ended, but free pg keys exist on vSphere,
+            # refill free_cached_ports in pg_cache
+            if self._pg_cache[pg_name]['free_ports_count'] > 0:
+                self._refill_free_cached_ports(pg_name, port_group)
+        raise exceptions.UnboundPortNotFound()
 
 
 def create_network_map_from_config(config, pg_cache=False):
@@ -536,9 +610,10 @@ def create_network_map_from_config(config, pg_cache=False):
             LOG.error(_LE("No connection to vSphere"))
             sleep(10)
     network_map = {}
+    controller_class = DVSControllerWithCache if pg_cache else DVSController
     for pair in config.network_maps:
         network, dvs = pair.split(':')
-        network_map[network] = DVSController(dvs, connection, pg_cache)
+        network_map[network] = controller_class(dvs, connection)
     return network_map
 
 

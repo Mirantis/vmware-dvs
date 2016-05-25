@@ -37,5 +37,7 @@ LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect "\
 DELETED_TEXT = "The object has already been deleted or has not been "\
                "completely created"
 
+DUPLICATE_NAME = "oslo_vmware.exceptions.DuplicateName"
+
 MIN_EPHEMERAL_PORT = 32768
 MAX_EPHEMERAL_PORT = 65535
