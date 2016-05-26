@@ -89,7 +89,7 @@ function install_vmware_dvs_dependency {
     install_nova
     install_neutron
     _neutron_ovs_base_install_agent_packages
-    pip install "git+git://github.com/yunesj/suds#egg=suds"
+    sudo pip install "git+git://github.com/yunesj/suds#egg=suds"
 }
 
 function install_networking_vsphere {
