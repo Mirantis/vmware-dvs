@@ -220,17 +220,18 @@ class DVSController(object):
             #setting.filterPolicy = self.builder.filter_policy([])
             #update_spec.setting = setting
             update_spec.operation = 'remove'
-            update_task = self.connection.invoke_api(
+            self.connection.invoke_api(
                 self.connection.vim, 'ReconfigureDVPort_Task',
                 self._dvs, port=[update_spec])
-            self.connection.wait_for_task(update_task)
+            #self.connection.wait_for_task(update_task)
             self.remove_block(port_info.key)
         except exceptions.PortNotFound:
             LOG.debug("Port %s was not found. Nothing to delete." % port['id'])
         except exceptions.ResourceInUse:
             LOG.debug("Port %s in use. Nothing to delete." % port['id'])
         except vmware_exceptions.VimException as e:
-            raise exceptions.wrap_wmvare_vim_exception(e)
+            LOG.error("No possible to remove %s." % str(e))
+            #raise exceptions.wrap_wmvare_vim_exception(e)
 
     def remove_block(self, port_key):
         self._blocked_ports.discard(port_key)
