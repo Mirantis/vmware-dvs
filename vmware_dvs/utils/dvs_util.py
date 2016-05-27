@@ -54,6 +54,15 @@ class DVSController(object):
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
+    def check_free(self, key):
+        criteria = self.builder.port_criteria(port_key=key)
+        criteria.connected = True
+        connected_port_keys = set(
+            self.connection.invoke_api(self.connection.vim,
+                                       'FetchDVPortKeys',
+                                       self._dvs, criteria=criteria))
+        return not (key in connected_port_keys)
+
     def create_network(self, network, segment):
         name = self._get_net_name(network)
         blocked = not network['admin_state_up']

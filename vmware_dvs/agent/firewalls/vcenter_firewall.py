@@ -47,9 +47,9 @@ class DVSFirewallUpdater(object):
 
     def updater_loop(self):
         while self.run_daemon_loop:
-            r_ports = self.pq.get_remove_tasks()
-            if r_ports:
-                remover(self.pq, r_ports)
+            dvs, r_ports = self.pq.get_remove_tasks()
+            if dvs and r_ports > 0:
+                remover(dvs, r_ports)
 
             dvs, ports = self.pq.get_update_tasks()
             if dvs and ports > 0:
@@ -68,7 +68,7 @@ class PortQueue(object):
         self.remove_queue = remove_queue
         self.removed = {}
         self.update_store = {}
-        self.remove_store = []
+        self.remove_store = {}
         self.network_dvs_map = {}
         self.networking_map = dvs_util.create_network_map_from_config(
             CONF.ML2_VMWARE)
@@ -83,9 +83,16 @@ class PortQueue(object):
         return None, []
 
     def get_remove_tasks(self):
-        ret = self.remove_store
-        self.remove_store = []
-        return ret
+        ret = []
+        for dvs, tasks in self.remove_store.iteritems():
+            for task in tasks:
+                key = task.get('binding:vif_details', {}).get('dvs_port_key')
+                if dvs.check_free(key):
+                    ret.append(task)
+                    self.remove_store[dvs].remove(task)
+            if ret:
+                return dvs, ret
+        return None, []
 
     def _get_update_tasks(self):
         for queue in self.list_queues:
@@ -106,8 +113,12 @@ class PortQueue(object):
     def _get_remove_tasks(self):
         while not self.remove_queue.empty():
             port = self.remove_queue.get()
-            self.removed[port['id']] = time.time()
-            self.remove_store.append(port)
+            dvs = self.get_dvs(port)
+            if dvs:
+                stored_tasks = self.remove_store.get(dvs, [])
+                stored_tasks.append(port)
+                self.remove_store[dvs] = stored_tasks
+                self.removed[port['id']] = time.time()
 
     def _cleanup_removed(self):
         current_time = time.time()
