@@ -39,5 +39,7 @@ DELETED_TEXT = "The object has already been deleted or has not been "\
 
 DUPLICATE_NAME = "oslo_vmware.exceptions.DuplicateName"
 
+RESOURCE_IN_USE = "is in use."
+
 MIN_EPHEMERAL_PORT = 32768
 MAX_EPHEMERAL_PORT = 65535
