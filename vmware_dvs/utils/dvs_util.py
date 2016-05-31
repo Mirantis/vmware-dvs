@@ -131,6 +131,7 @@ class DVSController(object):
                         pass
 
     def _delete_port_group(self, pg_ref, name):
+        remove_used_pg_try = 0
         while True:
             try:
                 pg_delete_task = self.connection.invoke_api(
@@ -141,7 +142,16 @@ class DVSController(object):
                 LOG.info(_LI('Network %(name)s deleted.') % {'name': name})
                 break
             except vmware_exceptions.VimException as e:
-                raise exceptions.wrap_wmvare_vim_exception(e)
+                if dvs_const.INUSE_TEXT in e.message:
+                    remove_used_pg_try += 1
+                    if remove_used_pg_try > 3:
+                        LOG.info(_LI('Network %(name)s was not deleted. \
+                            Active ports were found') % {'name': name})
+                        break
+                    else:
+                        sleep(0.2)
+                else:
+                    raise exceptions.wrap_wmvare_vim_exception(e)
             except vmware_exceptions.VMwareDriverException as e:
                 if dvs_const.DELETED_TEXT in e.message:
                     sleep(0.1)
@@ -220,10 +230,9 @@ class DVSController(object):
             #setting.filterPolicy = self.builder.filter_policy([])
             #update_spec.setting = setting
             update_spec.operation = 'remove'
-            update_task = self.connection.invoke_api(
+            self.connection.invoke_api(
                 self.connection.vim, 'ReconfigureDVPort_Task',
                 self._dvs, port=[update_spec])
-            self.connection.wait_for_task(update_task)
             self.remove_block(port_info.key)
         except exceptions.PortNotFound:
             LOG.debug("Port %s was not found. Nothing to delete." % port['id'])
