@@ -142,7 +142,7 @@ class DVSController(object):
                 LOG.info(_LI('Network %(name)s deleted.') % {'name': name})
                 break
             except vmware_exceptions.VimException as e:
-                if dvs_const.INUSE_TEXT in e.message:
+                if dvs_const.RESOURCE_IN_USE in e.message:
                     remove_used_pg_try += 1
                     if remove_used_pg_try > 3:
                         LOG.info(_LI('Network %(name)s was not deleted. \
