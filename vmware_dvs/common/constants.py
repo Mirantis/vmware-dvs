@@ -37,8 +37,6 @@ LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect "\
 DELETED_TEXT = "The object has already been deleted or has not been "\
                "completely created"
 
-INUSE_TEXT = 'is in use'
-
 DUPLICATE_NAME = "oslo_vmware.exceptions.DuplicateName"
 
 RESOURCE_IN_USE = "is in use."
