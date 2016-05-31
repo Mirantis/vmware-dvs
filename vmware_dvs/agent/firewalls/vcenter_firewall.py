@@ -21,10 +21,13 @@ import time
 from neutron.agent import firewall
 from neutron.i18n import _LI
 from oslo_log import log as logging
+from oslo_vmware import exceptions as vmware_exceptions
 
 from vmware_dvs.common import config
+from vmware_dvs.common import exceptions
 from vmware_dvs.utils import security_group_utils as sg_util
 from vmware_dvs.utils import dvs_util
+
 
 LOG = logging.getLogger(__name__)
 
@@ -47,15 +50,19 @@ class DVSFirewallUpdater(object):
 
     def updater_loop(self):
         while self.run_daemon_loop:
-            r_ports = self.pq.get_remove_tasks()
-            if r_ports:
-                remover(self.pq, r_ports)
+            try:
+                r_ports = self.pq.get_remove_tasks()
+                if r_ports:
+                    remover(self.pq, r_ports)
 
-            dvs, ports = self.pq.get_update_tasks()
-            if dvs and ports > 0:
-                updater(dvs, ports)
-            else:
-                time.sleep(1)
+                dvs, ports = self.pq.get_update_tasks()
+                if dvs and ports > 0:
+                    updater(dvs, ports)
+                else:
+                    time.sleep(1)
+            except (vmware_exceptions.VMwareDriverException,
+                    exceptions.VMWareDVSException):
+                pass
 
     def _handle_sigterm(self, signum, frame):
         LOG.info(_LI("Termination of firewall process called"))
