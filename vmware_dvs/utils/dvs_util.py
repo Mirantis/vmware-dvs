@@ -499,11 +499,14 @@ class DVSControllerWithCache(DVSController):
         name = self._get_net_name(network)
         self._wait_port_group_stable_status(
             name, (READY_PG_STATUS, UPDATING_PG_STATUS))
-        if name in self._pg_cache:
+        if name in self._pg_cache and self._pg_cache[name]['item']:
             return self._pg_cache[name]['item']
 
-        self._pg_cache.setdefault(name, {}).update(
-            {'status': CREATING_PG_STATUS})
+        self._pg_cache.setdefault(name, {}).update({
+            'item': None,
+            'status': CREATING_PG_STATUS,
+            'pg_key': None
+        })
         try:
             pg = super(DVSControllerWithCache, self).create_network(
                 network, segment)
@@ -554,7 +557,7 @@ class DVSControllerWithCache(DVSController):
 
     def _increase_ports_on_portgroup(self, port_group):
         pg_name = next((name for name, pg in self._pg_cache.iteritems()
-                        if pg['pg_key'] == port_group.value), None)
+                        if pg.get('pg_key') == port_group.value), None)
         prev_status = self._pg_cache.get(pg_name, {}).get('status')
         self._wait_port_group_stable_status(pg_name)
         if prev_status == UPDATING_PG_STATUS:
@@ -578,7 +581,7 @@ class DVSControllerWithCache(DVSController):
 
     def _lookup_unbound_port(self, port_group):
         pg_name = next((name for name, pg in self._pg_cache.iteritems()
-                        if pg['pg_key'] == port_group.value), None)
+                        if pg.get('pg_key') == port_group.value), None)
         self._wait_port_group_stable_status(pg_name)
 
         if pg_name not in self._pg_cache:
