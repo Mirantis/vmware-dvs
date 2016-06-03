@@ -48,7 +48,7 @@ dvs_opts = [
                default=True,
                help=_("Run DVS cleaning procedure on agent restart.")),
     cfg.BoolOpt('precreate_networks',
-               default=True,
+               default=False,
                help=_("Precreate networks on DVS")),
 ]
 
