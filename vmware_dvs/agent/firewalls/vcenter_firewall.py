@@ -17,6 +17,7 @@ from multiprocessing import Process, Queue
 import signal
 import threading
 import time
+import traceback
 
 from neutron.agent import firewall
 from neutron.i18n import _LI
@@ -52,17 +53,18 @@ class DVSFirewallUpdater(object):
         while self.run_daemon_loop:
             try:
                 dvs, r_ports = self.pq.get_remove_tasks()
-                if dvs and r_ports > 0:
+                if dvs and r_ports:
                     remover(dvs, r_ports)
 
                 dvs, ports = self.pq.get_update_tasks()
-                if dvs and ports > 0:
+                if dvs and ports:
                     updater(dvs, ports)
                 else:
                     time.sleep(1)
             except (vmware_exceptions.VMwareDriverException,
-                    exceptions.VMWareDVSException):
-                pass
+                    exceptions.VMWareDVSException) as e:
+                LOG.debug("Exception was handled in firewall updater: %s. "
+                          "Traceback: %s" % (e, traceback.format_exc()))
 
     def _handle_sigterm(self, signum, frame):
         LOG.info(_LI("Termination of firewall process called"))
@@ -122,9 +124,7 @@ class PortQueue(object):
             port = self.remove_queue.get()
             dvs = self.get_dvs(port)
             if dvs:
-                stored_tasks = self.remove_store.get(dvs, [])
-                stored_tasks.append(port)
-                self.remove_store[dvs] = stored_tasks
+                self.remove_store.setdefault(dvs, []).append(port)
                 self.removed[port['id']] = time.time()
 
     def _cleanup_removed(self):

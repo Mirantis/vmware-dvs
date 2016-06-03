@@ -61,7 +61,7 @@ class DVSController(object):
             self.connection.invoke_api(self.connection.vim,
                                        'FetchDVPortKeys',
                                        self._dvs, criteria=criteria))
-        return not (key in connected_port_keys)
+        return key not in connected_port_keys
 
     def create_network(self, network, segment):
         name = self._get_net_name(network)
@@ -154,8 +154,8 @@ class DVSController(object):
                 if dvs_const.RESOURCE_IN_USE in e.message:
                     remove_used_pg_try += 1
                     if remove_used_pg_try > 3:
-                        LOG.info(_LI('Network %(name)s was not deleted. \
-                            Active ports were found') % {'name': name})
+                        LOG.info(_LI('Network %(name)s was not deleted. Active'
+                                     ' ports were found') % {'name': name})
                         break
                     else:
                         sleep(0.2)
