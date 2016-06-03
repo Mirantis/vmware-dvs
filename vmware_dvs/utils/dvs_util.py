@@ -227,11 +227,10 @@ class DVSController(object):
             self.remove_block(port_info.key)
         except exceptions.PortNotFound:
             LOG.debug("Port %s was not found. Nothing to delete." % port['id'])
+        except exceptions.ResourceInUse:
+            LOG.debug("Port %s in use. Nothing to delete." % port['id'])
         except vmware_exceptions.VimException as e:
-            if dvs_const.RESOURCE_IN_USE in e.message:
-                LOG.debug("Port %s in use, couldn't be deleted." % port['id'])
-            else:
-                raise exceptions.wrap_wmvare_vim_exception(e)
+            raise exceptions.wrap_wmvare_vim_exception(e)
 
     def remove_block(self, port_key):
         self._blocked_ports.discard(port_key)
@@ -611,7 +610,7 @@ def create_network_map_from_config(config, pg_cache=False):
                 config.task_poll_interval,
                 pool_size=config.connections_pool_size)
         except ConnectionError:
-            LOG.error(_LE("No connection to vSphere. Retry in 10 sec..."))
+            LOG.error(_LE("No connection to vSphere"))
             sleep(10)
     network_map = {}
     controller_class = DVSControllerWithCache if pg_cache else DVSController

@@ -48,6 +48,10 @@ class DVSNotFound(ResourceNotFound):
     message = _('Distributed Virtual Switch %(dvs_name)s not found')
 
 
+class ResourceInUse(VMWareDVSException):
+    message = _('The resource %(resource)s is in use')
+
+
 class PortGroupNotFound(ResourceNotFound):
     message = _('Port Group %(pg_name)s not found')
 
