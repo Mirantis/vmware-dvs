@@ -20,9 +20,11 @@ from neutron.tests import base
 
 from vmware_dvs.driver import dvs_mechanism_driver
 from vmware_dvs.common import constants as dvs_const, exceptions
+from vmware_dvs.common import config
 
 VALID_HYPERVISOR_TYPE = 'VMware vCenter Server'
 INVALID_HYPERVISOR_TYPE = '_invalid_hypervisor_'
+CONF = config.CONF
 
 
 class FAKE_SECURITY_GROUPS(object):
@@ -55,8 +57,9 @@ class VMwareDVSMechanismDriverTestCase(base.BaseTestCase):
         with mock.patch('vmware_dvs.api.dvs_agent_rpc_api.DVSClientAPI.'
                         'create_network_cast') as cast_mock:
             self.driver.create_network_precommit(context)
-            cast_mock.assert_called_once_with(
-                context.current, context.network_segments[0])
+            if CONF.DVS.precreate_networks:
+                cast_mock.assert_called_once_with(
+                    context.current, context.network_segments[0])
 
     def test_delete_network_postcommit_when_network_is_not_mapped(self):
         context = self._create_network_context()
