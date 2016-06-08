@@ -177,6 +177,19 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         self.fw_process = Process(
             target=firewall_main, args=(self.list_queues, self.remove_queue))
         self.fw_process.start()
+        self.network_dvs_map = {}
+        self.networking_map = dvs_util.create_network_map_from_config(
+            CONF.ML2_VMWARE)
+
+    def _get_port_dvs(self, port):
+        port_network = port['network_id']
+        if port_network in self.network_dvs_map:
+            dvs = self.network_dvs_map[port_network]
+        else:
+            dvs = dvs_util.get_dvs_by_network(
+                self.networking_map.values(), port_network)
+            self.network_dvs_map[port_network] = dvs
+        return dvs
 
     def stop_all(self):
         self.fw_process.terminate()
@@ -193,9 +206,27 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     def _process_port_filter(self, ports):
         LOG.info(_LI("Set security group rules for ports %s"),
                  [p['id'] for p in ports])
+        ports_for_update = []
         for port in ports:
-            self.dvs_ports[port['device']] = port
-        self._apply_sg_rules_for_port(ports)
+            port_device = port['device']
+            stored_port_key = self.dvs_ports.get(port_device, {}).\
+                get('binding:vif_details', {}).get('dvs_port_key')
+            port_key = port.get('binding:vif_details', {}).get('dvs_port_key')
+            if port_key and port_key != stored_port_key:
+                port_dvs = self._get_port_dvs(port)
+                try:
+                    port_info = port_dvs.get_port_info(port)
+                    if port['id'] == port_info.config.name:
+                        self.dvs_ports[port_device] = port
+                        ports_for_update.append(port)
+                    else:
+                        self.dvs_ports.pop(port_device, None)
+                except exceptions.PortNotFound:
+                    self.dvs_ports.pop(port_device, None)
+            else:
+                self.dvs_ports[port_device] = port
+                ports_for_update.append(port)
+        self._apply_sg_rules_for_port(ports_for_update)
 
     def remove_port_filter(self, ports):
         LOG.info(_LI("Remove ports with rules"))
@@ -212,8 +243,8 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         for port in ports:
             queue = self._get_free_queue()
             queue.put([{'id': port['id'], 'network_id': port['network_id'],
-                'security_group_rules': port['security_group_rules'],
-                'binding:vif_details': port['binding:vif_details']}])
+                        'security_group_rules': port['security_group_rules'],
+                        'binding:vif_details': port['binding:vif_details']}])
 
     def _get_free_queue(self):
         shortest_queue = self.list_queues[0]
