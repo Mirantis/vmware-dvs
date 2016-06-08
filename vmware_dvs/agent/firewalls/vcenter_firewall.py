@@ -17,14 +17,18 @@ from multiprocessing import Process, Queue
 import signal
 import threading
 import time
+import traceback
 
 from neutron.agent import firewall
 from neutron.i18n import _LI
 from oslo_log import log as logging
+from oslo_vmware import exceptions as vmware_exceptions
 
 from vmware_dvs.common import config
+from vmware_dvs.common import exceptions
 from vmware_dvs.utils import security_group_utils as sg_util
 from vmware_dvs.utils import dvs_util
+
 
 LOG = logging.getLogger(__name__)
 
@@ -47,15 +51,20 @@ class DVSFirewallUpdater(object):
 
     def updater_loop(self):
         while self.run_daemon_loop:
-            r_ports = self.pq.get_remove_tasks()
-            if r_ports:
-                remover(self.pq, r_ports)
+            try:
+                dvs, r_ports = self.pq.get_remove_tasks()
+                if dvs and r_ports:
+                    remover(dvs, r_ports)
 
-            dvs, ports = self.pq.get_update_tasks()
-            if dvs and ports > 0:
-                updater(dvs, ports)
-            else:
-                time.sleep(1)
+                dvs, ports = self.pq.get_update_tasks()
+                if dvs and ports:
+                    updater(dvs, ports)
+                else:
+                    time.sleep(1)
+            except (vmware_exceptions.VMwareDriverException,
+                    exceptions.VMWareDVSException) as e:
+                LOG.debug("Exception was handled in firewall updater: %s. "
+                          "Traceback: %s" % (e, traceback.format_exc()))
 
     def _handle_sigterm(self, signum, frame):
         LOG.info(_LI("Termination of firewall process called"))
@@ -68,7 +77,7 @@ class PortQueue(object):
         self.remove_queue = remove_queue
         self.removed = {}
         self.update_store = {}
-        self.remove_store = []
+        self.remove_store = {}
         self.network_dvs_map = {}
         self.networking_map = dvs_util.create_network_map_from_config(
             CONF.ML2_VMWARE)
@@ -83,9 +92,16 @@ class PortQueue(object):
         return None, []
 
     def get_remove_tasks(self):
-        ret = self.remove_store
-        self.remove_store = []
-        return ret
+        ret = []
+        for dvs, tasks in self.remove_store.iteritems():
+            for task in tasks:
+                key = task.get('binding:vif_details', {}).get('dvs_port_key')
+                if dvs.check_free(key):
+                    ret.append(task)
+                    self.remove_store[dvs].remove(task)
+            if ret:
+                return dvs, ret
+        return None, []
 
     def _get_update_tasks(self):
         for queue in self.list_queues:
@@ -106,8 +122,10 @@ class PortQueue(object):
     def _get_remove_tasks(self):
         while not self.remove_queue.empty():
             port = self.remove_queue.get()
-            self.removed[port['id']] = time.time()
-            self.remove_store.append(port)
+            dvs = self.get_dvs(port)
+            if dvs:
+                self.remove_store.setdefault(dvs, []).append(port)
+                self.removed[port['id']] = time.time()
 
     def _cleanup_removed(self):
         current_time = time.time()
@@ -140,9 +158,8 @@ def updater(dvs, port_list):
     sg_util.update_port_rules(dvs, port_list)
 
 
-def remover(pq, ports_list):
+def remover(dvs, ports_list):
     for port in ports_list:
-        dvs = pq.get_dvs(port)
         if dvs:
             dvs.release_port(port)
 

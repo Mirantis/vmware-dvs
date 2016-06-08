@@ -54,6 +54,15 @@ class DVSController(object):
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
+    def check_free(self, key):
+        criteria = self.builder.port_criteria(port_key=key)
+        criteria.connected = True
+        connected_port_keys = set(
+            self.connection.invoke_api(self.connection.vim,
+                                       'FetchDVPortKeys',
+                                       self._dvs, criteria=criteria))
+        return key not in connected_port_keys
+
     def create_network(self, network, segment):
         name = self._get_net_name(network)
         blocked = not network['admin_state_up']
@@ -131,6 +140,7 @@ class DVSController(object):
                         pass
 
     def _delete_port_group(self, pg_ref, name):
+        remove_used_pg_try = 0
         while True:
             try:
                 pg_delete_task = self.connection.invoke_api(
@@ -141,7 +151,16 @@ class DVSController(object):
                 LOG.info(_LI('Network %(name)s deleted.') % {'name': name})
                 break
             except vmware_exceptions.VimException as e:
-                raise exceptions.wrap_wmvare_vim_exception(e)
+                if dvs_const.RESOURCE_IN_USE in e.message:
+                    remove_used_pg_try += 1
+                    if remove_used_pg_try > 3:
+                        LOG.info(_LI('Network %(name)s was not deleted. Active'
+                                     ' ports were found') % {'name': name})
+                        break
+                    else:
+                        sleep(0.2)
+                else:
+                    raise exceptions.wrap_wmvare_vim_exception(e)
             except vmware_exceptions.VMwareDriverException as e:
                 if dvs_const.DELETED_TEXT in e.message:
                     sleep(0.1)
@@ -220,17 +239,17 @@ class DVSController(object):
             #setting.filterPolicy = self.builder.filter_policy([])
             #update_spec.setting = setting
             update_spec.operation = 'remove'
-            update_task = self.connection.invoke_api(
+            self.connection.invoke_api(
                 self.connection.vim, 'ReconfigureDVPort_Task',
                 self._dvs, port=[update_spec])
-            self.connection.wait_for_task(update_task)
             self.remove_block(port_info.key)
         except exceptions.PortNotFound:
             LOG.debug("Port %s was not found. Nothing to delete." % port['id'])
-        except exceptions.ResourceInUse:
-            LOG.debug("Port %s in use. Nothing to delete." % port['id'])
         except vmware_exceptions.VimException as e:
-            raise exceptions.wrap_wmvare_vim_exception(e)
+            if dvs_const.RESOURCE_IN_USE in e.message:
+                LOG.debug("Port %s in use, couldn't be deleted." % port['id'])
+            else:
+                raise exceptions.wrap_wmvare_vim_exception(e)
 
     def remove_block(self, port_key):
         self._blocked_ports.discard(port_key)
@@ -489,11 +508,14 @@ class DVSControllerWithCache(DVSController):
         name = self._get_net_name(network)
         self._wait_port_group_stable_status(
             name, (READY_PG_STATUS, UPDATING_PG_STATUS))
-        if name in self._pg_cache:
+        if name in self._pg_cache and self._pg_cache[name]['item']:
             return self._pg_cache[name]['item']
 
-        self._pg_cache.setdefault(name, {}).update(
-            {'status': CREATING_PG_STATUS})
+        self._pg_cache.setdefault(name, {}).update({
+            'item': None,
+            'status': CREATING_PG_STATUS,
+            'pg_key': None
+        })
         try:
             pg = super(DVSControllerWithCache, self).create_network(
                 network, segment)
@@ -544,7 +566,7 @@ class DVSControllerWithCache(DVSController):
 
     def _increase_ports_on_portgroup(self, port_group):
         pg_name = next((name for name, pg in self._pg_cache.iteritems()
-                        if pg['pg_key'] == port_group.value), None)
+                        if pg.get('pg_key') == port_group.value), None)
         prev_status = self._pg_cache.get(pg_name, {}).get('status')
         self._wait_port_group_stable_status(pg_name)
         if prev_status == UPDATING_PG_STATUS:
@@ -568,7 +590,7 @@ class DVSControllerWithCache(DVSController):
 
     def _lookup_unbound_port(self, port_group):
         pg_name = next((name for name, pg in self._pg_cache.iteritems()
-                        if pg['pg_key'] == port_group.value), None)
+                        if pg.get('pg_key') == port_group.value), None)
         self._wait_port_group_stable_status(pg_name)
 
         if pg_name not in self._pg_cache:
@@ -607,7 +629,7 @@ def create_network_map_from_config(config, pg_cache=False):
                 config.task_poll_interval,
                 pool_size=config.connections_pool_size)
         except ConnectionError:
-            LOG.error(_LE("No connection to vSphere"))
+            LOG.error(_LE("No connection to vSphere. Retry in 10 sec..."))
             sleep(10)
     network_map = {}
     controller_class = DVSControllerWithCache if pg_cache else DVSController
