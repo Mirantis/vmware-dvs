@@ -232,8 +232,9 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         LOG.info(_LI("Remove ports with rules"))
         for p_id in ports:
             port = self.dvs_ports.get(p_id)
-            self.remove_queue.put(port)
-            self.dvs_ports.pop(port['device'], None)
+            if port:
+                self.remove_queue.put(port)
+                self.dvs_ports.pop(p_id, None)
 
     @property
     def ports(self):
