@@ -32,7 +32,7 @@ agent_opts = [
                       "agent receives SIGTERM. If value is set to 0, rpc "
                       "timeout won't be changed")),
     cfg.BoolOpt('log_agent_heartbeats', default=False,
-                help=_("Log agent heartbeats")),
+               help=_("Log agent heartbeats")),
     cfg.IntOpt('report_interval',
                default=30,
                help='Seconds between nodes reporting state to server.'),
@@ -48,16 +48,32 @@ vmware_opts = [
         default=10,
         help=_('number of times an API must be retried upon '
                'session/connection related errors')),
+    cfg.IntOpt(
+        'connections_pool_size',
+        default=100,
+        help=_('number of vsphere connections pool '
+               'must be higher for intensive operations')),
     cfg.StrOpt('vsphere_login', default='administrator',
                help=_("Vsphere login.")),
     cfg.ListOpt('network_maps',
-                default=DEFAULT_BRIDGE_MAPPINGS,
-                help=_("List of <physical_network>:<bridge>.")),
+               default=DEFAULT_BRIDGE_MAPPINGS,
+               help=_("List of <physical_network>:<bridge>.")),
     cfg.StrOpt('vsphere_hostname', default='vsphere',
                help=_("Vsphere host name or IP.")),
     cfg.StrOpt('vsphere_password', default='',
                help=_("Vsphere password.")),
 ]
+
+dvs_opts = [
+    cfg.BoolOpt('clean_on_restart',
+               default=True,
+               help=_("Run DVS cleaning procedure on agent restart.")),
+    cfg.BoolOpt('precreate_networks',
+               default=False,
+               help=_("Precreate networks on DVS")),
+]
+
+cfg.CONF.register_opts(dvs_opts, "DVS")
 
 cfg.CONF.register_opts(agent_opts, "DVS_AGENT")
 cfg.CONF.register_opts(vmware_opts, "ML2_VMWARE")

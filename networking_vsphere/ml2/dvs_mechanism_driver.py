@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from time import sleep
 import six
 
 from neutron.agent import securitygroups_rpc
@@ -52,7 +53,7 @@ def port_belongs_to_vmware(func):
             # need to make research, about all possible and suitable values
             if hypervisor.hypervisor_type != dvs_const.VMWARE_HYPERVISOR_TYPE:
                 raise exceptions.HypervisorNotFound
-        except exceptions.ResourceNotFond:
+        except exceptions.ResourceNotFound:
             return False
         return func(self, context)
     return _port_belongs_to_vmware
@@ -82,33 +83,47 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         return agent['configurations'].get('bridge_mappings', {})
 
     def create_network_precommit(self, context):
-        self.dvs_notifier.create_network_cast(context.current,
-                                              context.network_segments[0])
+        if CONF.DVS.precreate_networks and self._check_net_type(context):
+            LOG.info(_LI('Precreate network cast'))
+            self.dvs_notifier.create_network_cast(context.current,
+                context.network_segments[0])
+            #need to wait for agents. Cast message
+            sleep(2)
 
     def update_network_precommit(self, context):
-        self.dvs_notifier.update_network_cast(
-            context.current, context.network_segments[0], context.original)
+        if self._check_net_type(context):
+            self.dvs_notifier.update_network_cast(
+                context.current, context.network_segments[0], context.original)
+            #need to wait for agents. Cast message
+            sleep(2)
 
     def delete_network_postcommit(self, context):
-        self.dvs_notifier.delete_network_cast(context.current,
-                                              context.network_segments[0])
+        if self._check_net_type(context):
+            self.dvs_notifier.delete_network_cast(
+                context.current, context.network_segments[0])
+            #need to wait for agents. Cast message
+            sleep(2)
 
     @port_belongs_to_vmware
     def bind_port(self, context):
-        booked_port_key = self.dvs_notifier.bind_port_call(
-            context.current,
-            context.network.network_segments,
-            context.network.current,
-            context.host
-        )
-        vif_details = dict(self.vif_details)
-        vif_details['dvs_port_key'] = booked_port_key
-        for segment in context.network.network_segments:
-            context.set_binding(
-                segment[driver_api.ID],
-                self.vif_type,
-                vif_details,
-                status=n_const.PORT_STATUS_ACTIVE)
+        if self._check_net_type(context.network):
+            booked_port_key = self.dvs_notifier.bind_port_call(
+                context.current,
+                context.network.network_segments,
+                context.network.current,
+                context.host
+            )
+            vif_details = dict(self.vif_details)
+            vif_details['dvs_port_key'] = booked_port_key
+            for segment in context.network.network_segments:
+                context.set_binding(
+                    segment[driver_api.ID],
+                    self.vif_type,
+                    vif_details,
+                    status=n_const.PORT_STATUS_ACTIVE)
+        else:
+            nt = context.network.network_segments[0]['network_type']
+            raise exceptions.NotSupportedNetworkType(network_type=nt)
 
     @port_belongs_to_vmware
     def update_port_precommit(self, context):
@@ -117,26 +132,38 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     @port_belongs_to_vmware
     def update_port_postcommit(self, context):
-        self.dvs_notifier.update_postcommit_port_call(
-            context.current,
-            context.original,
-            context.network.network_segments[0],
-            context.host
-        )
-        # TODO(ekosareva): removed one more condition(is it really needed?):
-        #                  'dvs_port_key' in port['binding:vif_details']
-        if (context.current['binding:vif_type'] == 'unbound' and
-                context.current['status'] == n_const.PORT_STATUS_DOWN):
-            context._plugin.update_port_status(
-                context._plugin_context,
-                context.current['id'],
-                n_const.PORT_STATUS_ACTIVE)
+        if self._check_net_type(context.network):
+            self.dvs_notifier.update_postcommit_port_call(
+                context.current,
+                context.original,
+                context.network.network_segments[0],
+                context.host
+            )
+            # TODO(ekosareva): removed one more condition. Is it really needed?
+            #                  'dvs_port_key' in port['binding:vif_details']
+            if (context.current['binding:vif_type'] == 'unbound' and
+                    context.current['status'] == n_const.PORT_STATUS_DOWN):
+                context._plugin.update_port_status(
+                    context._plugin_context,
+                    context.current['id'],
+                    n_const.PORT_STATUS_ACTIVE)
+            # Save AMQP on high load
+            sleep(5)
 
     @port_belongs_to_vmware
     def delete_port_postcommit(self, context):
-        self.dvs_notifier.delete_port_call(context.current, context.original,
-                                           context.network.network_segments[0],
-                                           context.host)
+        if self._check_net_type(context.network):
+            self.dvs_notifier.delete_port_call(
+                context.current,
+                context.original,
+                context.network.network_segments[0],
+                context.host)
+            # Save AMQP on high load
+            sleep(2)
+
+    def _check_net_type(self, network_context):
+        network_type = network_context.network_segments[0]['network_type']
+        return network_type == constants.TYPE_VLAN
 
     def _get_security_group_info(self, context):
         current_security_group = list(set(context.current['security_groups']))

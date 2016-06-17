@@ -14,6 +14,7 @@
 #    under the License.
 
 import abc
+import copy
 import six
 
 from oslo_log import log
@@ -21,10 +22,35 @@ from oslo_vmware import exceptions as vmware_exceptions
 
 from networking_vsphere._i18n import _LI, _LW
 from networking_vsphere.common import constants as dvs_const
-from networking_vsphere.common import exceptions
 from networking_vsphere.utils import dvs_util
+from networking_vsphere.utils import spec_builder
 
 LOG = log.getLogger(__name__)
+
+
+HASHED_RULE_INFO_KEYS = [
+    'source_ip_prefix',
+    'dest_ip_prefix',
+    'protocol',
+    'direction',
+    'ethertype',
+    'port_range_min',
+    'port_range_max',
+    'source_port_range_min',
+    'source_port_range_max'
+]
+
+
+class PortConfigSpecBuilder(spec_builder.SpecBuilder):
+    def __init__(self, spec_factory):
+        super(PortConfigSpecBuilder, self).__init__(spec_factory)
+        self.rule_obj = self.factory.create('ns0:DvsTrafficRule')
+
+    def traffic_rule(self):
+        return copy.copy(self.rule_obj)
+
+    def create_spec(self, spec_type):
+        return self.factory.create(spec_type)
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -35,15 +61,15 @@ class TrafficRuleBuilder(object):
     _backward_port_range = (None, None)
     _port_range = (None, None)
 
-    def __init__(self, spec_factory, ethertype, protocol, name=None):
-        self.factory = spec_factory
+    def __init__(self, spec_builder, ethertype, protocol, name=None):
+        self.spec_builder = spec_builder
 
-        self.rule = self.factory.create('ns0:DvsTrafficRule')
-        self.rule.action = self.factory.create(self.action)
+        self.rule = spec_builder.traffic_rule()
+        self.rule.action = self.spec_builder.create_spec(self.action)
 
-        self.ip_qualifier = self.factory.create(
-            'ns0:DvsIpNetworkRuleQualifier'
-        )
+        self.ip_qualifier = self.spec_builder.create_spec(
+            'ns0:DvsIpNetworkRuleQualifier')
+
         self.ethertype = ethertype
         if ethertype:
             any_ip = '0.0.0.0/0' if ethertype == 'IPv4' else '::/0'
@@ -52,7 +78,7 @@ class TrafficRuleBuilder(object):
 
         self.protocol = protocol
         if protocol:
-            int_exp = self.factory.create('ns0:IntExpression')
+            int_exp = self.spec_builder.create_spec('ns0:IntExpression')
             int_exp.value = dvs_const.PROTOCOL.get(protocol, protocol)
             int_exp.negate = 'false'
             self.ip_qualifier.protocol = int_exp
@@ -62,7 +88,7 @@ class TrafficRuleBuilder(object):
     def reverse(self, cidr_bool):
         """Returns reversed rule"""
         name = 'reversed' + ' ' + (self.name or '')
-        rule = self.reverse_class(self.factory, self.ethertype,
+        rule = self.reverse_class(self.spec_builder, self.ethertype,
                                   self.protocol, name=name.strip())
         if cidr_bool:
             rule.cidr = self.cidr
@@ -95,10 +121,10 @@ class TrafficRuleBuilder(object):
 
     def _port_range_spec(self, begin, end):
         if begin == end:
-            result = self.factory.create('ns0:DvsSingleIpPort')
+            result = self.spec_builder.create_spec('ns0:DvsSingleIpPort')
             result.portNumber = begin
         else:
-            result = self.factory.create('ns0:DvsIpPortRange')
+            result = self.spec_builder.create_spec('ns0:DvsIpPortRange')
             result.startPortNumber = begin
             result.endPortNumber = end
         return result
@@ -109,7 +135,7 @@ class TrafficRuleBuilder(object):
         except ValueError:
             ip = cidr
             mask = '32'
-        result = self.factory.create('ns0:IpRange')
+        result = self.spec_builder.create_spec('ns0:IpRange')
         result.addressPrefix = ip
         result.prefixLength = mask
         return result
@@ -129,9 +155,9 @@ class TrafficRuleBuilder(object):
 class IngressRule(TrafficRuleBuilder):
     direction = 'incomingPackets'
 
-    def __init__(self, spec_factory, ethertype, protocol, name=None):
+    def __init__(self, spec_builder, ethertype, protocol, name=None):
         super(IngressRule, self).__init__(
-            spec_factory, ethertype, protocol, name)
+            spec_builder, ethertype, protocol, name)
         self.reverse_class = EgressRule
 
     @TrafficRuleBuilder.port_range.setter
@@ -157,9 +183,9 @@ class IngressRule(TrafficRuleBuilder):
 class EgressRule(TrafficRuleBuilder):
     direction = 'outgoingPackets'
 
-    def __init__(self, spec_factory, ethertype, protocol, name=None):
+    def __init__(self, spec_builder, ethertype, protocol, name=None):
         super(EgressRule, self).__init__(
-            spec_factory, ethertype, protocol, name)
+            spec_builder, ethertype, protocol, name)
         self.reverse_class = IngressRule
 
     @TrafficRuleBuilder.port_range.setter
@@ -189,25 +215,15 @@ class DropAllRule(TrafficRuleBuilder):
 @dvs_util.wrap_retry
 def update_port_rules(dvs, ports):
     try:
-        builder = dvs_util.SpecBuilder(dvs.connection.vim.client.factory)
+        builder = PortConfigSpecBuilder(dvs.connection.vim.client.factory)
         port_config_list = []
+        hashed_rules = {}
         for port in ports:
-            try:
-                if port['binding:vif_details'].get('dvs_port_key') is not None:
-                    port_info = dvs._get_port_info_by_portkey(
-                        port['binding:vif_details']['dvs_port_key'])
-                else:
-                    port_info = dvs.get_port_info_by_name(port['id'])
-            except exceptions.PortNotFound:
-                LOG.warning(_LW("Port %s was not found. Security rules "
-                                "can not be applied."), port['id'])
-                continue
-
-            port_config = port_configuration(builder,
-                                             str(port_info['key']),
-                                             port['security_group_rules'])
-            port_config.configVersion = port_info['config']['configVersion']
-            port_config_list.append(port_config)
+            key = port.get('binding:vif_details', {}).get('dvs_port_key')
+            if key:
+                port_config = port_configuration(
+                    builder, key, port['security_group_rules'], hashed_rules)
+                port_config_list.append(port_config)
         if port_config_list:
             task = dvs.connection.invoke_api(
                 dvs.connection.vim,
@@ -215,45 +231,72 @@ def update_port_rules(dvs, ports):
                 dvs._dvs,
                 port=port_config_list
             )
-            return dvs.connection.wait_for_task(task)
+            dvs.connection.wait_for_task(task)
     except vmware_exceptions.VimException as e:
-        raise exceptions.wrap_wmvare_vim_exception(e)
+        if 'The object or item referred to could not be found' in str(e):
+            pass
+        else:
+            raise exceptions.wrap_wmvare_vim_exception(e)
 
 
-def port_configuration(builder, port_key, sg_rules):
+def port_configuration(builder, port_key, sg_rules, hashed_rules):
     rules = []
-    reversed_rules = []
     seq = 0
+    reverse_seq = len(sg_rules) * 10
     for rule_info in sg_rules:
-        rule = _create_rule(builder, rule_info, name='regular')
-        rules.append(rule.build(seq))
-        seq += 10
-        cidr_revert = True
-        if rule.ethertype == 'IPv4' and rule.direction == \
-                'incomingPackets' and rule.protocol == 'udp':
-            if rule.backward_port_range == (67, 67) and rule.port_range == \
-                (68, 68):
-                cidr_revert = False
-        reversed_rules.append(rule.reverse(cidr_revert))
+        rule_hash = _get_rule_hash(rule_info)
+        if rule_hash in hashed_rules:
+            rule, reverse_rule = hashed_rules[rule_hash]
+            built_rule = copy.copy(rule)
+            built_reverse_rule = copy.copy(reverse_rule)
+            built_rule.description = str(seq) + '. regular'
+            built_rule.sequence = seq
+            built_reverse_rule.description = '%s. reversed %s' % (
+                str(reverse_seq), built_rule.description)
+            built_reverse_rule.sequence = reverse_seq
+        else:
+            rule = _create_rule(builder, rule_info, name='regular')
+            built_rule = rule.build(seq)
+            cidr_revert = not _rule_excepted(rule)
+            reverse_rule = rule.reverse(cidr_revert)
+            built_reverse_rule = reverse_rule.build(reverse_seq)
+            hashed_rules[rule_hash] = (built_rule, built_reverse_rule)
 
-    for r in reversed_rules:
-        rules.append(r.build(seq))
+        rules.extend([built_rule, built_reverse_rule])
         seq += 10
+        reverse_seq += 10
 
-    for i, protocol in enumerate(dvs_const.PROTOCOL.values()):
-        rules.append(
-            DropAllRule(builder.factory, None, protocol,
-                        name='drop all').build(seq + i * 10))
+    seq = len(rules) * 10
+    for protocol in dvs_const.PROTOCOL.values():
+        rules.append(DropAllRule(builder, None, protocol,
+                                 name='drop all').build(seq))
+        seq += 10
 
     filter_policy = builder.filter_policy(rules)
     setting = builder.port_setting()
     setting.filterPolicy = filter_policy
-
-    spec = builder.factory.create('ns0:DVPortConfigSpec')
-    spec.operation = 'edit'
-    spec.setting = setting
+    spec = builder.port_config_spec(setting=setting)
     spec.key = port_key
     return spec
+
+
+def _rule_excepted(rule):
+    if rule.direction == 'incomingPackets' and rule.protocol == 'udp':
+        if (rule.ethertype == 'IPv4' and rule.port_range == (68, 68) and
+            rule.backward_port_range == (67, 67)):
+                return True
+        if (rule.ethertype == 'IPv6' and rule.port_range == (546, 546) and
+            rule.backward_port_range == (547, 547)):
+                return True
+    return False
+
+
+def _get_rule_hash(rule):
+    rule_tokens = []
+    for k in sorted(rule):
+        if k in HASHED_RULE_INFO_KEYS:
+            rule_tokens.append('%s:%s' % (k, rule[k]))
+    return ','.join(rule_tokens)
 
 
 def _create_rule(builder, rule_info, ip=None, name=None):
@@ -264,7 +307,7 @@ def _create_rule(builder, rule_info, ip=None, name=None):
         rule_class = EgressRule
         cidr = rule_info.get('dest_ip_prefix')
     rule = rule_class(
-        spec_factory=builder.factory,
+        spec_builder=builder,
         ethertype=rule_info['ethertype'],
         protocol=rule_info.get('protocol'),
         name=name
@@ -275,6 +318,8 @@ def _create_rule(builder, rule_info, ip=None, name=None):
         rule.port_range = (rule_info.get('port_range_min'),
                            rule_info.get('port_range_max'))
         rule.backward_port_range = (
-            rule_info.get('source_port_range_min') or 32768,
-            rule_info.get('source_port_range_max') or 65535)
+            rule_info.get(
+                'source_port_range_min') or dvs_const.MIN_EPHEMERAL_PORT,
+            rule_info.get(
+                'source_port_range_max') or dvs_const.MAX_EPHEMERAL_PORT)
     return rule
