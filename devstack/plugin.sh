@@ -27,8 +27,17 @@ set +o xtrace
 
 source $TOP_DIR/lib/neutron_plugins/ovs_base
 
-# OVSvApp Networking-vSphere DIR.
+# DVSvApp Networking-vSphere DIR.
 VMWARE_DVS_NETWORKING_DIR=$DEST/networking-vsphere
+
+# Nova VMwareVCDriver DIR
+NOVA_VCDRIVER=$NOVA_DIR/nova/virt/vmwareapi/
+
+# DVSvApp patched vif.py
+NOVA_VIF=$VMWARE_DVS_NETWORKING_DIR/networking_vsphere/nova/virt/vmwareapi/vif.py
+
+# DVSvApp patched vm_util.py
+NOVA_VM_UTIL=$VMWARE_DVS_NETWORKING_DIR/networking_vsphere/nova/virt/vmwareapi/vm_util.py
 
 # Entry Points
 # ------------
@@ -39,8 +48,10 @@ function add_vmware_dvs_config {
     VMWARE_DVS_CONF_FILENAME=vmware_dvs_agent.ini
     mkdir -p /$VMWARE_DVS_CONF_PATH
     VMWARE_DVS_CONF_FILE=$VMWARE_DVS_CONF_PATH/$VMWARE_DVS_CONF_FILENAME
+    VMWARE_NOVA_CONF_FILE=etc/nova/nova-compute.conf
     echo "Adding configuration file for Vmware_Dvs Agent"
     cp $VMWARE_DVS_NETWORKING_DIR/$VMWARE_DVS_CONF_FILE /$VMWARE_DVS_CONF_FILE
+    touch /$VMWARE_NOVA_CONF_FILE
 }
 
 function configure_vmware_dvs_config {
@@ -52,6 +63,13 @@ function configure_vmware_dvs_config {
     iniset /$VMWARE_DVS_CONF_FILE ml2_vmware vsphere_hostname $VMWAREAPI_IP
     iniset /$VMWARE_DVS_CONF_FILE ml2_vmware vsphere_password $VMWAREAPI_PASSWORD
     iniset /$VMWARE_DVS_CONF_FILE ml2_vmware network_maps $VMWARE_DVS_CLUSTER_DVS_MAPPING
+    iniset /$VMWARE_NOVA_CONF_FILE DEFAULT host $VMWAREAPI_CLUSTER
+}
+
+function configure_DVS_compute_driver {
+    echo "Configuring Nova VCDriver for DVS"
+    cp $NOVA_VIF $NOVA_VCDRIVER
+    cp $NOVA_VM_UTIL $NOVA_VCDRIVER
 }
 
 function start_vmware_dvs_agent {
@@ -136,6 +154,7 @@ if is_service_enabled vmware_dvs-agent; then
 
     elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
 	add_vmware_dvs_config
+        configure_DVS_compute_driver
 	configure_vmware_dvs_config
 	setup_vmware_dvs_bridges
 	start_vmware_dvs_agent
