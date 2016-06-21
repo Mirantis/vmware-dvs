@@ -34,11 +34,14 @@ def get_hypervisors_by_host(cfg, host):
 
 def _make_nova_client(cfg):
 
+    auth_url=cfg.nova.auth_url
+    if auth_url[-1] != '/':
+        auth_url = auth_url + '/'
     params = dict(
         username=cfg.nova.username,
         api_key=cfg.nova.password,
-        project_id=cfg.nova.tenant_name,
-        auth_url=cfg.nova.auth_url + "v2.0/"
+        project_id=cfg.nova.project_name,
+        auth_url=auth_url + "v2.0/"
     )
 
     try:

@@ -21,7 +21,6 @@ from oslo_config import cfg
 from oslo_log import log
 from oslo_utils import timeutils
 
-from neutron._i18n import _LE, _LI
 from neutron.common import constants as common_const
 from neutron.common import rpc as n_rpc
 from neutron.common import topics
@@ -32,6 +31,7 @@ from neutron.plugins.common import constants as p_const
 from neutron.plugins.ml2 import driver_api as api
 from neutron.plugins.ml2.drivers import mech_agent
 
+from networking_vsphere._i18n import _LE, _LI
 from networking_vsphere.common import constants as ovsvapp_const
 from networking_vsphere.db import ovsvapp_db
 from networking_vsphere.ml2 import ovsvapp_rpc
@@ -58,6 +58,7 @@ class OVSvAppAgentMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self._start_rpc_listeners()
         self._plugin = None
         self._pool = None
+        self.supported_network_types = [p_const.TYPE_VLAN, p_const.TYPE_VXLAN]
         LOG.info(_LI("Successfully initialized OVSvApp Mechanism driver."))
         if cfg.CONF.OVSVAPP.enable_ovsvapp_monitor:
             self._start_ovsvapp_monitor()
@@ -90,7 +91,7 @@ class OVSvAppAgentMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                           ovsvapp_rpc.OVSvAppSecurityGroupServerRpcCallback(
                           self.ovsvapp_sg_server_rpc)]
         self.topic = ovsvapp_const.OVSVAPP
-        self.conn = n_rpc.create_connection(new=True)
+        self.conn = n_rpc.create_connection()
         self.conn.create_consumer(self.topic, self.endpoints, fanout=False)
         return self.conn.consume_in_threads()
 
@@ -169,10 +170,13 @@ class OVSvAppAgentMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         port = context.current
         if port and port['device_owner'].startswith('compute'):
             segment = context.top_bound_segment
-            if segment and segment[api.NETWORK_TYPE] == p_const.TYPE_VXLAN:
+            if (segment and
+                    segment[api.NETWORK_TYPE] in self.supported_network_types):
                 LOG.debug("OVSvApp Mech driver - delete_port_postcommit for "
-                          "port: %s.", port['id'])
+                          "port: %s with network_type as %s.",
+                          port['id'], segment[api.NETWORK_TYPE])
                 vni = segment[api.SEGMENTATION_ID]
+                network_type = segment[api.NETWORK_TYPE]
                 host = port[portbindings.HOST_ID]
                 agent = None
                 vcenter = None
@@ -190,6 +194,7 @@ class OVSvAppAgentMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                                 'cluster_id': cluster,
                                 'network_id': port['network_id'],
                                 'segmentation_id': vni,
+                                'network_type': network_type,
                                 'host': host}
                 else:
                     LOG.debug("Not a valid ESX port: %s.", port['id'])
@@ -211,16 +216,16 @@ class OVSvAppAgentMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             self._check_and_fire_provider_update(port)
 
     def delete_network_postcommit(self, context):
+        network = context.current
+        segments = context.network_segments
+        vxlan_segments = []
+        if segments:
+            for segment in segments:
+                if segment[api.NETWORK_TYPE] in self.supported_network_types:
+                    vxlan_segments.append(segment)
+        if not vxlan_segments:
+            return
         try:
-            network = context.current
-            segments = context.network_segments
-            vxlan_segments = []
-            if segments:
-                for segment in segments:
-                    if segment[api.NETWORK_TYPE] == p_const.TYPE_VXLAN:
-                        vxlan_segments.append(segment)
-            if not vxlan_segments:
-                return
             stale_entries = ovsvapp_db.get_stale_local_vlans_for_network(
                 network['id'])
             if stale_entries:
@@ -231,7 +236,9 @@ class OVSvAppAgentMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                                     'network_id': network['id']}
                     if len(vxlan_segments) == 1:
                         seg_id = vxlan_segments[0][api.SEGMENTATION_ID]
-                        network_info.update({'segmentation_id': seg_id})
+                        net_type = vxlan_segments[0][api.NETWORK_TYPE]
+                        network_info.update({'segmentation_id': seg_id,
+                                             'network_type': net_type})
                     LOG.debug("Spawning thread for releasing network "
                               "VNI allocations for %s.", network_info)
                     self.threadpool.spawn_n(self._notify_agent, network_info)

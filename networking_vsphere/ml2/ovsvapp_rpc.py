@@ -19,11 +19,11 @@ from oslo_log import log
 import oslo_messaging
 from sqlalchemy.orm import exc as sa_exc
 
+from networking_vsphere._i18n import _LE, _LI, _LW
 from networking_vsphere.common import constants as ovsvapp_const
 from networking_vsphere.common import utils as ovsvapp_utils
 from networking_vsphere.db import ovsvapp_db
 
-from neutron._i18n import _LE, _LI, _LW
 from neutron.common import constants as common_const
 from neutron.common import exceptions as exc
 from neutron.common import rpc as n_rpc
@@ -184,27 +184,24 @@ class OVSvAppServerRpcCallback(plugin_rpc.RpcCallbacks):
                          'physical_network':
                          network['provider:physical_network']})
 
-                    if port['network_type'] == p_const.TYPE_VXLAN:
-                        port_info = {'port_id': port['id'],
-                                     'vcenter_id': vcenter_id,
-                                     'cluster_id': cluster_id,
-                                     'network_id': port['network_id']}
-                        lvid = ovsvapp_db.get_local_vlan(port_info)
-                        if lvid:
-                            port['lvid'] = lvid
-                        else:
-                            # Local VLANs are exhausted ! No point processing
-                            # further.
-                            LOG.error(_LE("No VLAN available in the cluster "
-                                          "%(cluster)s for assignment to"
-                                          " device %(device)s in "
-                                          "vCenter %(vcenter)s."),
-                                      {'device': device_id,
-                                       'cluster': cluster_id,
-                                       'vcenter': vcenter_id})
-                            return False
+                    port_info = {'port_id': port['id'],
+                                 'vcenter_id': vcenter_id,
+                                 'cluster_id': cluster_id,
+                                 'network_id': port['network_id']}
+                    lvid = ovsvapp_db.get_local_vlan(port_info)
+                    if lvid:
+                        port['lvid'] = lvid
                     else:
-                        port['lvid'] = port['segmentation_id']
+                        # Local VLANs are exhausted ! No point processing
+                        # further.
+                        LOG.error(_LE("No VLAN available in the cluster "
+                                      "%(cluster)s for assignment to"
+                                      " device %(device)s in "
+                                      "vCenter %(vcenter)s."),
+                                  {'device': device_id,
+                                   'cluster': cluster_id,
+                                   'vcenter': vcenter_id})
+                        return False
                     # Bind the port here. If binding succeeds, then
                     # add this port to process for security groups, otheriwse
                     # ignore it.
@@ -228,8 +225,8 @@ class OVSvAppServerRpcCallback(plugin_rpc.RpcCallbacks):
                     device_ports.append(port)
                 if not device_ports:
                     try_count -= 1
-                    LOG.warn(_LW("Port details could not be retrieved for "
-                                 "device %s ..retrying."), device_id)
+                    LOG.warning(_LW("Port details could not be retrieved for "
+                                    "device %s ..retrying."), device_id)
                     time.sleep(3)
                 else:
                     LOG.debug("Device details returned by server: "
@@ -257,35 +254,35 @@ class OVSvAppServerRpcCallback(plugin_rpc.RpcCallbacks):
         agent_id = kwargs.get('agent_id')
         device_id = kwargs.get('device')
         host = kwargs.get('host')
-        network_type = kwargs.get('net_type')
         updated_ports = set()
         ports = None
-        # Wait till all the ports of the device become ACTIVE
-        if network_type == p_const.TYPE_VXLAN:
-            retry_count = 3
-            while retry_count > 0:
-                sleep = False
-                ports = self.plugin.get_ports(rpc_context,
-                                              filters={'device_id':
-                                                       [device_id]})
-                for port in ports:
-                    if port['status'] != common_const.PORT_STATUS_ACTIVE:
-                        sleep = True
-                        break
-                if sleep:
-                    time.sleep(retry_count * 3)
-                    retry_count -= 1
-                else:
-                    break
-            if retry_count == 0:
-                LOG.error(_LE("Failed to update binding for device %s, "
-                              "as the device has one of more ports "
-                              "in BUILD state."), device_id)
-                return
-        else:
-            ports = self.plugin.get_ports(rpc_context,
-                                          filters={'device_id': [device_id]})
+        ports = self.plugin.get_ports(rpc_context,
+                                      filters={'device_id': [device_id]})
         for port in ports:
+            network = self.plugin.get_network(rpc_context, port['network_id'])
+            port['network_type'] = network['provider:network_type']
+            if network['provider:network_type'] == p_const.TYPE_VXLAN:
+                retry_count = 3
+                while retry_count > 0:
+                    sleep = False
+                    for port in ports:
+                        if port['status'] != common_const.PORT_STATUS_ACTIVE:
+                            sleep = True
+                            break
+                    if sleep:
+                        time.sleep(retry_count * 3)
+                        retry_count -= 1
+                        ports = self.plugin.get_ports(rpc_context,
+                                                      filters={'device_id':
+                                                               [device_id]})
+                    else:
+                        break
+                if retry_count == 0:
+                    LOG.error(_LE("Failed to update binding for device %s, "
+                                  "as the device has one of more ports "
+                                  "in BUILD state."), device_id)
+                    return
+
             port_id = port['id']
             LOG.debug("Port %(port_id)s update_port invoked by agent "
                       "%(agent_id)s for host %(host)s.",
@@ -296,7 +293,7 @@ class OVSvAppServerRpcCallback(plugin_rpc.RpcCallbacks):
                 updated_port = self.plugin.update_port(rpc_context, port_id,
                                                        new_port)
                 updated_ports.add(updated_port['id'])
-                if network_type == p_const.TYPE_VXLAN:
+                if port['network_type'] == p_const.TYPE_VXLAN:
                     time.sleep(1)
                     new_status = (common_const.PORT_STATUS_BUILD
                                   if port['admin_state_up'] else
@@ -355,9 +352,9 @@ class OVSvAppServerRpcCallback(plugin_rpc.RpcCallbacks):
                        one())
             return port_db
         except sa_exc.NoResultFound:
-            LOG.warn(_LW("Port %(port_id)s requested by agent "
-                         "%(agent_id)s not found in database."),
-                     {'port_id': port_id, 'agent_id': agent_id})
+            LOG.warning(_LW("Port %(port_id)s requested by agent "
+                            "%(agent_id)s not found in database."),
+                        {'port_id': port_id, 'agent_id': agent_id})
             return None
         except exc.MultipleResultsFound:
             LOG.error(_LE("Multiple ports have port_id starting with %s."),
@@ -394,36 +391,33 @@ class OVSvAppServerRpcCallback(plugin_rpc.RpcCallbacks):
             bound_port = port_context.current
 
             if not segment:
-                LOG.warn(_LW("Port %(port_id)s requested by agent "
-                             "%(agent_id)s on network %(network_id)s not "
-                             "bound, vif_type: %(vif_type)s."),
-                         {'port_id': port['id'],
-                          'agent_id': agent_id,
-                          'network_id': port['network_id'],
-                          'vif_type': port[portbindings.VIF_TYPE]})
+                LOG.warning(_LW("Port %(port_id)s requested by agent "
+                                "%(agent_id)s on network %(network_id)s not "
+                                "bound, vif_type: %(vif_type)s."),
+                            {'port_id': port['id'],
+                             'agent_id': agent_id,
+                             'network_id': port['network_id'],
+                             'vif_type': port[portbindings.VIF_TYPE]})
                 continue
             bound_port['lvid'] = None
-            if segment[api.NETWORK_TYPE] == p_const.TYPE_VXLAN:
-                port_info = {'port_id': bound_port['id'],
-                             'vcenter_id': vcenter_id,
-                             'cluster_id': cluster_id,
-                             'network_id': bound_port['network_id']}
-                lvid = ovsvapp_db.get_local_vlan(port_info, False)
-                if lvid:
-                    bound_port['lvid'] = lvid
-                else:
-                    # Local VLANs are exhausted !! No point processing
-                    # further.
-                    LOG.error(_LE("Local VLAN not available in the cluster"
-                                  " %(cluster)s for port"
-                                  " %(port_id)s in vcenter %(vcenter)s."),
-                              {'port_id': bound_port['id'],
-                               'cluster': cluster_id,
-                               'vcenter': vcenter_id})
-                    continue
-                    # Skip sending back this port as there is no lvid.
+            port_info = {'port_id': bound_port['id'],
+                         'vcenter_id': vcenter_id,
+                         'cluster_id': cluster_id,
+                         'network_id': bound_port['network_id']}
+            lvid = ovsvapp_db.get_local_vlan(port_info, False)
+            if lvid:
+                bound_port['lvid'] = lvid
             else:
-                bound_port['lvid'] = segment[api.SEGMENTATION_ID]
+                # Local VLANs are exhausted !! No point processing
+                # further.
+                LOG.error(_LE("Local VLAN not available in the cluster"
+                              " %(cluster)s for port"
+                              " %(port_id)s in vcenter %(vcenter)s."),
+                          {'port_id': bound_port['id'],
+                           'cluster': cluster_id,
+                           'vcenter': vcenter_id})
+                # Skip sending back this port as there is no lvid.
+                continue
 
             entry = {'network_id': bound_port['network_id'],
                      'port_id': bound_port['id'],
@@ -435,6 +429,7 @@ class OVSvAppServerRpcCallback(plugin_rpc.RpcCallbacks):
                      'physical_network': segment[api.PHYSICAL_NETWORK],
                      'fixed_ips': bound_port['fixed_ips'],
                      'device_id': bound_port['device_id'],
+                     'security_groups': bound_port['security_groups'],
                      'device_owner': bound_port['device_owner']}
             LOG.debug("Adding port detail: %s.", entry)
             out_ports.append(entry)

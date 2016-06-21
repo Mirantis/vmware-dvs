@@ -16,11 +16,11 @@
 from oslo_log import log
 import sqlalchemy.orm.exc as sa_exc
 
-from neutron._i18n import _, _LE, _LI, _LW
 from neutron.common import exceptions as exc
 from neutron.db import api as db_api
 from neutron.db import common_db_mixin
 
+from networking_vsphere._i18n import _, _LE, _LI, _LW
 from networking_vsphere.db import ovsvapp_models as models
 from networking_vsphere.extensions import ovsvapp_cluster
 from networking_vsphere.extensions import ovsvapp_mitigated_cluster as vapp_mc
@@ -275,11 +275,11 @@ def update_and_get_cluster_lock(vcenter_id, cluster_id):
                                  "Will retry later"), cluster_id)
                     return RETRY
             else:
-                LOG.warn(_LW("Cluster %(id)s in vCenter %(vc)s needs "
-                             "attention. "
-                             "Not able to put hosts to maintenance!"),
-                         {'id': cluster_id,
-                          'vc': vcenter_id})
+                LOG.warning(_LW("Cluster %(id)s in vCenter %(vc)s needs "
+                                "attention. "
+                                "Not able to put hosts to maintenance!"),
+                            {'id': cluster_id,
+                             'vc': vcenter_id})
                 return GIVE_UP
         except sa_exc.NoResultFound:
             # First fault case in this cluster_id.

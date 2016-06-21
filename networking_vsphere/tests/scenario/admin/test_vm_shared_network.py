@@ -22,9 +22,9 @@ from neutron.tests.tempest import exceptions
 
 from oslo_config import cfg
 from oslo_serialization import jsonutils
+from tempest.lib.common import rest_client
+from tempest.lib.common.utils import data_utils
 from tempest import manager as auth_manager
-from tempest_lib.common import rest_client
-from tempest_lib.common.utils import data_utils
 
 CONF = cfg.CONF
 
@@ -34,7 +34,7 @@ class OVSVAPPTestadminJSON(manager.ESXNetworksTestJSON):
     @classmethod
     def resource_setup(cls):
         super(OVSVAPPTestadminJSON, cls).resource_setup()
-        cls.creds = cls.os.credentials
+        cls.creds = cls.os_admin.credentials
         cls.user_id = cls.creds.user_id
         cls.username = cls.creds.username
         cls.password = cls.creds.password
@@ -236,7 +236,7 @@ class OVSVAPPTestadminJSON(manager.ESXNetworksTestJSON):
         body = self.admin_client.create_network(**post_body)
         network2 = body['network']
         self.addCleanup(self.admin_client.delete_network, network2['id'])
-        sub_cidr = netaddr.IPNetwork(CONF.network.tenant_network_cidr).next()
+        sub_cidr = netaddr.IPNetwork(CONF.network.project_network_cidr).next()
         subnet2 = self.create_subnet(network2, client=self.admin_client,
                                      cidr=sub_cidr)
         name = data_utils.rand_name('router-')

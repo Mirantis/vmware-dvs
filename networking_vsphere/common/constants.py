@@ -71,6 +71,7 @@ SG_TCP_TABLE_ID = 2
 SG_UDP_TABLE_ID = 2
 SG_ICMP_TABLE_ID = 2
 SG_LEARN_TABLE_ID = 5
+SG_CANARY_TABLE_ID = 23
 
 ICMP_ECHO_REQ = 8
 ICMP_ECHO_REP = 0
@@ -112,6 +113,10 @@ LOGIN_PROBLEM_TEXT = "Cannot complete login due to an incorrect "\
 
 DELETED_TEXT = "The object has already been deleted or has not been "\
                "completely created"
+
+DUPLICATE_NAME = "oslo_vmware.exceptions.DuplicateName"
+
+RESOURCE_IN_USE = "is in use."
 
 # EPHEMERAL ports
 MIN_EPHEMERAL_PORT = 32768

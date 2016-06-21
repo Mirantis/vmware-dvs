@@ -18,9 +18,9 @@ import re
 import time
 
 from oslo_log import log
+from oslo_vmware import exceptions
 
-from neutron._i18n import _LE, _LI, _LW
-
+from networking_vsphere._i18n import _, _LE, _LI, _LW
 from networking_vsphere.common import constants
 from networking_vsphere.common import error
 from networking_vsphere.common import model
@@ -72,7 +72,12 @@ class VCNetworkDriver(driver.NetworkDriver):
         for port_group in port_group_names:
             if (re.match(uuid_regex_vlan, port_group, re.IGNORECASE) or
                     re.match(uuid_regex_vxlan, port_group, re.IGNORECASE)):
-                self.delete_portgroup(switch, port_group)
+                try:
+                    self.delete_portgroup(switch, port_group)
+                except Exception as e:
+                    LOG.exception(_LE("Failed to delete portgroup %(pg)s from "
+                                      "dvs %(dvs)s. Cause : %(err)s"),
+                                  {'pg': port_group, 'dvs': switch, 'err': e})
 
     def validate_cluster_switch_mapping(self, cluster_path, switch):
         """Validate the cluster_switch_mapping."""
@@ -247,22 +252,20 @@ class VCNetworkDriver(driver.NetworkDriver):
                             break
                     except error_util.SocketTimeoutException:
                         # Ignore timeout.
-                        LOG.warn(_LW("Ignoring socket timeouts while "
-                                     "monitoring for vCenter updates."))
+                        LOG.warning(_LW("Ignoring socket timeouts while "
+                                        "monitoring for vCenter updates."))
                         continue
                     if updateSet:
                         version = updateSet.version
                         events = self._process_update_set(updateSet)
                         LOG.debug("Sending events : %s.", events)
                         self.dispatch_events(events)
-                except error_util.VimFaultException as e:
-                    excp = e.exception_obj
+                except exceptions.VimFaultException as e:
                     # InvalidCollectorVersionFault happens
                     # on session re-connect.
                     # Re-initialize WaitForUpdatesEx.
-                    if hasattr(excp.fault.detail,
-                               "InvalidCollectorVersionFault"):
-                        LOG.debug("InvalidCollectorVersionFault - "
+                    if "InvalidCollectorVersion" in e.fault_list:
+                        LOG.debug("InvalidCollectorVersion - "
                                   "Re-initializing vCenter updates "
                                   "monitoring.")
                         version = ""

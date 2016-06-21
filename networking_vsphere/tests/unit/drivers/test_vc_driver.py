@@ -14,7 +14,6 @@
 #    under the License.
 #
 
-import fixtures
 import mock
 
 from neutron.plugins.common import constants as p_const
@@ -30,23 +29,9 @@ from networking_vsphere.utils import cache
 from networking_vsphere.utils import resource_util
 from networking_vsphere.utils import vim_util
 
+from oslo_vmware import exceptions
+
 VcCache = cache.VCCache
-
-
-def fake_is_valid_switch(obj, cluster_mor, switch):
-    return fake_vmware_api._db_content["HostSystem"].values()
-
-
-def fake_get_unused_portgroups(obj, switch):
-    return []
-
-
-def fake_delete_portgroup(obj, switch, pg):
-    return
-
-
-def fake_create_network(obj, network, virtual_switch):
-    return
 
 
 class TestVmwareDriver(base.TestCase):
@@ -57,22 +42,22 @@ class TestVmwareDriver(base.TestCase):
         self.fake_visdk = self.useFixture(stubs.FakeVmware())
         self.session = self.fake_visdk.session
         self.useFixture(stubs.CacheFixture())
-        self.useFixture(fixtures.MonkeyPatch(
-            'networking_vsphere.drivers.vc_driver.'
-            'VCNetworkDriver.is_valid_switch', fake_is_valid_switch))
-        self.useFixture(fixtures.MonkeyPatch(
-            'networking_vsphere.drivers.vc_driver.'
-            'VCNetworkDriver.get_unused_portgroups',
-            fake_get_unused_portgroups))
-        self.useFixture(fixtures.MonkeyPatch(
-            'networking_vsphere.drivers.vc_driver.'
-            'VCNetworkDriver.delete_portgroup', fake_delete_portgroup))
-        self.useFixture(fixtures.MonkeyPatch(
-            'networking_vsphere.drivers.vc_driver.'
-            'VCNetworkDriver.create_network', fake_create_network))
+        mock.patch('networking_vsphere.drivers.vc_driver.'
+                   'VCNetworkDriver.is_valid_switch',
+                   return_value=fake_vmware_api._db_content["HostSystem"
+                                                            ].values()
+                   ).start()
+        mock.patch('networking_vsphere.drivers.vc_driver.'
+                   'VCNetworkDriver.get_unused_portgroups',
+                   return_value=[]).start()
+        mock.patch('networking_vsphere.drivers.vc_driver.'
+                   'VCNetworkDriver.delete_portgroup').start()
+        mock.patch('networking_vsphere.drivers.vc_driver.'
+                   'VCNetworkDriver.create_network').start()
         self.vc_driver = vmware_driver.VCNetworkDriver()
         self.vc_driver.state = constants.DRIVER_RUNNING
         self.vc_driver.add_cluster("ClusterComputeResource", "test_dvs")
+        self.LOG = vmware_driver.LOG
 
     def test_stop(self):
         with mock.patch.object(vim_util, "cancel_wait_for_updates",
@@ -327,6 +312,21 @@ class TestVmwareDriver(base.TestCase):
             self.assertTrue(mock_unused_ob.called)
             self.assertTrue(mock_delete_pg_ob.called)
 
+    def test_delete_stale_portgroups_exception(self):
+        with mock.patch.object(
+                self.vc_driver,
+                "get_unused_portgroups",
+                return_value=[fake_vmware_api.Constants.PORTGROUP_NAME]
+                ) as mock_unused_ob, \
+                mock.patch.object(self.vc_driver, "delete_portgroup",
+                                  side_effect=Exception()) as mock_del_pg_ob, \
+                mock.patch.object(self.LOG, 'exception'
+                                  ) as mock_exception_log:
+            self.vc_driver.delete_stale_portgroups("test_dvs")
+            self.assertTrue(mock_unused_ob.called)
+            self.assertTrue(mock_del_pg_ob.called)
+            self.assertTrue(mock_exception_log.called)
+
     def test_post_delete_vm(self):
         uuid = fake_vmware_api.Constants.VM_UUID
         clus_mor = (
@@ -380,3 +380,40 @@ class TestVmwareDriver(base.TestCase):
                                           "test_dvs")
             self.assertFalse(mock_unreg_ob.called)
             self.assertTrue(mock_find_ob.called)
+
+    @mock.patch('time.sleep', side_effect=Exception())
+    def test_monitor_events_with_no_exception(self, time_fn):
+        self.vc_driver.state = constants.DRIVER_READY
+        with mock.patch.object(self.LOG, 'info') as mock_info_log,\
+                mock.patch.object(self.vc_driver, "dispatch_events",
+                                  ) as mock_dispatch_events, \
+                mock.patch.object(self.vc_driver, "_process_update_set",
+                                  ) as mock_process_update_set, \
+                mock.patch.object(vim_util, 'wait_for_updates_ex'
+                                  ) as mock_wait_for_update_ex, \
+                mock.patch.object(self.LOG, 'exception') as mock_except_log:
+            self.vc_driver.monitor_events()
+            self.assertTrue(mock_info_log.called)
+            self.assertTrue(mock_dispatch_events.called)
+            self.assertTrue(mock_process_update_set.called)
+            self.assertTrue(mock_wait_for_update_ex.called)
+            self.assertTrue(mock_except_log.called)
+
+    @mock.patch('time.sleep', side_effect=Exception())
+    def test_monitor_events_with_fault_exception(self, time_fn):
+        self.vc_driver.state = constants.DRIVER_READY
+        with mock.patch.object(self.LOG, 'info') as mock_info_log,\
+                mock.patch.object(self.vc_driver, "dispatch_events",
+                                  ) as mock_dispatch_events, \
+                mock.patch.object(self.vc_driver, "_process_update_set",
+                                  ) as mock_process_update_set, \
+                mock.patch.object(vim_util, 'wait_for_updates_ex',
+                                  side_effect=exceptions.VimFaultException(
+                                      [], None)) as mock_vim_fault_exception, \
+                mock.patch.object(self.LOG, 'exception') as mock_except_log:
+            self.vc_driver.monitor_events()
+            self.assertTrue(mock_info_log.called)
+            self.assertFalse(mock_dispatch_events.called)
+            self.assertFalse(mock_process_update_set.called)
+            self.assertTrue(mock_vim_fault_exception.called)
+            self.assertTrue(mock_except_log.called)

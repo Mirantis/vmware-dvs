@@ -19,11 +19,11 @@ import netaddr
 from oslo_config import cfg
 from oslo_log import log
 
-from neutron._i18n import _LE, _LW
 from neutron.agent.common import ovs_lib
 from neutron.agent import firewall
 from neutron.common import constants
 
+from networking_vsphere._i18n import _LE, _LW
 from networking_vsphere.common import constants as ovsvapp_const
 
 LOG = log.getLogger(__name__)
@@ -60,7 +60,7 @@ class OVSFirewallDriver(firewall.FirewallDriver):
         self.filtered_ports = {}
         self.provider_port_cache = set()
         if sg_conf.security_bridge_mapping is None:
-            LOG.warn(_LW("Security bridge mapping not configured."))
+            LOG.warning(_LW("Security bridge mapping not configured."))
             return
         secbr_list = (sg_conf.security_bridge_mapping).split(':')
         secbr_name = secbr_list[0]
@@ -80,7 +80,7 @@ class OVSFirewallDriver(firewall.FirewallDriver):
 
     def check_ovs_firewall_restart(self):
         canary_flow = self.sg_br.dump_flows_for_table(
-            ovsvapp_const.SG_EGRESS_TABLE_ID)
+            ovsvapp_const.SG_CANARY_TABLE_ID)
         return canary_flow
 
     @property
@@ -256,6 +256,8 @@ class OVSFirewallDriver(firewall.FirewallDriver):
                                in_port=self.phy_ofport)
             self._add_ovs_flow(sec_br, ovsvapp_const.SG_DROPALL_PRI,
                                ovsvapp_const.SG_EGRESS_TABLE_ID, "drop")
+            self._add_ovs_flow(sec_br, ovsvapp_const.SG_DROPALL_PRI,
+                               ovsvapp_const.SG_CANARY_TABLE_ID, "drop")
             self._add_ovs_flow(sec_br, ovsvapp_const.SG_DROPALL_PRI,
                                ovsvapp_const.SG_LEARN_TABLE_ID, "drop")
             # Allow all ARP, parity with iptables.
@@ -558,8 +560,8 @@ class OVSFirewallDriver(firewall.FirewallDriver):
         """Method to update OVS rules for an existing VM port."""
         LOG.debug("OVSF Updating port: %s filter.", port['id'])
         if port['id'] not in self.filtered_ports:
-            LOG.warn(_LW("Attempted to update port filter which is not "
-                         "filtered %s."), port['id'])
+            LOG.warning(_LW("Attempted to update port filter which is not "
+                            "filtered %s."), port['id'])
             return
         port_cookie = self.get_cookie(port['id'])
         port_provider_cookie = self.get_cookie('pr' + port['id'])

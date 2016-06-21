@@ -18,10 +18,10 @@
 import argparse
 import six
 
+from networking_vsphere._i18n import _
 from neutronclient.common import exceptions
 from neutronclient.common import extension
 from neutronclient.common import utils
-from neutronclient.i18n import _
 from neutronclient.neutron import v2_0 as neutronV20
 
 
@@ -73,8 +73,8 @@ class OVSvAppMitigatedClusterShow(extension.ClientExtensionShow,
 
         return parser
 
-    def get_data(self, parsed_args):
-        self.log.debug('get_data(%s)', parsed_args)
+    def execute(self, parsed_args):
+        self.log.debug('execute(%s)', parsed_args)
         neutron_client = self.get_client()
         neutron_client.format = parsed_args.request_format
         parsed_args.id = (parsed_args.vcenter_id + ':'
