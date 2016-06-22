@@ -67,13 +67,6 @@ class DVSAgentTestCase(base.BaseTestCase):
         self.update_port_rules_mock = sg_util_patch.start()
 
     def test_look_up_dvs_failed(self):
-        for type_ in NOT_SUPPORTED_TYPES:
-            self.assertRaisesRegexp(exceptions.NotSupportedNetworkType,
-                                    "VMWare DVS driver don't support %s "
-                                    "network" % type_,
-                                    self.agent._lookup_dvs_for_context,
-                                    {'network_type': type_})
-
         segment = {'network_type': constants.TYPE_VLAN,
                    'physical_network': 'wrong_network'}
         self.assertRaisesRegexp(exceptions.NoDVSForPhysicalNetwork,
@@ -137,19 +130,6 @@ class DVSAgentTestCase(base.BaseTestCase):
                           self.port_context.network.network_segments[0])
         self.assertTrue(is_valid_dvs.called)
         self.assertFalse(self.dvs.release_port.called)
-
-    @mock.patch('networking_vsphere.agent.dvs_neutron_agent.DVSAgent.'
-                '_lookup_dvs_for_context')
-    def test_delete_port_postcommit(self, is_valid_dvs):
-        is_valid_dvs.return_value = self.dvs
-
-        self.agent.delete_port_postcommit(
-            self.port_context.current,
-            self.port_context.original,
-            self.port_context.network.network_segments[0]
-        )
-        self.assertTrue(is_valid_dvs.called)
-        self.assertTrue(self.dvs.release_port.called)
 
     def _create_ports(self, security_groups=None):
         ports = [
