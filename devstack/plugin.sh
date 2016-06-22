@@ -51,7 +51,6 @@ function add_vmware_dvs_config {
     VMWARE_NOVA_CONF_FILE=etc/nova/nova-compute.conf
     echo "Adding configuration file for Vmware_Dvs Agent"
     cp $VMWARE_DVS_NETWORKING_DIR/$VMWARE_DVS_CONF_FILE /$VMWARE_DVS_CONF_FILE
-    touch /$VMWARE_NOVA_CONF_FILE
 }
 
 function configure_vmware_dvs_config {
@@ -63,7 +62,7 @@ function configure_vmware_dvs_config {
     iniset /$VMWARE_DVS_CONF_FILE ml2_vmware vsphere_hostname $VMWAREAPI_IP
     iniset /$VMWARE_DVS_CONF_FILE ml2_vmware vsphere_password $VMWAREAPI_PASSWORD
     iniset /$VMWARE_DVS_CONF_FILE ml2_vmware network_maps $VMWARE_DVS_CLUSTER_DVS_MAPPING
-    iniset /$VMWARE_NOVA_CONF_FILE DEFAULT host $VMWAREAPI_CLUSTER
+    iniset /$NOVA_CONF DEFAULT host $VMWAREAPI_CLUSTER
 }
 
 function configure_DVS_compute_driver {

@@ -1,0 +1,45 @@
+[[local|localrc]]
+
+VIRT_DRIVER=vsphere
+VMWAREAPI_IP=172.16.0.254
+VMWAREAPI_USER=administrator@vsphere.local
+VMWAREAPI_PASSWORD=Qwer!1234
+VMWAREAPI_CLUSTER=Cluster2
+
+HOST_IP=10.109.0.8
+ADMIN_PASSWORD=admin
+DATABASE_PASSWORD=admin
+RABBIT_PASSWORD=admin
+SERVICE_PASSWORD=admin
+
+# Do not use Nova-Network
+disable_service n-net
+# Enable Neutron
+ENABLED_SERVICES=g-api,g-reg,key,n-api,n-crt,n-cpu,n-cond,n-sch,n-novnc,n-cauth,rabbit,mysql,horizon
+ENABLED_SERVICES+=,q-svc,q-dhcp,q-meta,q-agt,q-l3
+
+## Neutron options
+Q_USE_SECGROUP=True
+Q_ML2_PLUGIN_MECHANISM_DRIVERS=openvswitch,linuxbridge,vmware_dvs
+FLOATING_RANGE="10.109.0.0/24"
+FIXED_RANGE="10.0.0.0/24"
+Q_FLOATING_ALLOCATION_POOL=start=10.109.0.150,end=10.109.0.199
+PUBLIC_NETWORK_GATEWAY="10.109.0.1"
+PUBLIC_INTERFACE=eth0
+Q_PLUGIN=ml2
+ENABLE_TENANT_VLANS=True
+Q_ML2_TENANT_NETWORK_TYPE="vlan"
+ML2_VLAN_RANGES=physnet2:500:600
+
+# Open vSwitch provider networking configuration
+Q_USE_PROVIDERNET_FOR_PUBLIC=True
+OVS_PHYSICAL_BRIDGE=br-ex
+PUBLIC_BRIDGE=br-ex
+OVS_BRIDGE_MAPPINGS=public:br-ex,physnet2:br-eth1
+
+# Networking-vsphere
+enable_plugin networking-vsphere https://github.com/VTabolin/networking-vsphere.git
+VMWARE_DVS_CLUSTER_DVS_MAPPING=physnet2:Cluster2
+VMWARE_DVS_ENABLE_SG=True
+VMWARE_DVS_FW_DRIVER=networking_vsphere.agent.firewalls.vcenter_firewall.DVSFirewallDriver
+VMWARE_DVS_PHYSICAL_BRIDGE=br-aux
