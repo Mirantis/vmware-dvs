@@ -30,7 +30,7 @@ from networking_vsphere.common import constants as dvs_const
 from networking_vsphere.common import dvs_agent_rpc_api
 from networking_vsphere.common import exceptions
 from networking_vsphere.common import vmware_conf as config
-from networking_vsphere.utils import compute_util
+from networking_vsphere.utils import db
 
 CONF = config.CONF
 LOG = log.getLogger(__name__)
@@ -49,13 +49,8 @@ def port_belongs_to_vmware(func):
                 except KeyError:
                     raise exceptions.HypervisorNotFound
 
-                hypervisor = compute_util.get_hypervisors_by_host(
-                    CONF, host)
-
-                # value for field hypervisor_type collected from VMWare itself,
-                # need to make research, about all possible and suitable values
-                LOG.error('SLOPS hypervisor' + str(hypervisor))
-                if hypervisor.hypervisor_type != dvs_const.VMWARE_HYPERVISOR_TYPE:
+                agent = db.get_agent_by_host(host)
+                if not agent:
                     raise exceptions.HypervisorNotFound
             else:
                 return False
