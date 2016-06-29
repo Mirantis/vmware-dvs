@@ -11,7 +11,7 @@ def get_agent_by_host(agent_host):
         agent = query.filter(agents_db.Agent.host == agent_host,
             agents_db.Agent.agent_type ==  constants.AGENT_TYPE_DVS,
             agents_db.Agent.admin_state_up == True).first()
-        if agent.is_active:
+        if agent and agent.is_active:
             return agent
     return None
 
