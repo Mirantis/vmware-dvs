@@ -40,6 +40,7 @@ OVS_BRIDGE_MAPPINGS=public:br-ex,physnet2:br-eth1
 # Networking-vsphere
 enable_plugin networking-vsphere https://github.com/VTabolin/networking-vsphere.git
 VMWARE_DVS_CLUSTER_DVS_MAPPING=physnet2:Cluster2
+VMWARE_DVS_UPLINK_MAPPING=physnet2:dvUplink1:dvUplink2
 VMWARE_DVS_ENABLE_SG=True
 VMWARE_DVS_FW_DRIVER=networking_vsphere.agent.firewalls.vcenter_firewall.DVSFirewallDriver
 VMWARE_DVS_PHYSICAL_BRIDGE=br-aux

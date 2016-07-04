@@ -62,6 +62,7 @@ function configure_vmware_dvs_config {
     iniset /$VMWARE_DVS_CONF_FILE ml2_vmware vsphere_hostname $VMWAREAPI_IP
     iniset /$VMWARE_DVS_CONF_FILE ml2_vmware vsphere_password $VMWAREAPI_PASSWORD
     iniset /$VMWARE_DVS_CONF_FILE ml2_vmware network_maps $VMWARE_DVS_CLUSTER_DVS_MAPPING
+    iniset /$VMWARE_DVS_CONF_FILE ml2_vmware uplink_maps $VMWARE_DVS_UPLINK_MAPPING
     iniset /$NOVA_CONF DEFAULT host $VMWAREAPI_CLUSTER
 }
 

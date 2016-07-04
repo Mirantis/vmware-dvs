@@ -49,10 +49,16 @@ class DVSController(object):
         self._blocked_ports = set()
         self.builder = spec_builder.SpecBuilder(
             self.connection.vim.client.factory)
+        self.uplink_map = {}
         try:
             self._dvs, self._datacenter = self._get_dvs(dvs_name, connection)
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
+
+
+    def load_uplinks(self, phys, uplinks):
+        self.uplink_map[phys] = uplinks
+
 
     def check_free(self, key):
         criteria = self.builder.port_criteria(port_key=key)
@@ -66,12 +72,15 @@ class DVSController(object):
     def create_network(self, network, segment):
         name = self._get_net_name(network)
         blocked = not network['admin_state_up']
-
+        if network['provider:physical_network'] in self.uplink_map:
+            uplinks = self.uplink_map[network['provider:physical_network']]
+        else:
+            uplinks = None
         try:
             pg_spec = self._build_pg_create_spec(
                 name,
                 segment['segmentation_id'],
-                blocked)
+                blocked, uplinks)
             pg_create_task = self.connection.invoke_api(
                 self.connection.vim,
                 'CreateDVPortgroup_Task',
@@ -254,17 +263,24 @@ class DVSController(object):
     def remove_block(self, port_key):
         self._blocked_ports.discard(port_key)
 
-    def _build_pg_create_spec(self, name, vlan_tag, blocked):
+    def _build_pg_create_spec(self, name, vlan_tag, blocked, uplinks):
         port_setting = self.builder.port_setting()
 
         port_setting.vlan = self.builder.vlan(vlan_tag)
         port_setting.blocked = self.builder.blocked(blocked)
 
         port_setting.filterPolicy = self.builder.filter_policy([])
+        if uplinks:
+            port_setting.uplinkTeamingPolicy.inherited = False
+            port_setting.uplinkTeamingPolicy.uplinkPortOrder.inherited = False
+            port_setting.uplinkTeamingPolicy.uplinkPortOrder. \
+                activeUplinkPort = uplinks['active']
+            port_setting.uplinkTeamingPolicy.uplinkPortOrder. \
+                standbyUplinkPort = uplinks['passive']
 
         pg = self.builder.pg_config(port_setting)
         pg.name = name
-        pg.numPorts = 0
+        pg.numPorts = INIT_PG_PORTS_COUNT
 
         # Equivalent of vCenter static binding type.
         pg.type = 'earlyBinding'
@@ -637,6 +653,32 @@ def create_network_map_from_config(config, pg_cache=False):
         network, dvs = pair.split(':')
         network_map[network] = controller_class(dvs, connection)
     return network_map
+
+
+def create_uplink_map_from_config(config, network_map):
+    uplink_map = {}
+    for mapping in config.uplink_maps:
+        net_conf = mapping.split(':')
+        if len(net_conf) not in (2, 3):
+            raise ValueError(_("Invalid uplink mapping: '%s'") % mapping)
+        if len(net_conf) == 3:
+            passive = net_conf[2].split(';')
+        else:
+            passive = []
+        active = net_conf[1].split(';')
+        uplinks = []
+        if net_conf[0] in network_map:
+            dvs = network_map[net_conf[0]]
+            conf = dvs._get_config_by_ref(dvs._dvs)
+            uplinks = conf.uplinkPortPolicy.uplinkPortName
+            for uplink in set(active + passive):
+                if uplink not in uplinks:
+                    raise ValueError(_(
+                        "Invalid uplink mapping: '%s'") % mapping)
+            uplink_map[net_conf[0]] = {
+                'active': active,
+                'passive': passive}
+    return uplink_map
 
 
 def create_port_map(dvs_list):

@@ -81,6 +81,11 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         self.quitting_rpc_timeout = quitting_rpc_timeout
         self.network_map = dvs_util.create_network_map_from_config(
             cfg.CONF.ML2_VMWARE, pg_cache=True)
+        uplink_map = dvs_util.create_uplink_map_from_config(
+            cfg.CONF.ML2_VMWARE, self.network_map)
+        for phys, dvs in self.network_map.iteritems():
+            if phys in uplink_map:
+                dvs.load_uplinks(phys, uplink_map[phys])
         self.updated_ports = set()
         self.deleted_ports = set()
         self.known_ports = set()
@@ -396,16 +401,16 @@ def create_agent_config_map(config):
     :param config: an instance of cfg.CONF
     :returns: a map of agent configuration parameters
     """
-    try:
-        bridge_mappings = utils.parse_mappings(config.ML2_VMWARE.network_maps)
-    except ValueError as e:
-        raise ValueError(_("Parsing network_maps failed: %s.") % e)
+    #try:
+    #    bridge_mappings = utils.parse_mappings(config.ML2_VMWARE.network_maps)
+    #except ValueError as e:
+    #    raise ValueError(_("Parsing network_maps failed: %s.") % e)
 
     kwargs = dict(
         vsphere_hostname=config.ML2_VMWARE.vsphere_hostname,
         vsphere_login=config.ML2_VMWARE.vsphere_login,
         vsphere_password=config.ML2_VMWARE.vsphere_password,
-        bridge_mappings=bridge_mappings,
+        bridge_mappings=config.ML2_VMWARE.network_maps,
         polling_interval=config.DVS_AGENT.polling_interval,
         quitting_rpc_timeout=config.DVS_AGENT.quitting_rpc_timeout,
     )

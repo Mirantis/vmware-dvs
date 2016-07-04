@@ -19,6 +19,7 @@ from networking_vsphere._i18n import _
 from neutron.agent.common import config
 
 DEFAULT_BRIDGE_MAPPINGS = []
+DEFAULT_UPLINK_MAPPINGS = []
 DEFAULT_VLAN_RANGES = []
 DEFAULT_TUNNEL_RANGES = []
 DEFAULT_TUNNEL_TYPES = []
@@ -58,6 +59,11 @@ vmware_opts = [
     cfg.ListOpt('network_maps',
                default=DEFAULT_BRIDGE_MAPPINGS,
                help=_("List of <physical_network>:<bridge>.")),
+    cfg.ListOpt('uplink_maps',
+               default=DEFAULT_UPLINK_MAPPINGS,
+               help=_("List of <physical_network>:<active uplinks>:"
+                      "<failover uplinks>."
+                      "Use semicolon between uplink names")),
     cfg.StrOpt('vsphere_hostname', default='vsphere',
                help=_("Vsphere host name or IP.")),
     cfg.StrOpt('vsphere_password', default='',

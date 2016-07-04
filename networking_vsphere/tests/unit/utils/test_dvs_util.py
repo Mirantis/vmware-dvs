@@ -29,7 +29,7 @@ from networking_vsphere.utils import spec_builder
 CONF = config.CONF
 
 fake_network = {'id': '34e33a31-516a-439f-a186-96ac85155a8c',
-                'name': '_fake_network_',
+                'name': '_fake_network_', 'provider:physical_network': 'net1',
                 'admin_state_up': True}
 fake_segment = {'segmentation_id': '102'}
 fake_port = {
