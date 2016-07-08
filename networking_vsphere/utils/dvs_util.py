@@ -55,10 +55,8 @@ class DVSController(object):
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
-
     def load_uplinks(self, phys, uplinks):
         self.uplink_map[phys] = uplinks
-
 
     def check_free(self, key):
         criteria = self.builder.port_criteria(port_key=key)
@@ -72,15 +70,10 @@ class DVSController(object):
     def create_network(self, network, segment):
         name = self._get_net_name(network)
         blocked = not network['admin_state_up']
-        if network['provider:physical_network'] in self.uplink_map:
-            uplinks = self.uplink_map[network['provider:physical_network']]
-        else:
-            uplinks = None
+        uplinks = self.uplink_map.get(network['provider:physical_network'])
         try:
             pg_spec = self._build_pg_create_spec(
-                name,
-                segment['segmentation_id'],
-                blocked, uplinks)
+                name, segment['segmentation_id'], blocked, uplinks)
             pg_create_task = self.connection.invoke_api(
                 self.connection.vim,
                 'CreateDVPortgroup_Task',
@@ -661,23 +654,19 @@ def create_uplink_map_from_config(config, network_map):
         net_conf = mapping.split(':')
         if len(net_conf) not in (2, 3):
             raise ValueError(_("Invalid uplink mapping: '%s'") % mapping)
-        if len(net_conf) == 3:
-            passive = net_conf[2].split(';')
-        else:
-            passive = []
+        phys_net = net_conf[0]
         active = net_conf[1].split(';')
-        uplinks = []
-        if net_conf[0] in network_map:
-            dvs = network_map[net_conf[0]]
+        passive = net_conf[2].split(';') if len(net_conf) == 3 else []
+        if phys_net in network_map:
+            dvs = network_map[phys_net]
             conf = dvs._get_config_by_ref(dvs._dvs)
             uplinks = conf.uplinkPortPolicy.uplinkPortName
             for uplink in set(active + passive):
                 if uplink not in uplinks:
                     raise ValueError(_(
                         "Invalid uplink mapping: '%s'") % mapping)
-            uplink_map[net_conf[0]] = {
-                'active': active,
-                'passive': passive}
+            uplink_map[phys_net] = {'active': active,
+                                    'passive': passive}
     return uplink_map
 
 

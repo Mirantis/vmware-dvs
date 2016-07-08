@@ -401,16 +401,17 @@ def create_agent_config_map(config):
     :param config: an instance of cfg.CONF
     :returns: a map of agent configuration parameters
     """
-    #try:
-    #    bridge_mappings = utils.parse_mappings(config.ML2_VMWARE.network_maps)
-    #except ValueError as e:
-    #    raise ValueError(_("Parsing network_maps failed: %s.") % e)
+    try:
+        bridge_mappings = utils.parse_mappings(config.ML2_VMWARE.network_maps,
+                                               unique_values=False)
+    except ValueError as e:
+        raise ValueError(_("Parsing network_maps failed: %s.") % e)
 
     kwargs = dict(
         vsphere_hostname=config.ML2_VMWARE.vsphere_hostname,
         vsphere_login=config.ML2_VMWARE.vsphere_login,
         vsphere_password=config.ML2_VMWARE.vsphere_password,
-        bridge_mappings=config.ML2_VMWARE.network_maps,
+        bridge_mappings=bridge_mappings,
         polling_interval=config.DVS_AGENT.polling_interval,
         quitting_rpc_timeout=config.DVS_AGENT.quitting_rpc_timeout,
     )

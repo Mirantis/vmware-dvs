@@ -15,6 +15,7 @@
 
 import abc
 import copy
+import netaddr
 import six
 
 from oslo_log import log
@@ -91,7 +92,12 @@ class TrafficRuleBuilder(object):
         rule = self.reverse_class(self.spec_builder, self.ethertype,
                                   self.protocol, name=name.strip())
         if cidr_bool:
-            rule.cidr = self.cidr
+            if (self.ethertype == 'IPv6' and self.protocol == 'ipv6-icmp' and
+                    self.type == 134):
+                LOG.error(str(self.type))
+                rule.cidr = 'FF02::2/128'
+            else:
+                rule.cidr = self.cidr
         else:
             rule.cidr = '0.0.0.0/0'
         rule.port_range = self.backward_port_range
@@ -130,21 +136,17 @@ class TrafficRuleBuilder(object):
         return result
 
     def _cidr_spec(self, cidr):
-        try:
-            ip, mask = cidr.split('/')
-        except ValueError:
-            ip = cidr
-            mask = '32'
+        cidr = netaddr.IPNetwork(cidr)
         result = self.spec_builder.create_spec('ns0:IpRange')
-        result.addressPrefix = ip
-        result.prefixLength = mask
+        result.addressPrefix = str(cidr.ip)
+        result.prefixLength = str(cidr.prefixlen)
         return result
 
     def _has_port(self, min_port):
         if min_port:
-            if self.protocol == 'icmp':
+            if self.protocol == 'icmp' or self.protocol == 'ipv6-icmp':
                 LOG.info(_LI('Vmware dvs driver does not support '
-                             '"type" and "code" for ICMP protocol.'))
+                             '"type" and "code" for ICMP/ipv6-icmp protocol.'))
                 return False
             else:
                 return True
@@ -267,10 +269,12 @@ def port_configuration(builder, port_key, sg_rules, hashed_rules):
         reverse_seq += 10
 
     seq = len(rules) * 10
-    for protocol in dvs_const.PROTOCOL.values():
-        rules.append(DropAllRule(builder, None, protocol,
-                                 name='drop all').build(seq))
-        seq += 10
+
+    rules.append(DropAllRule(builder, 'IPv4', None,
+                             name='drop all').build(seq))
+    seq += 10
+    rules.append(DropAllRule(builder, 'IPv6', None,
+                             name='drop all').build(seq))
 
     filter_policy = builder.filter_policy(rules)
     setting = builder.port_setting()
@@ -322,4 +326,6 @@ def _create_rule(builder, rule_info, ip=None, name=None):
                 'source_port_range_min') or dvs_const.MIN_EPHEMERAL_PORT,
             rule_info.get(
                 'source_port_range_max') or dvs_const.MAX_EPHEMERAL_PORT)
+    if rule_info.get('protocol') in ('ipv6-icmp', 'icmp'):
+        rule.type = rule_info.get('source_port_range_min')
     return rule

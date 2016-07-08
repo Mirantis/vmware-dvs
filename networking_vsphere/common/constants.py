@@ -94,7 +94,8 @@ DIRECTION_IP_PREFIX = {'ingress': 'source_ip_prefix',
 # protocol number according to RFC 1700
 PROTOCOL = {'icmp': 1,
             'tcp': 6,
-            'udp': 17}
+            'udp': 17,
+            'ipv6-icmp': 58}
 
 # VMWare DVS specific
 DVS_PORTGROUP_NAME_MAXLEN = 80
