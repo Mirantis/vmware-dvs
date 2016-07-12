@@ -17,7 +17,7 @@ from time import sleep
 import uuid
 import six
 
-from neutron.i18n import _LI, _LW, _LE
+from neutron._i18n import _LI, _LW, _LE
 from oslo_log import log
 from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions

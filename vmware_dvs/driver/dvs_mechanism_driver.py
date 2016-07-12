@@ -18,7 +18,7 @@ import six
 from neutron.agent import securitygroups_rpc
 from neutron import context
 from neutron.common import constants as n_const
-from neutron.i18n import _LI
+from neutron._i18n import _LI
 from neutron.extensions import portbindings
 from neutron.plugins.common import constants
 from neutron.plugins.ml2 import driver_api
