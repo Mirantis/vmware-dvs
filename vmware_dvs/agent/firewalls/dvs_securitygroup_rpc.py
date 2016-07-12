@@ -17,7 +17,7 @@ from threading import Timer
 from oslo_log import log as logging
 
 from neutron.agent import securitygroups_rpc
-from neutron.i18n import _LI
+from neutron._i18n import _LI
 
 from vmware_dvs.utils.rpc_translator import update_rules
 

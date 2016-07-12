@@ -20,7 +20,7 @@ import time
 import traceback
 
 from neutron.agent import firewall
-from neutron.i18n import _LI
+from neutron._i18n import _LI
 from oslo_log import log as logging
 from oslo_vmware import exceptions as vmware_exceptions
 
@@ -214,14 +214,17 @@ class DVSFirewallDriver(firewall.FirewallDriver):
             port_key = port.get('binding:vif_details', {}).get('dvs_port_key')
             if port_key and port_key != stored_port_key:
                 port_dvs = self._get_port_dvs(port)
-                try:
-                    port_info = port_dvs.get_port_info(port)
-                    if port['id'] == port_info.config.name:
-                        self.dvs_ports[port_device] = port
-                        ports_for_update.append(port)
-                    else:
+                if port_dvs:
+                    try:
+                        port_info = port_dvs.get_port_info(port)
+                        if port['id'] == port_info.config.name:
+                            self.dvs_ports[port_device] = port
+                            ports_for_update.append(port)
+                        else:
+                            self.dvs_ports.pop(port_device, None)
+                    except exceptions.PortNotFound:
                         self.dvs_ports.pop(port_device, None)
-                except exceptions.PortNotFound:
+                else:
                     self.dvs_ports.pop(port_device, None)
             else:
                 self.dvs_ports[port_device] = port

@@ -26,7 +26,7 @@ from neutron.common import config as common_config
 from neutron.common import constants as n_const
 from neutron.common import utils
 from neutron.common import topics
-from neutron.i18n import _, _LE, _LI
+from neutron._i18n import _, _LE, _LI
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import loopingcall

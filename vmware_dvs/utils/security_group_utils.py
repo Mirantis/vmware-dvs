@@ -18,7 +18,7 @@ import copy
 import six
 
 from oslo_log import log
-from neutron.i18n import _LI
+from neutron._i18n import _LI
 from oslo_vmware import exceptions as vmware_exceptions
 
 from vmware_dvs.common import constants as dvs_const, exceptions
