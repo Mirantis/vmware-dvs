@@ -110,6 +110,8 @@ class DVSController(object):
                 self.connection.wait_for_task(pg_update_task)
                 LOG.info(_LI('Network %(name)s updated'),
                          {'name': current_name})
+        except exceptions.PortGroupNotFound as ex:
+            LOG.debug(_LW('%s. Nothing to update on vSphere.'), ex)
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
