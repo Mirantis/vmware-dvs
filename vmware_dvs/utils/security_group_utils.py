@@ -15,6 +15,7 @@
 
 import abc
 import copy
+import netaddr
 import six
 
 from oslo_log import log
@@ -130,14 +131,10 @@ class TrafficRuleBuilder(object):
         return result
 
     def _cidr_spec(self, cidr):
-        try:
-            ip, mask = cidr.split('/')
-        except ValueError:
-            ip = cidr
-            mask = '32'
+        cidr = netaddr.IPNetwork(cidr)
         result = self.spec_builder.create_spec('ns0:IpRange')
-        result.addressPrefix = ip
-        result.prefixLength = mask
+        result.addressPrefix = str(cidr.ip)
+        result.prefixLength = str(cidr.prefixlen)
         return result
 
     def _has_port(self, min_port):
@@ -267,10 +264,11 @@ def port_configuration(builder, port_key, sg_rules, hashed_rules):
         reverse_seq += 10
 
     seq = len(rules) * 10
-    for protocol in dvs_const.PROTOCOL.values():
-        rules.append(DropAllRule(builder, None, protocol,
-                                 name='drop all').build(seq))
-        seq += 10
+    rules.append(DropAllRule(builder, 'IPv4', None,
+                             name='drop all').build(seq))
+    seq += 10
+    rules.append(DropAllRule(builder, 'IPv6', None,
+                             name='drop all').build(seq))
 
     filter_policy = builder.filter_policy(rules)
     setting = builder.port_setting()

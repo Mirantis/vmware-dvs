@@ -12,13 +12,15 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+
 VMWARE_HYPERVISOR_TYPE = 'VMware vCenter Server'
 DVS = 'dvs'
 AGENT_TYPE_DVS = 'DVS agent'
 # protocol number according to RFC 1700
 PROTOCOL = {'icmp': 1,
             'tcp': 6,
-            'udp': 17}
+            'udp': 17,
+            'ipv6-icmp': 58}
 
 DVS_PORTGROUP_NAME_MAXLEN = 80
 

@@ -14,6 +14,7 @@
 #    under the License.
 
 import copy
+import netaddr
 
 
 def update_rules(devices_rules_info):
@@ -37,9 +38,8 @@ def build_rules_from_sg(rule, sg_members, device_ips):
     for ip in sg_members[rule['remote_group_id']][rule['ethertype']]:
         if ip not in device_ips:
             r_builder = copy.copy(rule)
-            if rule['direction'] == 'ingress':
-                r_builder[u'source_ip_prefix'] = ip + '/32'
-            else:
-                r_builder[u'dest_ip_prefix'] = ip + '/32'
+            direction_ip_prefix = 'source_ip_prefix' \
+                if rule['direction'] == 'ingress' else 'dest_ip_prefix'
+            r_builder[direction_ip_prefix] = str(netaddr.IPNetwork(ip).cidr)
             rules.append(r_builder)
     return rules
