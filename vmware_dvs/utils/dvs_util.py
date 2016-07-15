@@ -36,7 +36,7 @@ UPDATING_PG_STATUS = 'updating'
 REMOVING_PG_STATUS = 'removing'
 
 INIT_PG_PORTS_COUNT = 4
-TASK_POOL_INTERVAL = 0.5
+TASK_POOL_INTERVAL = 0.1
 FREE_PORTS_CACHE_SIZE = 50
 
 
@@ -264,7 +264,7 @@ class DVSController(object):
 
         pg = self.builder.pg_config(port_setting)
         pg.name = name
-        pg.numPorts = 0
+        pg.numPorts = INIT_PG_PORTS_COUNT
 
         # Equivalent of vCenter static binding type.
         pg.type = 'earlyBinding'
