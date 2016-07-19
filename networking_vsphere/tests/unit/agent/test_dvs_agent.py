@@ -23,14 +23,6 @@ from networking_vsphere.common import constants as dvs_const
 from networking_vsphere.common import exceptions
 
 
-NOT_SUPPORTED_TYPES = [
-    constants.TYPE_FLAT,
-    constants.TYPE_GRE,
-    constants.TYPE_LOCAL,
-    constants.TYPE_VXLAN,
-    constants.TYPE_NONE]
-
-
 VALID_HYPERVISOR_TYPE = 'VMware vCenter Server'
 INVALID_HYPERVISOR_TYPE = '_invalid_hypervisor_'
 
@@ -116,20 +108,6 @@ class DVSAgentTestCase(base.BaseTestCase):
         self.assertTrue(self.dvs.switch_port_blocked_state.called)
         self.assertIn(current_port_id, self.agent.added_ports)
         self.assertNotIn(current_port_id, self.agent.booked_ports)
-
-    @mock.patch('networking_vsphere.agent.dvs_neutron_agent.DVSAgent.'
-                '_lookup_dvs_for_context')
-    def test_delete_port_postcommit_uncontrolled_dvs(self, is_valid_dvs):
-        is_valid_dvs.side_effect = exceptions.NoDVSForPhysicalNetwork(
-            physical_network='_dummy_physical_net_')
-
-        self.assertRaises(exceptions.InvalidSystemState,
-                          self.agent.delete_port_postcommit,
-                          self.port_context.current,
-                          self.port_context.original,
-                          self.port_context.network.network_segments[0])
-        self.assertTrue(is_valid_dvs.called)
-        self.assertFalse(self.dvs.release_port.called)
 
     def _create_ports(self, security_groups=None):
         ports = [
