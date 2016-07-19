@@ -27,8 +27,8 @@ set +o xtrace
 
 source $TOP_DIR/lib/neutron_plugins/ovs_base
 
-# DVSvApp Networking-vSphere DIR.
-VMWARE_DVS_NETWORKING_DIR=$DEST/networking-vsphere
+# OVSvApp Networking-vSphere DIR.
+OVSVAPP_NETWORKING_DIR=$DEST/networking-vsphere
 
 # Nova VMwareVCDriver DIR
 NOVA_VCDRIVER=$NOVA_DIR/nova/virt/vmwareapi/
@@ -75,7 +75,6 @@ function _patch_oslo_vmware {
     fi
 }
 
-
 # Entry Points
 # ------------
 
@@ -103,17 +102,11 @@ function configure_ovsvapp_monitoring {
    iniset /$Q_PLUGIN_CONF_FILE ovsvapp enable_ovsvapp_monitor $ENABLE_OVSVAPP_MONITOR
 }
 
-function configure_vmware_dvs_config {
-    echo "Networkin-vSphere: configure_vmware_dvs_config"
-    iniset /$VMWARE_DVS_CONF_FILE DEFAULT host $VMWAREAPI_CLUSTER
-    iniset /$VMWARE_DVS_CONF_FILE securitygroup enable_security_group $VMWARE_DVS_ENABLE_SG
-    iniset /$VMWARE_DVS_CONF_FILE securitygroup firewall_driver $VMWARE_DVS_FW_DRIVER
-    iniset /$VMWARE_DVS_CONF_FILE ml2_vmware vsphere_login $VMWAREAPI_USER
-    iniset /$VMWARE_DVS_CONF_FILE ml2_vmware vsphere_hostname $VMWAREAPI_IP
-    iniset /$VMWARE_DVS_CONF_FILE ml2_vmware vsphere_password $VMWAREAPI_PASSWORD
-    iniset /$VMWARE_DVS_CONF_FILE ml2_vmware network_maps $VMWARE_DVS_CLUSTER_DVS_MAPPING
-    iniset /$VMWARE_DVS_CONF_FILE ml2_vmware uplink_maps $VMWARE_DVS_UPLINK_MAPPING
-    iniset /$NOVA_CONF DEFAULT host $VMWAREAPI_CLUSTER
+function configure_ovsvapp_compute_driver {
+    echo "Configuring Nova VCDriver for OVSvApp"
+    cp $OVSVAPP_VCDRIVER $NOVA_VCDRIVER
+    cp $OVSVAPP_VMOPS $NOVA_VCDRIVER
+    iniset $NOVA_CONF DEFAULT compute_driver "vmwareapi.ovsvapp_vc_driver.OVSvAppVCDriver"
 }
 
 function start_ovsvapp_agent {
@@ -121,19 +114,26 @@ function start_ovsvapp_agent {
     run_process ovsvapp-agent "python $OVSVAPP_AGENT_BINARY --config-file $NEUTRON_CONF --config-file /$OVSVAPP_CONF_FILE"
 }
 
-function start_vmware_dvs_agent {
-    echo "Networkin-vSphere: start_vmware_dvs_agent"
-    VMWARE_DVS_AGENT_BINARY="$NEUTRON_BIN_DIR/neutron-dvs-agent"
-    echo "Starting Vmware_Dvs Agent"
-    run_process vmware_dvs-agent "python $VMWARE_DVS_AGENT_BINARY --config-file $NEUTRON_CONF --config-file /$VMWARE_DVS_CONF_FILE"
+function cleanup_ovsvapp_bridges {
+    echo "Removing Bridges for OVSvApp Agent"
+    sudo ovs-vsctl del-br $INTEGRATION_BRIDGE
+    sudo ovs-vsctl del-br $TUNNEL_BRIDGE
+    sudo ovs-vsctl del-br $SECURITY_BRIDGE
+    sudo ovs-vsctl del-br $OVSVAPP_PHYSICAL_BRIDGE
 }
 
-function setup_vmware_dvs_bridges {
-    echo "Networkin-vSphere: setup_vmware_dvs_bridges"
-    echo "Adding Bridges for Vmware_Dvs Agent"
+function setup_ovsvapp_bridges {
+    echo "Adding Bridges for OVSvApp Agent"
     sudo ovs-vsctl --no-wait -- --may-exist add-br $INTEGRATION_BRIDGE
-    sudo ovs-vsctl --no-wait -- --may-exist add-br $VMWARE_DVS_PHYSICAL_BRIDGE
-    sudo ovs-vsctl --no-wait -- --may-exist add-port $VMWARE_DVS_PHYSICAL_BRIDGE $VMWARE_DVS_PHYSICAL_INTERFACE
+    if [[ "$OVSVAPP_TENANT_NETWORK_TYPES" == *"vxlan"* ]]; then
+        sudo ovs-vsctl --no-wait -- --may-exist add-br $TUNNEL_BRIDGE
+    fi
+    if [[ "$OVSVAPP_TENANT_NETWORK_TYPES" == *"vlan"* ]]; then
+        sudo ovs-vsctl --no-wait -- --may-exist add-br $OVSVAPP_PHYSICAL_BRIDGE
+        sudo ovs-vsctl --no-wait -- --may-exist add-port $OVSVAPP_PHYSICAL_BRIDGE $OVSVAPP_PHYSICAL_INTERFACE
+    fi
+    sudo ovs-vsctl --no-wait -- --may-exist add-br $SECURITY_BRIDGE
+    sudo ovs-vsctl --no-wait -- --may-exist add-port $SECURITY_BRIDGE $OVSVAPP_TRUNK_INTERFACE
 }
 
 function configure_ovsvapp_config {
@@ -161,16 +161,18 @@ function add_ovsvapp_config {
     cp $OVSVAPP_NETWORKING_DIR/$OVSVAPP_CONF_FILE /$OVSVAPP_CONF_FILE
 }
 
-function pre_configure_vmware_dvs {
-    echo "Networkin-vSphere: pre_configure_vmware_dvs"
-    echo "Configuring Neutron for Vmware_Dvs Agent"
+function pre_configure_ovsvapp {
+    echo "Configuring Neutron for OVSvApp Agent"
     configure_neutron
     _configure_neutron_service
 }
 
-function install_vmware_dvs_dependency {
-    echo "Networkin-vSphere: install_vmware_dvs_dependency"
-    echo "Installing dependencies for VMware_DVS"
+function run_ovsvapp_alembic_migration {
+    $NEUTRON_BIN_DIR/neutron-ovsvapp-db-manage --config-file $NEUTRON_CONF --config-file /$Q_PLUGIN_CONF_FILE upgrade head
+}
+
+function install_ovsvapp_dependency {
+    echo "Installing dependencies for OVSvApp"
     install_nova
     install_neutron
     _neutron_ovs_base_install_agent_packages
@@ -179,23 +181,21 @@ function install_vmware_dvs_dependency {
 }
 
 function install_networking_vsphere {
-    echo "Networkin-vSphere: install_networking_vsphere"
-    echo "Installing the Networking-vSphere"
-    setup_develop $VMWARE_DVS_NETWORKING_DIR
+    echo "Installing the Networking-vSphere for OVSvApp"
+    setup_develop $OVSVAPP_NETWORKING_DIR
 }
 
 # main loop
-if is_service_enabled vmware_dvs-server; then
+if is_service_enabled ovsvapp-server; then
     if [[ "$1" == "source" ]]; then
         # no-op
         :
     elif [[ "$1" == "stack" && "$2" == "install" ]]; then
-        install_vmware_dvs_dependency
+        install_ovsvapp_dependency
         install_networking_vsphere
-
     elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
-        # no-op
-	:
+        configure_ovsvapp_monitoring
+        run_ovsvapp_alembic_migration
     elif [[ "$1" == "stack" && "$2" == "post-extra" ]]; then
         # no-op
         :
@@ -212,31 +212,55 @@ if is_service_enabled vmware_dvs-server; then
     fi
 fi
 
-if is_service_enabled vmware_dvs-agent; then
+if is_service_enabled ovsvapp-agent; then
     if [[ "$1" == "source" ]]; then
         # no-op
         :
     elif [[ "$1" == "stack" && "$2" == "install" ]]; then
-        install_vmware_dvs_dependency
+        install_ovsvapp_dependency
         install_networking_vsphere
-
     elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
-	add_vmware_dvs_config
-        configure_DVS_compute_driver
-	configure_vmware_dvs_config
-	setup_vmware_dvs_bridges
-	start_vmware_dvs_agent
+        pre_configure_ovsvapp
+        add_ovsvapp_config
+        configure_ovsvapp_config
+        setup_ovsvapp_bridges
+        start_ovsvapp_agent
     elif [[ "$1" == "stack" && "$2" == "post-extra" ]]; then
         # no-op
         :
     fi
 
     if [[ "$1" == "unstack" ]]; then
-        cleanup_vmware_dvs_bridges
+        cleanup_ovsvapp_bridges
     fi
 
     if [[ "$1" == "clean" ]]; then
-        cleanup_vmware_dvs_bridges
+        cleanup_ovsvapp_bridges
+    fi
+fi
+
+if is_service_enabled ovsvapp-compute; then
+    if [[ "$1" == "source" ]]; then
+        # no-op
+        :
+    elif [[ "$1" == "stack" && "$2" == "install" ]]; then
+        install_ovsvapp_dependency
+        install_networking_vsphere
+    elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
+        configure_ovsvapp_compute_driver
+    elif [[ "$1" == "stack" && "$2" == "post-extra" ]]; then
+        # no-op
+        :
+    fi
+
+    if [[ "$1" == "unstack" ]]; then
+        # no-op
+        :
+    fi
+
+    if [[ "$1" == "clean" ]]; then
+        # no-op
+        :
     fi
 fi
 
