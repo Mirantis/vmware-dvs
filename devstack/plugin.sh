@@ -111,7 +111,8 @@ function configure_ovsvapp_compute_driver {
 
 function start_ovsvapp_agent {
     echo "Starting OVSvApp Agent"
-    run_process ovsvapp-agent "python $OVSVAPP_AGENT_BINARY --config-file $NEUTRON_CONF --config-file /$OVSVAPP_CONF_FILE"
+    _when_ovsvapp run_process ovsvapp-agent "python $OVSVAPP_AGENT_BINARY --config-file $NEUTRON_CONF --config-file /$OVSVAPP_CONF_FILE"
+    _when_vmware run_process vmware_dvs-agent "python $OVSVAPP_AGENT_BINARY --config-file $NEUTRON_CONF --config-file /$OVSVAPP_CONF_FILE"
 }
 
 function cleanup_ovsvapp_bridges {
