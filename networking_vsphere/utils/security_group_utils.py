@@ -214,6 +214,16 @@ class DropAllRule(TrafficRuleBuilder):
     action = 'ns0:DvsDropNetworkRuleAction'
 
 
+def filter_port_sg_rules_by_ethertype(port_info):
+    port_ethertypes = set('IPv%s' % netaddr.IPNetwork(ip).version
+                          for ip in port_info['fixed_ips'])
+    port_info['security_group_rules'] = [
+        rule for rule in port_info['security_group_rules']
+        if rule['ethertype'] in port_ethertypes
+    ]
+    return port_info
+
+
 @dvs_util.wrap_retry
 def update_port_rules(dvs, ports):
     try:
