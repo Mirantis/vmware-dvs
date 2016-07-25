@@ -41,6 +41,8 @@ vmware_opts = [
                help=_("Vsphere host name or IP.")),
     cfg.StrOpt('vsphere_password', default='',
                help=_("Vsphere password.")),
+    cfg.StrOpt('cluster_name',
+               help=_("compute_cluster_name."))
 ]
 
 dvs_opts = [
