@@ -39,11 +39,13 @@ INIT_PG_PORTS_COUNT = 4
 TASK_POOL_INTERVAL = 0.1
 FREE_PORTS_CACHE_SIZE = 50
 
+MAX_OBJECTS_COUNT_TO_RETURN = 100
+
 
 class DVSController(object):
     """Controls one DVS."""
 
-    def __init__(self, dvs_name, connection):
+    def __init__(self, dvs_name, cluster_name, connection):
         self.connection = connection
         self.dvs_name = dvs_name
         self._blocked_ports = set()
@@ -52,7 +54,7 @@ class DVSController(object):
         self.uplink_map = {}
         try:
             self._dvs, self._dvs_uuid, self._datacenter = \
-                self._get_dvs(dvs_name, connection)
+                self._get_dvs(dvs_name, cluster_name, connection)
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
@@ -295,11 +297,28 @@ class DVSController(object):
         pg.configVersion = config_version
         return pg
 
-    def _get_dvs(self, dvs_name, connection):
+    def _get_dvs(self, dvs_name, cluster_name, connection):
         """Get the dvs by name"""
+        cluster = None
+        if cluster_name:
+            clusters = self.connection.invoke_api(
+                vim_util, 'get_objects', self.connection.vim,
+                'ClusterComputeResource', MAX_OBJECTS_COUNT_TO_RETURN,
+                ['name']).objects
+            for cluster_item in clusters:
+                cluster_item = cluster_item.obj
+                name = connection.invoke_api(
+                    vim_util, 'get_object_property',
+                    connection.vim, cluster_item, 'name')
+                if name == cluster_name:
+                    cluster = cluster_item
+                    break
+            else:
+                raise exceptions.ClusterNotFound(cluster_name=cluster_name)
+
         dcs = connection.invoke_api(
             vim_util, 'get_objects', connection.vim,
-            'Datacenter', 100, ['name']).objects
+            'Datacenter', MAX_OBJECTS_COUNT_TO_RETURN, ['name']).objects
         for dc in dcs:
             datacenter = dc.obj
             network_folder = connection.invoke_api(
@@ -318,7 +337,7 @@ class DVSController(object):
                         vim_util, 'get_object_properties_dict',
                         connection.vim, dvs, ['name', 'uuid'])
                     if dvs_properties['name'] == dvs_name:
-                        return dvs, dvs_properties['uuid'], datacenter
+                        return dvs, dvs_properties['uuid'], cluster or datacenter
                 # if we still haven't found it, search sub-folders
                 dvswitches = self._search_inside_folders(networks,
                                                          connection)
@@ -327,7 +346,7 @@ class DVSController(object):
                         vim_util, 'get_object_properties_dict',
                         connection.vim, dvs, ['name', 'uuid'])
                     if dvs_properties['name'] == dvs_name:
-                        return dvs, dvs_properties['uuid'], datacenter
+                        return dvs, dvs_properties['uuid'], cluster or datacenter
         raise exceptions.DVSNotFound(dvs_name=dvs_name)
 
     def _search_inside_folders(self, net_folders, connection):
@@ -359,7 +378,7 @@ class DVSController(object):
     def _get_all_port_groups(self):
         net_list = self.connection.invoke_api(
             vim_util, 'get_object_property', self.connection.vim,
-            self._datacenter, 'network').ManagedObjectReference
+            self._inventory, 'network').ManagedObjectReference
         type_value = 'DistributedVirtualPortgroup'
         return self._get_object_by_type(net_list, type_value)
 
@@ -485,8 +504,9 @@ class DVSController(object):
 
 
 class DVSControllerWithCache(DVSController):
-    def __init__(self, dvs_name, connection):
-        super(DVSControllerWithCache, self).__init__(dvs_name, connection)
+    def __init__(self, dvs_name, cluster_name, connection):
+        super(DVSControllerWithCache, self).__init__(
+            dvs_name, cluster_name, connection)
         self._init_pg_cache()
 
     def _init_pg_cache(self):
@@ -647,7 +667,8 @@ def create_network_map_from_config(config, pg_cache=False):
     controller_class = DVSControllerWithCache if pg_cache else DVSController
     for pair in config.network_maps:
         network, dvs = pair.split(':')
-        network_map[network] = controller_class(dvs, connection)
+        network_map[network] = controller_class(dvs, config.cluster_name,
+                                                connection)
     return network_map
 
 

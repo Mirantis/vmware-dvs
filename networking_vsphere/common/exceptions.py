@@ -44,6 +44,10 @@ class ResourceNotFound(VMWareDVSException):
     message = _('Resource not found')
 
 
+class ClusterNotFound(ResourceNotFound):
+    message = _('Cluster Compute Resource %(cluster_name)s not found')
+
+
 class DVSNotFound(ResourceNotFound):
     message = _('Distributed Virtual Switch %(dvs_name)s not found')
 

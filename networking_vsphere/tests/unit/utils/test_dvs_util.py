@@ -139,18 +139,16 @@ class DVSControllerBaseTestCase(UtilBaseTestCase):
         self.vim = mock.Mock()
         self.connection = self._get_connection_mock(self.dvs_name)
 
-        self.datacenter = 'datacenter1'
-        # self.use_patch('vmware_dvs.util.DVSController._get_datacenter',
-        #                return_value=self.datacenter)
+        self.cluster_name = 'Cluster1'
         self.dvs = mock.Mock()
         self._dvs_uuid = '_dvs_uuid'
-        dvs_param = [self.dvs, self._dvs_uuid, self.datacenter]
+        self.cluster = mock.Mock()
+        dvs_param = [self.dvs, self._dvs_uuid, self.cluster]
         self.use_patch('networking_vsphere.utils.dvs_util.DVSController.'
                        '_get_dvs', return_value=dvs_param)
-        self.dvs = dvs_param[0]
-        self.datacenter = dvs_param[2]
 
         self.controller = dvs_util.DVSController(self.dvs_name,
+                                                 self.cluster_name,
                                                  self.connection)
 
     def use_patch(self, *args, **kwargs):
@@ -166,7 +164,7 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
     """Tests of DVSController that don't call API methods"""
 
     def test_creation(self):
-        self.assertEqual(self.datacenter, self.controller._datacenter)
+        self.assertEqual(self.cluster, self.controller._inventory)
         self.assertEqual(self.dvs, self.controller._dvs)
         self.assertIs(self.connection, self.controller.connection)
 
@@ -319,7 +317,8 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
                 return org_side_effect(*args, **kwargs)
 
             connection.invoke_api.side_effect = side_effect
-            controller = dvs_util.DVSController(self.dvs_name, connection)
+            controller = dvs_util.DVSController(self.dvs_name,
+                                                self.cluster_name, connection)
             self.assertRaises(exceptions.VMWareDVSException,
                               controller.create_network, fake_network,
                               fake_segment)
@@ -346,6 +345,10 @@ class DVSControllerNetworkCreationTestCase(DVSControllerBaseTestCase):
                     if args == (vim, 'Datacenter', 100, ['name']):
                         return mock.Mock(objects=[
                             mock.Mock(obj='datacenter1')
+                        ])
+                    if args == (vim, 'ClusterComputeResource', 100, ['name']):
+                        return mock.Mock(objects=[
+                            mock.Mock(obj='Cluster1')
                         ])
             elif module == vim:
                 if method == 'CreateDVPortgroup_Task':
@@ -458,8 +461,12 @@ class DVSControllerNetworkUpdateTestCase(DVSControllerBaseTestCase):
                     if args == (vim, 'Datacenter', 100, ['name']):
                         return mock.Mock(objects=[
                             mock.Mock(obj='datacenter1')])
+                    if args == (vim, 'ClusterComputeResource', 100, ['name']):
+                        return mock.Mock(objects=[
+                            mock.Mock(obj='Cluster1')
+                        ])
                 elif method == 'get_object_property':
-                    if args == (vim, 'datacenter1', 'network'):
+                    if args == (vim, self.cluster, 'network'):
                         return mock.Mock(ManagedObjectReference=objects)
                     elif args == (vim, wrong_pg, 'name'):
                         return 'wrong_pg'
@@ -508,7 +515,7 @@ class DVSControllerNetworkDeletionTestCase(DVSControllerBaseTestCase):
         vim = self.vim
 
         def side_effect(module, method, *args, **kwargs):
-            if args == (vim, 'datacenter1', 'network'):
+            if args == (vim, 'Cluster1', 'network'):
                 return mock.Mock(ManagedObjectReference=[])
             else:
                 return org_side_effect(module, method, *args, **kwargs)
@@ -534,8 +541,12 @@ class DVSControllerNetworkDeletionTestCase(DVSControllerBaseTestCase):
                     if args == (vim, 'Datacenter', 100, ['name']):
                         return mock.Mock(objects=[
                             mock.Mock(obj='datacenter1')])
+                    if args == (vim, 'ClusterComputeResource', 100, ['name']):
+                        return mock.Mock(objects=[
+                            mock.Mock(obj='Cluster1')
+                        ])
                 elif method == 'get_object_property':
-                    if args == (vim, 'datacenter1', 'network'):
+                    if args == (vim, self.cluster, 'network'):
                         return mock.Mock(ManagedObjectReference=objects)
                     elif args == (vim, wrong_pg, 'name'):
                         return 'wrong_pg'
@@ -731,7 +742,7 @@ class UtilTestCase(base.BaseTestCase):
             dvs_util.create_network_map_from_config(CONF.ML2_VMWARE))
 
     @mock.patch('networking_vsphere.utils.dvs_util.DVSController._get_dvs',
-                return_value=(mock.Mock(), '_dvs_uuid', 'datacenter1'))
+                return_value=(mock.Mock(), '_dvs_uuid', 'Cluster1'))
     def test_creates_network_map_from_conf(self, *args):
         network_map = ['physnet1:dvSwitch', 'physnet2:dvSwitch1']
         CONF.set_override(

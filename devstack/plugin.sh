@@ -94,6 +94,7 @@ function configure_vmware_dvs_config {
     iniset /$OVSVAPP_CONF_FILE ml2_vmware vsphere_password $OVSVAPP_VCENTER_PASSWORD
     iniset /$OVSVAPP_CONF_FILE ml2_vmware network_maps $OVSVAPP_CLUSTER_DVS_MAPPING
     iniset /$OVSVAPP_CONF_FILE ml2_vmware uplink_maps $VMWARE_DVS_UPLINK_MAPPING
+    iniset /$OVSVAPP_CONF_FILE ml2_vmware cluster_name $VMWAREAPI_CLUSTER
     iniset /$NOVA_CONF DEFAULT host $VMWAREAPI_CLUSTER
 }
 
