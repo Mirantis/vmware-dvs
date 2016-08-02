@@ -24,20 +24,19 @@ from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
 from requests.exceptions import ConnectionError
 
+from vmware_dvs.common import config
 from vmware_dvs.common import constants as dvs_const
 from vmware_dvs.common import exceptions
 from vmware_dvs.utils import spec_builder
 
+
+CONF = config.CONF
 LOG = log.getLogger(__name__)
 
 CREATING_PG_STATUS = 'creating'
 READY_PG_STATUS = 'ready'
 UPDATING_PG_STATUS = 'updating'
 REMOVING_PG_STATUS = 'removing'
-
-INIT_PG_PORTS_COUNT = 4
-TASK_POOL_INTERVAL = 0.1
-FREE_PORTS_CACHE_SIZE = 50
 
 MAX_OBJECTS_COUNT_TO_RETURN = 100
 
@@ -269,7 +268,7 @@ class DVSController(object):
 
         pg = self.builder.pg_config(port_setting)
         pg.name = name
-        pg.numPorts = INIT_PG_PORTS_COUNT
+        pg.numPorts = CONF.DVS.init_pg_ports_count
 
         # Equivalent of vCenter static binding type.
         pg.type = 'earlyBinding'
@@ -432,7 +431,7 @@ class DVSController(object):
     def _increase_ports_on_portgroup(self, port_group):
         pg_info = self._get_config_by_ref(port_group)
         #TODO(ekosareva): need to have max size of ports number
-        ports_number = max(INIT_PG_PORTS_COUNT, pg_info.numPorts * 2)
+        ports_number = max(CONF.DVS.init_pg_ports_count, pg_info.numPorts * 2)
         pg_spec = self._build_pg_update_spec(
             pg_info.configVersion, ports_number=ports_number)
         pg_update_task = self.connection.invoke_api(
@@ -516,7 +515,7 @@ class DVSControllerWithCache(DVSController):
                                        waiting_status_list=(READY_PG_STATUS,)):
         while (pg_name in self._pg_cache and
                self._pg_cache[pg_name]['status'] not in waiting_status_list):
-            sleep(TASK_POOL_INTERVAL)
+            sleep(CONF.DVS.cache_pool_interval)
 
     def _create_missed_pg_by_ref(self, pg_ref):
         pg_info = self._get_config_by_ref(pg_ref)
@@ -609,7 +608,9 @@ class DVSControllerWithCache(DVSController):
         free_port_keys = self._get_free_pg_keys(port_group)
         self._pg_cache[pg_name].update({
             'free_ports_count': len(free_port_keys),
-            'free_cached_ports': free_port_keys[:FREE_PORTS_CACHE_SIZE]})
+            'free_cached_ports':
+                free_port_keys[:CONF.DVS.cache_free_ports_size]
+        })
 
     def _lookup_unbound_port(self, port_group):
         pg_name = next((name for name, pg in self._pg_cache.iteritems()

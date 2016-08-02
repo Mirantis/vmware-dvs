@@ -689,7 +689,7 @@ class UpdateSecurityGroupRulesTestCase(DVSControllerBaseTestCase):
             self.controller._increase_ports_on_portgroup(pg)
 
         _build_pg_update_spec.assert_called_once_with(
-            '_config_version_', ports_number=dvs_util.INIT_PG_PORTS_COUNT)
+            '_config_version_', ports_number=CONF.DVS.init_pg_ports_count)
 
     def _get_connection_mock(self, dvs_name):
         return mock.Mock(vim=self.vim)

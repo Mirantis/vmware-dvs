@@ -47,11 +47,22 @@ vmware_opts = [
 
 dvs_opts = [
     cfg.BoolOpt('clean_on_restart',
-               default=True,
-               help=_("Run DVS cleaning procedure on agent restart.")),
+                default=True,
+                help=_("Run DVS cleaning procedure on agent restart.")),
     cfg.BoolOpt('precreate_networks',
-               default=False,
-               help=_("Precreate networks on DVS")),
+                default=False,
+                help=_("Precreate networks on DVS.")),
+    cfg.IntOpt('init_pg_ports_count',
+               default=4,
+               help=_("Initial ports size for networks on DVS.")),
+    cfg.FloatOpt('cache_pool_interval',
+                 default=0.1,
+                 help=_("The interval of task polling for "
+                        "DVS cache in seconds.")),
+    cfg.IntOpt('cache_free_ports_size',
+               default=50,
+               help=_("The number of free ports of network to store in "
+                      "DVS cache."))
 ]
 
 cfg.CONF.register_opts(dvs_opts, "DVS")
