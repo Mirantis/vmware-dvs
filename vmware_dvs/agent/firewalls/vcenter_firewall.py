@@ -34,6 +34,7 @@ LOG = logging.getLogger(__name__)
 
 CONF = config.CONF
 CLEANUP_REMOVE_TASKS_TIMEDELTA = 60
+CLEANUP_DVS_NETWORKING_MAP_TIMEDELTA = 24 * 60 * 60
 
 
 def firewall_main(list_queues, remove_queue):
@@ -44,8 +45,8 @@ def firewall_main(list_queues, remove_queue):
 
 class DVSFirewallUpdater(object):
 
-    def __init__(self, list_queues, remove_queue):
-        self.pq = PortQueue(list_queues, remove_queue)
+    def __init__(self, update_queues, remove_queue):
+        self.pq = PortQueue(update_queues, remove_queue)
         self.run_daemon_loop = True
         self.pq.port_updater_loop()
 
@@ -72,8 +73,8 @@ class DVSFirewallUpdater(object):
 
 
 class PortQueue(object):
-    def __init__(self, list_queues, remove_queue):
-        self.list_queues = list_queues
+    def __init__(self, update_queues, remove_queue):
+        self.update_queues = update_queues
         self.remove_queue = remove_queue
         self.removed = {}
         self.update_store = {}
@@ -104,7 +105,7 @@ class PortQueue(object):
         return None, []
 
     def _get_update_tasks(self):
-        for queue in self.list_queues:
+        for queue in self.update_queues:
             while not queue.empty():
                 request = queue.get()
                 for port in request:
@@ -133,23 +134,35 @@ class PortQueue(object):
             if current_time - remove_time > CLEANUP_REMOVE_TASKS_TIMEDELTA:
                 del self.removed[port_id]
 
+    def _cleanup_outdated_tasks(self):
+        for dvs in self.update_store:
+            self.update_store[dvs] = [item for item in self.update_store[dvs]
+                                      if item['id'] not in self.removed]
+
+    def _cleanup_network_dvs_map(self):
+        current_time = time.time()
+        for network_id, network_dvs_data in self.network_dvs_map.items():
+            if (current_time - network_dvs_data['timestamp'] >
+                    CLEANUP_DVS_NETWORKING_MAP_TIMEDELTA):
+                del self.network_dvs_map[network_id]
+
     def get_dvs(self, port):
         port_network = port['network_id']
         if port_network in self.network_dvs_map:
-            dvs = self.network_dvs_map[port_network]
+            dvs = self.network_dvs_map[port_network]['dvs']
         else:
             dvs = dvs_util.get_dvs_by_network(
                 self.networking_map.values(), port_network)
-            self.network_dvs_map[port_network] = dvs
+            self.network_dvs_map[port_network] = {'dvs': dvs}
+        self.network_dvs_map[port_network].update({'timestamp': time.time()})
         return dvs
 
     def port_updater_loop(self):
         self._get_update_tasks()
         self._get_remove_tasks()
-        for dvs in self.update_store:
-            self.update_store[dvs] = [item for item in self.update_store[dvs]
-                                      if item['id'] not in self.removed]
+        self._cleanup_outdated_tasks()
         self._cleanup_removed()
+        self._cleanup_network_dvs_map()
         threading.Timer(1, self.port_updater_loop).start()
 
 
@@ -170,12 +183,12 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     def __init__(self):
         self.dvs_ports = {}
         self._defer_apply = False
-        self.list_queues = []
+        self.update_queues = []
         for x in xrange(10):
-            self.list_queues.append(Queue())
+            self.update_queues.append(Queue())
         self.remove_queue = Queue()
         self.fw_process = Process(
-            target=firewall_main, args=(self.list_queues, self.remove_queue))
+            target=firewall_main, args=(self.update_queues, self.remove_queue))
         self.fw_process.start()
         self.network_dvs_map = {}
         self.networking_map = dvs_util.create_network_map_from_config(
@@ -252,8 +265,8 @@ class DVSFirewallDriver(firewall.FirewallDriver):
                         'binding:vif_details': port['binding:vif_details']}])
 
     def _get_free_queue(self):
-        shortest_queue = self.list_queues[0]
-        for queue in self.list_queues:
+        shortest_queue = self.update_queues[0]
+        for queue in self.update_queues:
             queue_size = queue.qsize()
             if queue_size == 0:
                 return queue
