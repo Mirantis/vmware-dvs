@@ -51,7 +51,8 @@ class DVSController(object):
             self.connection.vim.client.factory)
         self.uplink_map = {}
         try:
-            self._dvs, self._datacenter = self._get_dvs(dvs_name, connection)
+            self._dvs, self._dvs_uuid, self._datacenter = \
+                self._get_dvs(dvs_name, connection)
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
@@ -224,7 +225,9 @@ class DVSController(object):
                         self.connection.vim, 'ReconfigureDVPort_Task',
                         self._dvs, port=[update_spec])
                     self.connection.wait_for_task(update_task)
-                    return port_info.key
+                    return {'key': port_info.key,
+                            'dvs_uuid': self._dvs_uuid,
+                            'pg_key': pg.value}
                 except vmware_exceptions.VimException as e:
                     sleep(0.1)
             raise exceptions.wrap_wmvare_vim_exception(e)
@@ -311,20 +314,20 @@ class DVSController(object):
                 dvswitches = self._get_object_by_type(
                     networks, 'VmwareDistributedVirtualSwitch')
                 for dvs in dvswitches:
-                    name = connection.invoke_api(
-                        vim_util, 'get_object_property',
-                        connection.vim, dvs, 'name')
-                    if name == dvs_name:
-                        return dvs, datacenter
+                    dvs_properties = connection.invoke_api(
+                        vim_util, 'get_object_properties_dict',
+                        connection.vim, dvs, ['name', 'uuid'])
+                    if dvs_properties['name'] == dvs_name:
+                        return dvs, dvs_properties['uuid'], datacenter
                 # if we still haven't found it, search sub-folders
                 dvswitches = self._search_inside_folders(networks,
                                                          connection)
                 for dvs in dvswitches:
-                    name = connection.invoke_api(
-                        vim_util, 'get_object_property',
-                        connection.vim, dvs, 'name')
-                    if name == dvs_name:
-                        return dvs, datacenter
+                    dvs_properties = connection.invoke_api(
+                        vim_util, 'get_object_properties_dict',
+                        connection.vim, dvs, ['name', 'uuid'])
+                    if dvs_properties['name'] == dvs_name:
+                        return dvs, dvs_properties['uuid'], datacenter
         raise exceptions.DVSNotFound(dvs_name=dvs_name)
 
     def _search_inside_folders(self, net_folders, connection):

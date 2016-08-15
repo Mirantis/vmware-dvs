@@ -108,14 +108,18 @@ class VMwareDVSMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
     @port_belongs_to_vmware
     def bind_port(self, context):
         if self._check_net_type(context.network):
-            booked_port_key = self.dvs_notifier.bind_port_call(
+            booked_port_info = self.dvs_notifier.bind_port_call(
                 context.current,
                 context.network.network_segments,
                 context.network.current,
                 context.host
             )
             vif_details = dict(self.vif_details)
-            vif_details['dvs_port_key'] = booked_port_key
+            vif_details.update({
+                'dvs_port_key': booked_port_info['key'],
+                'dvs_id': booked_port_info['dvs_uuid'],
+                'pg_id': booked_port_info['pg_key']
+            })
             for segment in context.network.network_segments:
                 context.set_binding(
                     segment[driver_api.ID],
