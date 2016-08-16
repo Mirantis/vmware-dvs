@@ -681,14 +681,11 @@ def create_port_map(dvs_list):
     return port_map
 
 
-def get_dvs_by_network(dvs_list, network_id):
+def get_dvs_by_uuid(dvs_list, uuid):
     for dvs in dvs_list:
-        try:
-            network_name = dvs._get_net_name({'id': network_id})
-            if dvs._get_pg_by_name(network_name):
-                return dvs
-        except exceptions.PortGroupNotFound:
-            continue
+        if dvs._dvs_uuid == uuid:
+            return dvs
+    return None
 
 
 def wrap_retry(func):

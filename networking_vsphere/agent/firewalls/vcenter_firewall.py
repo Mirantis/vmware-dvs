@@ -78,7 +78,6 @@ class PortQueue(object):
         self.removed = {}
         self.update_store = {}
         self.remove_store = {}
-        self.network_dvs_map = {}
         self.networking_map = dvs_util.create_network_map_from_config(
             CONF.ML2_VMWARE)
 
@@ -134,13 +133,9 @@ class PortQueue(object):
                 del self.removed[port_id]
 
     def get_dvs(self, port):
-        port_network = port['network_id']
-        if port_network in self.network_dvs_map:
-            dvs = self.network_dvs_map[port_network]
-        else:
-            dvs = dvs_util.get_dvs_by_network(
-                self.networking_map.values(), port_network)
-            self.network_dvs_map[port_network] = dvs
+        dvs_uuid = port.get('binding:vif_details', {}).get('dvs_id')
+        dvs = dvs_util.get_dvs_by_uuid(
+            self.networking_map.values(), dvs_uuid)
         return dvs
 
     def port_updater_loop(self):
@@ -177,18 +172,13 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         self.fw_process = Process(
             target=firewall_main, args=(self.list_queues, self.remove_queue))
         self.fw_process.start()
-        self.network_dvs_map = {}
         self.networking_map = dvs_util.create_network_map_from_config(
             CONF.ML2_VMWARE)
 
     def _get_port_dvs(self, port):
-        port_network = port['network_id']
-        if port_network in self.network_dvs_map:
-            dvs = self.network_dvs_map[port_network]
-        else:
-            dvs = dvs_util.get_dvs_by_network(
-                self.networking_map.values(), port_network)
-            self.network_dvs_map[port_network] = dvs
+        dvs_uuid = port.get('binding:vif_details', {}).get('dvs_id')
+        dvs = dvs_util.get_dvs_by_uuid(
+            self.networking_map.values(), dvs_uuid)
         return dvs
 
     def stop_all(self):
