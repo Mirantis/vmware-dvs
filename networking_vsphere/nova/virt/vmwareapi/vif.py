@@ -145,7 +145,12 @@ def _get_neutron_network(session, cluster, vif):
 
 def get_network_ref(session, cluster, vif, is_neutron):
     if is_neutron:
-        network_ref = _get_neutron_network(session, cluster, vif)
+        try:
+            network_ref = {'dvsw': vif['details']['dvs_id'],
+                           'dvpg': vif['details']['pg_id'],
+                           'type': 'DistributedVirtualPortgroup'}
+        except KeyError:
+            network_ref = _get_neutron_network(session, cluster, vif)
         try:
             network_ref['dvs_port_key'] = vif['details']['dvs_port_key']
         except KeyError:
