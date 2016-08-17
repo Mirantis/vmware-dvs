@@ -113,8 +113,6 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             LOG.info(_LI('Network %(id)s not created. Reason: %(reason)s') % {
                 'id': current['id'],
                 'reason': e.message})
-        except exceptions.InvalidNetwork:
-            pass
         else:
             dvs.create_network(current, segment)
 
@@ -126,8 +124,6 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             LOG.info(_LI('Network %(id)s not deleted. Reason: %(reason)s') % {
                 'id': current['id'],
                 'reason': e.message})
-        except exceptions.InvalidNetwork:
-            pass
         else:
             dvs.delete_network(current)
 
@@ -139,8 +135,6 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             LOG.info(_LI('Network %(id)s not updated. Reason: %(reason)s') % {
                 'id': current['id'],
                 'reason': e.message})
-        except exceptions.InvalidNetwork:
-            pass
         else:
             dvs.update_network(current, original)
 
