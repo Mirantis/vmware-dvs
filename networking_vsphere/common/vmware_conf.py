@@ -34,9 +34,6 @@ agent_opts = [
                       "timeout won't be changed")),
     cfg.BoolOpt('log_agent_heartbeats', default=False,
                help=_("Log agent heartbeats")),
-    cfg.IntOpt('report_interval',
-               default=30,
-               help='Seconds between nodes reporting state to server.'),
 ]
 
 vmware_opts = [
@@ -94,7 +91,7 @@ dvs_opts = [
 
 cfg.CONF.register_opts(dvs_opts, "DVS")
 
-cfg.CONF.register_opts(agent_opts, "DVS_AGENT")
+cfg.CONF.register_opts(agent_opts, "AGENT")
 cfg.CONF.register_opts(vmware_opts, "ML2_VMWARE")
 config.register_agent_state_opts_helper(cfg.CONF)
 CONF = cfg.CONF

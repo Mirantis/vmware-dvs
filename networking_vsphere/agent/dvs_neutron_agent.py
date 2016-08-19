@@ -39,7 +39,7 @@ from networking_vsphere.common import exceptions
 from networking_vsphere.utils import dvs_util
 
 LOG = logging.getLogger(__name__)
-cfg.CONF.import_group('DVS_AGENT',
+cfg.CONF.import_group('AGENT',
                       'networking_vsphere.common.vmware_conf')
 
 
@@ -65,7 +65,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             'agent_type': 'DVS agent',
             'start_flag': True}
 
-        report_interval = cfg.CONF.DVS_AGENT.report_interval
+        report_interval = cfg.CONF.AGENT.report_interval
 
         self.polling_interval = polling_interval
         # Security group agent support
@@ -406,8 +406,8 @@ def create_agent_config_map(config):
         vsphere_login=config.ML2_VMWARE.vsphere_login,
         vsphere_password=config.ML2_VMWARE.vsphere_password,
         bridge_mappings=bridge_mappings,
-        polling_interval=config.DVS_AGENT.polling_interval,
-        quitting_rpc_timeout=config.DVS_AGENT.quitting_rpc_timeout,
+        polling_interval=config.AGENT.polling_interval,
+        quitting_rpc_timeout=config.AGENT.quitting_rpc_timeout,
     )
     return kwargs
 
