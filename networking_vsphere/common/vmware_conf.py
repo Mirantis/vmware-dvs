@@ -65,6 +65,23 @@ vmware_opts = [
                help=_("Vsphere host name or IP.")),
     cfg.StrOpt('vsphere_password', default='',
                help=_("Vsphere password.")),
+    cfg.PortOpt('host_port',
+                default=443,
+                help="Port for connection to VMware vCenter host."),
+    cfg.StrOpt('ca_file',
+               help="""
+Specifies the CA bundle file to be used in verifying the vCenter
+server certificate.
+"""),
+    cfg.BoolOpt('insecure',
+                default=False,
+                help="""
+If true, the vCenter server certificate is not verified. If false,
+then the default CA truststore is used for verification.
+
+Related options:
+* ca_file: This option is ignored if "ca_file" is set.
+"""),
     cfg.StrOpt('cluster_name',
                help=_("compute_cluster_name."))
 ]

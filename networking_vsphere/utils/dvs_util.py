@@ -655,11 +655,16 @@ def create_network_map_from_config(config, pg_cache=False):
     while not connection:
         try:
             connection = api.VMwareAPISession(
-                config.vsphere_hostname,
-                config.vsphere_login,
-                config.vsphere_password,
-                config.api_retry_count,
-                config.task_poll_interval,
+                host=config.vsphere_hostname,
+                port=config.host_port,
+                server_username=config.vsphere_login,
+                server_password=config.vsphere_password,
+                api_retry_count=config.api_retry_count,
+                task_poll_interval=config.task_poll_interval,
+                scheme='https',
+                create_session=True,
+                cacert=config.ca_file,
+                insecure=config.insecure,
                 pool_size=config.connections_pool_size)
         except ConnectionError:
             LOG.error(_LE("No connection to vSphere. Retry in 10 sec..."))
