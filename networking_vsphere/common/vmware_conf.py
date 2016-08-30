@@ -33,7 +33,7 @@ agent_opts = [
                       "agent receives SIGTERM. If value is set to 0, rpc "
                       "timeout won't be changed")),
     cfg.BoolOpt('log_agent_heartbeats', default=False,
-               help=_("Log agent heartbeats")),
+                help=_("Log agent heartbeats")),
 ]
 
 vmware_opts = [
@@ -54,13 +54,28 @@ vmware_opts = [
     cfg.StrOpt('vsphere_login', default='administrator',
                help=_("Vsphere login.")),
     cfg.ListOpt('network_maps',
-               default=DEFAULT_BRIDGE_MAPPINGS,
-               help=_("List of <physical_network>:<bridge>.")),
+                default=DEFAULT_BRIDGE_MAPPINGS,
+                help=_("List of <physical_network>:<bridge>.")),
     cfg.ListOpt('uplink_maps',
-               default=DEFAULT_UPLINK_MAPPINGS,
-               help=_("List of <physical_network>:<active uplinks>:"
-                      "<failover uplinks>."
-                      "Use semicolon between uplink names")),
+                default=DEFAULT_UPLINK_MAPPINGS,
+                help=_("List of <physical_network>:<active uplinks>:"
+                       "<failover uplinks>."
+                       "Use semicolon between uplink names")),
+    cfg.BoolOpt('uplink_notifySwitches',
+                help=_('Team&Failover override notify switches.'
+                       'Only for DVS with uplink map')),
+    cfg.BoolOpt('uplink_rollingOrder',
+                help=_('Team&Failover override rolling order.'
+                       'Only for DVS with uplink map')),
+    cfg.BoolOpt('uplink_reversePolicy',
+                help=_('Team&Failover override reverce policy.'
+                       'Only for DVS with uplink map')),
+    cfg.StrOpt('uplink_policy',
+               help=_('Team&Failover override loadbalance policy.'
+                      'Use loadbalance_srcid, loadbalance_srcmac,'
+                      'loadbalance_loadbased, loadbalance_ip'
+                      ' or failover_explicit'
+                      'Only for DVS with uplink map')),
     cfg.StrOpt('vsphere_hostname', default='vsphere',
                help=_("Vsphere host name or IP.")),
     cfg.StrOpt('vsphere_password', default='',
