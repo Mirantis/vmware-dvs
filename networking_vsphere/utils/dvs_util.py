@@ -241,9 +241,6 @@ class DVSController(object):
             update_spec = self.builder.port_config_spec(
                 port_info.config.configVersion, name='')
             update_spec.key = port_info.key
-            #setting = self.builder.port_setting()
-            #setting.filterPolicy = self.builder.filter_policy([])
-            #update_spec.setting = setting
             update_spec.operation = 'remove'
             self.connection.invoke_api(
                 self.connection.vim, 'ReconfigureDVPort_Task',
@@ -274,6 +271,12 @@ class DVSController(object):
                 activeUplinkPort = uplinks['active']
             port_setting.uplinkTeamingPolicy.uplinkPortOrder. \
                 standbyUplinkPort = uplinks['passive']
+            for key in uplinks:
+                if key.startswith('uplink_'):
+                    ul_object = getattr(port_setting.uplinkTeamingPolicy,
+                                        key.replace('uplink_', '', 1))
+                    ul_object.value = uplinks[key]
+                    ul_object.inherited = False
 
         pg = self.builder.pg_config(port_setting)
         pg.name = name
@@ -439,7 +442,7 @@ class DVSController(object):
 
     def _increase_ports_on_portgroup(self, port_group):
         pg_info = self._get_config_by_ref(port_group)
-        #TODO(ekosareva): need to have max size of ports number
+        # TODO(ekosareva): need to have max size of ports number
         ports_number = max(CONF.DVS.init_pg_ports_count, pg_info.numPorts * 2)
         pg_spec = self._build_pg_update_spec(
             pg_info.configVersion, ports_number=ports_number)
@@ -679,6 +682,11 @@ def create_network_map_from_config(config, pg_cache=False):
 
 
 def create_uplink_map_from_config(config, network_map):
+    uplink_policies = ['loadbalance_srcid', 'loadbalance_srcmac',
+                       'loadbalance_loadbased', 'loadbalance_ip',
+                       'failover_explicit']
+    failover_keys = ['uplink_notifySwitches', 'uplink_rollingOrder',
+                     'uplink_reversePolicy']
     uplink_map = {}
     for mapping in config.uplink_maps:
         net_conf = mapping.split(':')
@@ -697,6 +705,11 @@ def create_uplink_map_from_config(config, network_map):
                         "Invalid uplink mapping: '%s'") % mapping)
             uplink_map[phys_net] = {'active': active,
                                     'passive': passive}
+            for key in failover_keys:
+                if getattr(config, key) is not None:
+                    uplink_map[phys_net][key] = getattr(config, key)
+            if config.uplink_policy in uplink_policies:
+                uplink_map[phys_net]['uplink_policy'] = config.uplink_policy
     return uplink_map
 
 
