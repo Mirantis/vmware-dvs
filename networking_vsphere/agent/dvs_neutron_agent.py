@@ -53,7 +53,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
     target = oslo_messaging.Target(version='1.2')
 
     def __init__(self, vsphere_hostname, vsphere_login, vsphere_password,
-                 bridge_mappings, polling_interval, quitting_rpc_timeout=None):
+                 bridge_mappings, polling_interval):
         super(DVSAgent, self).__init__()
 
         self.agent_state = {
@@ -78,7 +78,6 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         self.run_daemon_loop = True
         self.iter_num = 0
 
-        self.quitting_rpc_timeout = quitting_rpc_timeout
         self.network_map = dvs_util.create_network_map_from_config(
             cfg.CONF.ML2_VMWARE, pg_cache=True)
         uplink_map = dvs_util.create_uplink_map_from_config(
@@ -407,7 +406,6 @@ def create_agent_config_map(config):
         vsphere_password=config.ML2_VMWARE.vsphere_password,
         bridge_mappings=bridge_mappings,
         polling_interval=config.AGENT.polling_interval,
-        quitting_rpc_timeout=config.AGENT.quitting_rpc_timeout,
     )
     return kwargs
 
