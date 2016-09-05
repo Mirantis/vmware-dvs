@@ -13,21 +13,21 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import six
 from time import sleep
 import uuid
-import six
 
 from oslo_log import log
 from oslo_vmware import api
 from oslo_vmware import exceptions as vmware_exceptions
 from oslo_vmware import vim_util
+from requests.exceptions import ConnectionError
 
 from networking_vsphere._i18n import _LI, _LW, _LE
 from networking_vsphere.common import constants as dvs_const
-from networking_vsphere.common import vmware_conf as config
 from networking_vsphere.common import exceptions
+from networking_vsphere.common import vmware_conf as config
 from networking_vsphere.utils import spec_builder
-from requests.exceptions import ConnectionError
 
 
 CONF = config.CONF
@@ -123,7 +123,7 @@ class DVSController(object):
             pg_ref = self._get_pg_by_name(name)
         except exceptions.PortGroupNotFound:
             LOG.debug('Network %s is not present in vcenter. '
-                      'Nothing to delete.' % name)
+                      'Nothing to delete.', name)
             return
         self._delete_port_group(pg_ref, name)
 
@@ -152,14 +152,14 @@ class DVSController(object):
                     'Destroy_Task',
                     pg_ref)
                 self.connection.wait_for_task(pg_delete_task)
-                LOG.info(_LI('Network %(name)s deleted.') % {'name': name})
+                LOG.info(_LI('Network %(name)s deleted.'), {'name': name})
                 break
             except vmware_exceptions.VimException as e:
                 if dvs_const.RESOURCE_IN_USE in e.message:
                     remove_used_pg_try += 1
                     if remove_used_pg_try > 3:
                         LOG.info(_LI('Network %(name)s was not deleted. Active'
-                                     ' ports were found') % {'name': name})
+                                     ' ports were found'), {'name': name})
                         break
                     else:
                         sleep(0.2)
@@ -186,7 +186,7 @@ class DVSController(object):
                 self._dvs, port=[update_spec])
             self.connection.wait_for_task(update_task)
         except exceptions.PortNotFound:
-            LOG.debug("Port %s was not found. Nothing to block." % port['id'])
+            LOG.debug("Port %s was not found. Nothing to block.", port['id'])
         except vmware_exceptions.VimException as e:
             raise exceptions.wrap_wmvare_vim_exception(e)
 
@@ -247,10 +247,10 @@ class DVSController(object):
                 self._dvs, port=[update_spec])
             self.remove_block(port_info.key)
         except exceptions.PortNotFound:
-            LOG.debug("Port %s was not found. Nothing to delete." % port['id'])
+            LOG.debug("Port %s was not found. Nothing to delete.", port['id'])
         except vmware_exceptions.VimException as e:
             if dvs_const.RESOURCE_IN_USE in e.message:
-                LOG.debug("Port %s in use, couldn't be deleted." % port['id'])
+                LOG.debug("Port %s in use, couldn't be deleted.", port['id'])
             else:
                 raise exceptions.wrap_wmvare_vim_exception(e)
 
@@ -339,7 +339,8 @@ class DVSController(object):
                         vim_util, 'get_object_properties_dict',
                         connection.vim, dvs, ['name', 'uuid'])
                     if dvs_properties['name'] == dvs_name:
-                        return dvs, dvs_properties['uuid'], cluster or datacenter
+                        return (dvs, dvs_properties['uuid'],
+                                cluster or datacenter)
                 # if we still haven't found it, search sub-folders
                 dvswitches = self._search_inside_folders(networks,
                                                          connection)
@@ -348,7 +349,8 @@ class DVSController(object):
                         vim_util, 'get_object_properties_dict',
                         connection.vim, dvs, ['name', 'uuid'])
                     if dvs_properties['name'] == dvs_name:
-                        return dvs, dvs_properties['uuid'], cluster or datacenter
+                        return (dvs, dvs_properties['uuid'],
+                                cluster or datacenter)
         raise exceptions.DVSNotFound(dvs_name=dvs_name)
 
     def _search_inside_folders(self, net_folders, connection):
@@ -388,8 +390,8 @@ class DVSController(object):
         try:
             return self._get_pg_by_name(pg_name)
         except exceptions.PortGroupNotFound:
-            LOG.debug(_LI('Network %s is not present in vcenter. '
-                          'Perform network creation' % pg_name))
+            LOG.debug('Network %s is not present in vcenter. Perform network '
+                      'creation', pg_name)
             return self.create_network(network, segment)
 
     def _get_config_by_ref(self, ref):
@@ -478,7 +480,7 @@ class DVSController(object):
         if not ports:
             raise exceptions.PortNotFound(id=name)
         if len(ports) > 1:
-            LOG.warn(_LW("Multiple ports found for name %s."), name)
+            LOG.warning(_LW("Multiple ports found for name %s."), name)
         return ports[0]
 
     def get_ports(self, connect_flag=True):
@@ -599,7 +601,7 @@ class DVSControllerWithCache(DVSController):
         raise exceptions.PortGroupNotFound(pg_name=pg_name)
 
     def _increase_ports_on_portgroup(self, port_group):
-        pg_name = next((name for name, pg in self._pg_cache.iteritems()
+        pg_name = next((name for name, pg in six.iteritems(self._pg_cache)
                         if pg.get('pg_key') == port_group.value), None)
         prev_status = self._pg_cache.get(pg_name, {}).get('status')
         self._wait_port_group_stable_status(pg_name)
@@ -625,7 +627,7 @@ class DVSControllerWithCache(DVSController):
         })
 
     def _lookup_unbound_port(self, port_group):
-        pg_name = next((name for name, pg in self._pg_cache.iteritems()
+        pg_name = next((name for name, pg in six.iteritems(self._pg_cache)
                         if pg.get('pg_key') == port_group.value), None)
         self._wait_port_group_stable_status(pg_name)
 
@@ -691,7 +693,7 @@ def create_uplink_map_from_config(config, network_map):
     for mapping in config.uplink_maps:
         net_conf = mapping.split(':')
         if len(net_conf) not in (2, 3):
-            raise ValueError(_("Invalid uplink mapping: '%s'") % mapping)
+            raise ValueError("Invalid uplink mapping: '%s'" % mapping)
         phys_net = net_conf[0]
         active = net_conf[1].split(';')
         passive = net_conf[2].split(';') if len(net_conf) == 3 else []
@@ -701,8 +703,7 @@ def create_uplink_map_from_config(config, network_map):
             uplinks = conf.uplinkPortPolicy.uplinkPortName
             for uplink in set(active + passive):
                 if uplink not in uplinks:
-                    raise ValueError(_(
-                        "Invalid uplink mapping: '%s'") % mapping)
+                    raise ValueError("Invalid uplink mapping: '%s'" % mapping)
             uplink_map[phys_net] = {'active': active,
                                     'passive': passive}
             for key in failover_keys:
@@ -729,10 +730,7 @@ def get_dvs_by_uuid(dvs_list, uuid):
 
 
 def wrap_retry(func):
-    """
-    Retry operation on dvs when concurrent modification by another operation
-    was discovered
-    """
+    """Retry operation on dvs when concurrent modification was discovered."""
     @six.wraps(func)
     def wrapper(*args, **kwargs):
         login_failures = 0

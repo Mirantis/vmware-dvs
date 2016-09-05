@@ -64,8 +64,8 @@ class DVSClientAPI(object):
                                    fanout=True)
 
     def _get_cctxt_direct(self, host):
-        return self.client.prepare(version=self.ver,
-                    topic=self._get_security_group_topic(host=host))
+        return self.client.prepare(
+            version=self.ver, topic=self._get_security_group_topic(host=host))
 
     def create_network_cast(self, current, segment):
         return self._get_cctxt().cast(self.context, 'create_network',
