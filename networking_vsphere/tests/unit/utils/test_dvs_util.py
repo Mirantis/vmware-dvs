@@ -29,7 +29,8 @@ from networking_vsphere.utils import spec_builder
 CONF = config.CONF
 
 fake_network = {'id': '34e33a31-516a-439f-a186-96ac85155a8c',
-                'name': '_fake_network_', 'provider:physical_network': 'net1',
+                'name': '_fake_network_',
+                'provider:physical_network': 'net1',
                 'admin_state_up': True}
 fake_segment = {'segmentation_id': '102'}
 fake_port = {
@@ -210,9 +211,9 @@ class DVSControllerTestCase(DVSControllerBaseTestCase):
         port = {'id': 'fake_port_id'}
 
         with mock.patch.object(self.controller, '_get_port_info_by_portkey') \
-                               as get_port_info_by_key_mock, \
-            mock.patch.object(self.controller, '_get_port_info_by_name') as \
-                              get_port_info_by_name_mock:
+            as get_port_info_by_key_mock, \
+            mock.patch.object(self.controller, '_get_port_info_by_name') \
+                as get_port_info_by_name_mock:
             self.controller.get_port_info(port_with_dvs_key)
             get_port_info_by_key_mock.assert_called_once_with(0)
             get_port_info_by_name_mock.assert_not_called()
@@ -757,11 +758,16 @@ class UtilTestCase(base.BaseTestCase):
 
         vmware_conf = config.CONF.ML2_VMWARE
         self.session_mock.assert_called_once_with(
-            vmware_conf.vsphere_hostname,
-            vmware_conf.vsphere_login,
-            vmware_conf.vsphere_password,
-            vmware_conf.api_retry_count,
-            vmware_conf.task_poll_interval,
+            host=vmware_conf.vsphere_hostname,
+            port=vmware_conf.host_port,
+            server_username=vmware_conf.vsphere_login,
+            server_password=vmware_conf.vsphere_password,
+            api_retry_count=vmware_conf.api_retry_count,
+            task_poll_interval=vmware_conf.task_poll_interval,
+            scheme='https',
+            create_session=True,
+            cacert=vmware_conf.ca_file,
+            insecure=vmware_conf.insecure,
             pool_size=vmware_conf.connections_pool_size)
 
     def test_wrap_retry_w_login_unsuccessful(self):
