@@ -34,7 +34,9 @@ FAKE_ETH_OFPORT = 6
 
 class TestOVSvAppIntegrationBridge(base.TestCase):
 
-    def setUp(self):
+    @mock.patch('neutron.agent.ovsdb.api.'
+                'API.get')
+    def setUp(self, mock_ovsdb_api):
         super(TestOVSvAppIntegrationBridge, self).setUp()
         self.int_br = ovsvapp_br.OVSvAppIntegrationBridge("br-int")
 
@@ -96,7 +98,9 @@ class TestOVSvAppIntegrationBridge(base.TestCase):
 
 class TestOVSvAppPhysicalBridge(base.TestCase):
 
-    def setUp(self):
+    @mock.patch('neutron.agent.ovsdb.api.'
+                'API.get')
+    def setUp(self, mock_ovsdb_api):
         super(TestOVSvAppPhysicalBridge, self).setUp()
         self.br = ovsvapp_br.OVSvAppPhysicalBridge("br-phy")
 
@@ -142,19 +146,19 @@ class TestOVSvAppPhysicalBridge(base.TestCase):
 
 class TestOVSvAppTunnelBridge(base.TestCase):
 
-    def setUp(self):
+    @mock.patch('neutron.agent.ovsdb.api.'
+                'API.get')
+    def setUp(self, mock_ovsdb_api):
         super(TestOVSvAppTunnelBridge, self).setUp()
         self.tun_br = ovsvapp_br.OVSvAppTunnelBridge("br-tun")
 
     def test_provision_local_vlan(self):
-        with mock.patch.object(self.tun_br, "add_flow") as mock_add_flow, \
-                mock.patch.object(self.tun_br, "mod_flow") as mock_mod_flow:
+        with mock.patch.object(self.tun_br, "add_flow") as mock_add_flow:
             self.tun_br.provision_local_vlan(FAKE_LVID,
                                              FAKE_SEG_ID,
                                              FAKE_TUN_OFPORT)
-            self.assertTrue(mock_add_flow.called)
-            self.assertTrue(mock_mod_flow.called)
-            mock_add_flow.assert_called_once_with(
+            self.assertEqual(mock_add_flow.call_count, 2)
+            mock_add_flow.assert_called_with(
                 table=ovs_const.TUN_TABLE[p_const.TYPE_VXLAN],
                 priority=1,
                 tun_id=FAKE_SEG_ID,

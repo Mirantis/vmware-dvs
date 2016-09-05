@@ -45,33 +45,11 @@ OVSVAPP_VCDRIVER=$OVSVAPP_NETWORKING_DIR/networking_vsphere/nova/virt/vmwareapi/
 # OVSvApp VMops file path
 OVSVAPP_VMOPS=$OVSVAPP_NETWORKING_DIR/networking_vsphere/nova/virt/vmwareapi/ovsvapp_vmops.py
 
-# Do something dependly on current driver.
-function _is_vmware {
-    if [[ $OVSVAPP_MODE =~ "vmware_dvs" ]]; then
-	res=0
-    else
-	res=1
-    fi
-    return $res
-}
-
-function _when_vmware {
-    if _is_vmware ; then
-	$*
-    fi
-}
-
-function _when_ovsvapp {
-    if ! _is_vmware ; then
-	$*
-    fi
-}
-
 # Omit ssl verification.
 function _patch_oslo_vmware {
     if [[ ("$VMWARE_DVS_USE_SS_SSL" = "true") || ("$VMWARE_DVS_USE_SS_SSL" = "True") ]]; then
-	fl='/usr/local/lib/python2.7/dist-packages/oslo_vmware/service.py'
-	sudo sed -i s/'self.verify = cacert if cacert else not insecure'/'self.verify = False'/ $fl
+        fl='/usr/local/lib/python2.7/dist-packages/oslo_vmware/service.py'
+        sudo sed -i s/'self.verify = cacert if cacert else not insecure'/'self.verify = False'/ $fl
     fi
 }
 
@@ -94,7 +72,6 @@ function configure_vmware_dvs_config {
     iniset /$OVSVAPP_CONF_FILE ml2_vmware vsphere_password $OVSVAPP_VCENTER_PASSWORD
     iniset /$OVSVAPP_CONF_FILE ml2_vmware network_maps $OVSVAPP_CLUSTER_DVS_MAPPING
     iniset /$OVSVAPP_CONF_FILE ml2_vmware uplink_maps $VMWARE_DVS_UPLINK_MAPPING
-    iniset /$OVSVAPP_CONF_FILE ml2_vmware cluster_name $VMWAREAPI_CLUSTER
     iniset /$NOVA_CONF DEFAULT host $VMWAREAPI_CLUSTER
 }
 
@@ -112,8 +89,11 @@ function configure_ovsvapp_compute_driver {
 
 function start_ovsvapp_agent {
     echo "Starting OVSvApp Agent"
-    _when_ovsvapp run_process ovsvapp-agent "python $OVSVAPP_AGENT_BINARY --config-file $NEUTRON_CONF --config-file /$OVSVAPP_CONF_FILE"
-    _when_vmware run_process vmware_dvs-agent "python $OVSVAPP_AGENT_BINARY --config-file $NEUTRON_CONF --config-file /$OVSVAPP_CONF_FILE"
+    if [[ $OVSVAPP_MODE =~ "vmware_dvs" ]]; then
+        run_process vmware_dvs-agent "python $OVSVAPP_AGENT_BINARY --config-file $NEUTRON_CONF --config-file /$OVSVAPP_CONF_FILE"
+    else
+        run_process ovsvapp-agent "python $OVSVAPP_AGENT_BINARY --config-file $NEUTRON_CONF --config-file /$OVSVAPP_CONF_FILE"
+    fi
 }
 
 function cleanup_ovsvapp_bridges {
@@ -179,8 +159,10 @@ function install_ovsvapp_dependency {
     install_nova
     install_neutron
     _neutron_ovs_base_install_agent_packages
-    _when_vmware sudo pip install "git+git://github.com/yunesj/suds#egg=suds"
-    _when_vmware _patch_oslo_vmware
+    if [[ $OVSVAPP_MODE =~ "vmware_dvs" ]]; then
+        sudo pip install "git+git://github.com/yunesj/suds#egg=suds"
+        _patch_oslo_vmware
+    fi
 }
 
 function install_networking_vsphere {
@@ -277,7 +259,7 @@ if is_service_enabled vmware_dvs-server; then
 
     elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
         # no-op
-	:
+        :
     elif [[ "$1" == "stack" && "$2" == "post-extra" ]]; then
         # no-op
         :
@@ -303,11 +285,11 @@ if is_service_enabled vmware_dvs-agent; then
         install_networking_vsphere
 
     elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
-	add_ovsvapp_config
+        add_ovsvapp_config
         configure_dvs_compute_driver
-	configure_vmware_dvs_config
-	setup_ovsvapp_bridges
-	start_ovsvapp_agent
+        configure_vmware_dvs_config
+        setup_ovsvapp_bridges
+        start_ovsvapp_agent
     elif [[ "$1" == "stack" && "$2" == "post-extra" ]]; then
         # no-op
         :
