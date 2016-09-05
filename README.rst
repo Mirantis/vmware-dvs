@@ -1,13 +1,34 @@
-==========
-vmware-dvs
-==========
+===============================
+networking-vsphere
+===============================
 
-Goal
-====
-There is requests from openstack users to have ability to build hybrid
-clouds with KVM and ESXi hypervisors (managed by vCenter; DVS is used for
-network connectivity). VM on ESXi and VM on KVM should communicate with each
-other. But there is no support for VMWare vSphere controller on neutron side.
+A set of Neutron drivers and agents to manage vSphere clusters.
 
-Our goal is to fully controll over ESXi hypervisor network (specifically when
-vCenter and DVS are used on VMware side) via neutron API.
+* Free software: Apache license
+* Source: http://git.openstack.org/cgit/openstack/networking-vsphere
+* Bugs: https://bugs.launchpad.net/networking-vsphere
+
+OVSvApp Solution
+----------------
+
+OVSvApp solution comprises of a service VM called OVSvApp VM hosted on each
+ESXi hypervisor within a cluster and two vSphere Distributed Switches (VDS).
+
+Features
+--------
+
+* Supports VLAN and VXLAN based networks.
+* Security Groups.
+* vMotion.
+
+More information
+----------------
+
+For help using or hacking on OVSvApp solution, you can send an email to the
+`OpenStack Development Mailing List <mailto:openstack-dev@lists.openstack.org>`;
+kindly use the [Networking-vSphere] Tag in the subject.
+
+Getting started
+---------------
+
+https://wiki.openstack.org/wiki/Neutron/Networking-vSphere

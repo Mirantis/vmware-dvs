@@ -2,13 +2,12 @@
 # of appearance. Changing the order has an impact on the overall integration
 # process, which may cause wedges in the gate later.
 
-pbr>=1.8.0
-oslo.vmware>=1.21.0
-#-e git://git.openstack.org/openstack/python-novaclient#egg=python-novaclient
-#-e git+git://github.com/yunesj/suds#egg=suds
-oslo.log>=1.11.0
-oslo.messaging>=2.5.0
-oslo.config>=2.4.0
-oslo.i18n>=2.6.0
-oslo.utils>=2.5.0
-oslo.serialization>=1.9.0
+pbr>=1.6 # Apache-2.0
+Babel>=1.3 # BSD
+oslo.vmware>=1.16.0 # Apache-2.0
+
+# This project does depend on neutron, nova as a library, but the
+# openstack tooling does not play nicely with projects that
+# are not publicly available in pypi.
+# -e git+https://git.openstack.org/openstack/neutron#egg=neutron
+# -e git+https://git.openstack.org/openstack/nova#egg=nova
