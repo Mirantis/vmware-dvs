@@ -217,7 +217,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         self.agent_id = 'dvs-agent-%s' % cfg.CONF.host
         self.topic = topics.AGENT
         self.plugin_rpc = DVSPluginApi(topics.PLUGIN)
-        self.state_rpc = agent_rpc.PluginReportStateAPI(topics.REPORTS)
+        self.state_rpc = agent_rpc.PluginReportStateAPI(topics.PLUGIN)
 
         # Handle updates from service
         self.endpoints = [self]

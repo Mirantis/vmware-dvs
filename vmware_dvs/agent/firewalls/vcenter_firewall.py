@@ -23,6 +23,7 @@ from neutron.i18n import _LI
 from oslo_log import log as logging
 
 from vmware_dvs.common import config
+from vmware_dvs.common import exceptions
 from vmware_dvs.utils import security_group_utils as sg_util
 from vmware_dvs.utils import dvs_util
 
