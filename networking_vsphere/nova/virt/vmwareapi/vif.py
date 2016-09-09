@@ -21,7 +21,7 @@ from oslo_utils import versionutils
 from oslo_vmware import vim_util
 
 from nova import exception
-from nova.i18n import _, _LW
+from nova.i18n import _, _LI, _LW    # noqa
 from nova.network import model
 from nova.virt.vmwareapi import constants
 from nova.virt.vmwareapi import network_util
@@ -48,11 +48,11 @@ CONF.register_opts(vmwareapi_vif_opts, 'vmware')
 def _get_associated_vswitch_for_interface(session, interface, cluster=None):
     # Check if the physical network adapter exists on the host.
     if not network_util.check_if_vlan_interface_exists(session,
-                                        interface, cluster):
+                                                       interface, cluster):
         raise exception.NetworkAdapterNotFound(adapter=interface)
     # Get the vSwitch associated with the Physical Adapter
     vswitch_associated = network_util.get_vswitch_for_vlan_interface(
-                                    session, interface, cluster)
+        session, interface, cluster)
     if not vswitch_associated:
         raise exception.SwitchNotFoundForNetworkAdapter(adapter=interface)
     return vswitch_associated
@@ -73,8 +73,8 @@ def ensure_vlan_bridge(session, vif, cluster=None, create_vlan=True):
         # Create a port group on the vSwitch associated with the
         # vlan_interface corresponding physical network adapter on the ESX
         # host.
-        vswitch_associated = _get_associated_vswitch_for_interface(session,
-                                 vlan_interface, cluster)
+        vswitch_associated = _get_associated_vswitch_for_interface(
+            session, vlan_interface, cluster)
         network_util.create_port_group(session, bridge,
                                        vswitch_associated,
                                        vlan_num if create_vlan else 0,
@@ -84,8 +84,8 @@ def ensure_vlan_bridge(session, vif, cluster=None, create_vlan=True):
                                                              cluster)
     elif create_vlan:
         # Get the vSwitch associated with the Physical Adapter
-        vswitch_associated = _get_associated_vswitch_for_interface(session,
-                                 vlan_interface, cluster)
+        vswitch_associated = _get_associated_vswitch_for_interface(
+            session, vlan_interface, cluster)
         # Get the vlan id and vswitch corresponding to the port group
         _get_pg_info = network_util.get_vlanid_and_vswitch_for_portgroup
         pg_vlanid, pg_vswitch = _get_pg_info(session, bridge, cluster)
@@ -134,11 +134,11 @@ def _get_neutron_network(session, cluster, vif):
     elif vif['type'] == model.VIF_TYPE_DVS:
         network_id = vif['network']['bridge']
         network_ref = network_util.get_network_with_the_name(
-                session, network_id, cluster)
+            session, network_id, cluster)
         if not network_ref:
             raise exception.NetworkNotFoundForBridge(bridge=network_id)
     else:
-        reason = _('vif type %s not supported') % vif['type']
+        reason = _('vif type %s not supported') % vif['type']    # noqa
         raise exception.InvalidInput(reason=reason)
     return network_ref
 
@@ -179,7 +179,7 @@ def get_vif_info(session, cluster, is_neutron, vif_model, network_info):
         return vif_infos
     for vif in network_info:
         vif_infos.append(get_vif_dict(session, cluster, vif_model,
-                         is_neutron, vif))
+                                      is_neutron, vif))
     return vif_infos
 
 

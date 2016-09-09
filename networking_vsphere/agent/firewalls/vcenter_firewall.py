@@ -13,8 +13,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from multiprocessing import Process, Queue
+from multiprocessing import Process
+from multiprocessing import Queue
 import signal
+import six
 import threading
 import time
 import traceback
@@ -23,8 +25,8 @@ from neutron.agent import firewall
 from oslo_log import log as logging
 from oslo_vmware import exceptions as vmware_exceptions
 
-from networking_vsphere.common import exceptions
 from networking_vsphere._i18n import _LI
+from networking_vsphere.common import exceptions
 from networking_vsphere.common import vmware_conf as config
 from networking_vsphere.utils import dvs_util
 from networking_vsphere.utils import security_group_utils as sg_util
@@ -64,7 +66,7 @@ class DVSFirewallUpdater(object):
             except (vmware_exceptions.VMwareDriverException,
                     exceptions.VMWareDVSException) as e:
                 LOG.debug("Exception was handled in firewall updater: %s. "
-                          "Traceback: %s" % (e, traceback.format_exc()))
+                          "Traceback: %s", e, traceback.format_exc())
 
     def _handle_sigterm(self, signum, frame):
         LOG.info(_LI("Termination of firewall process called"))
@@ -83,7 +85,7 @@ class PortQueue(object):
 
     # Todo: add roundrobin for active DVS. SlOPS
     def get_update_tasks(self, number=5):
-        for dvs, tasks in self.update_store.iteritems():
+        for dvs, tasks in six.iteritems(self.update_store):
             if tasks:
                 ret = tasks[:number]
                 self.update_store[dvs] = tasks[number:]
@@ -92,7 +94,7 @@ class PortQueue(object):
 
     def get_remove_tasks(self):
         ret = []
-        for dvs, tasks in self.remove_store.iteritems():
+        for dvs, tasks in six.iteritems(self.remove_store):
             for task in tasks:
                 key = task.get('binding:vif_details', {}).get('dvs_port_key')
                 if dvs.check_free(key):
@@ -160,13 +162,12 @@ def remover(dvs, ports_list):
 
 
 class DVSFirewallDriver(firewall.FirewallDriver):
-    """DVS Firewall Driver.
-    """
+    """DVS Firewall Driver. """
     def __init__(self):
         self.dvs_ports = {}
         self._defer_apply = False
         self.list_queues = []
-        for x in xrange(10):
+        for x in six.moves.range(10):
             self.list_queues.append(Queue())
         self.remove_queue = Queue()
         self.fw_process = Process(
@@ -199,7 +200,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         ports_for_update = []
         for port in ports:
             port_device = port['device']
-            stored_port_key = self.dvs_ports.get(port_device, {}).\
+            stored_port_key = self.dvs_ports.get(port_device, {}). \
                 get('binding:vif_details', {}).get('dvs_port_key')
             port_key = port.get('binding:vif_details', {}).get('dvs_port_key')
             if port_key and port_key != stored_port_key:
@@ -255,7 +256,7 @@ class DVSFirewallDriver(firewall.FirewallDriver):
         pass
 
     def security_groups_provider_updated(self):
-        LOG.info(_("Ignoring default security_groups_provider_updated RPC."))
+        LOG.info(_LI("Ignoring default security_groups_provider_updated RPC."))
 
     def update_security_group_members(self, sg_id, sg_members):
         pass

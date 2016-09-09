@@ -33,7 +33,7 @@ from oslo_vmware import vim_util as vutil
 import six
 
 from nova import exception
-from nova.i18n import _, _LE, _LI, _LW
+from nova.i18n import _, _LE, _LI, _LW    # noqa
 from nova.network import model as network_model
 from nova.virt.vmwareapi import constants
 from nova.virt.vmwareapi import vim_util
@@ -87,14 +87,14 @@ class Limits(object):
     def validate(self):
         if self.shares_level in ('high', 'normal', 'low'):
             if self.shares_share:
-                reason = _("Share level '%s' cannot have share "
+                reason = _("Share level '%s' cannot have share "    # noqa
                            "configured") % self.shares_level
                 raise exception.InvalidInput(reason=reason)
             return
         if self.shares_level == 'custom':
             return
         if self.shares_level:
-            reason = _("Share '%s' is not supported") % self.shares_level
+            reason = _("Share '%s' is not supported") % self.shares_level    # noqa
             raise exception.InvalidInput(reason=reason)
 
     def has_limits(self):
@@ -189,8 +189,7 @@ def _get_allocation_info(client_factory, limits, allocation_type):
     shares = client_factory.create('ns0:SharesInfo')
     if limits.shares_level:
         shares.level = limits.shares_level
-        if (shares.level == 'custom' and
-            limits.shares_share):
+        if shares.level == 'custom' and limits.shares_share:
             shares.shares = limits.shares_share
         else:
             shares.shares = 0
@@ -286,7 +285,7 @@ def get_vm_create_spec(client_factory, instance, data_store_name,
             port_index += 1
 
     if (CONF.vmware.console_delay_seconds and
-        CONF.vmware.console_delay_seconds > 0):
+            CONF.vmware.console_delay_seconds > 0):
         opt = client_factory.create('ns0:OptionValue')
         opt.key = 'keyboard.typematicMinDelay'
         opt.value = CONF.vmware.console_delay_seconds * 1000000
@@ -364,25 +363,26 @@ def create_controller_spec(client_factory, key,
                            adapter_type=constants.DEFAULT_ADAPTER_TYPE,
                            bus_number=0):
     """Builds a Config Spec for the LSI or Bus Logic Controller's addition
+
     which acts as the controller for the virtual hard disk to be attached
     to the VM.
     """
     # Create a controller for the Virtual Hard Disk
     virtual_device_config = client_factory.create(
-                            'ns0:VirtualDeviceConfigSpec')
+        'ns0:VirtualDeviceConfigSpec')
     virtual_device_config.operation = "add"
     if adapter_type == constants.ADAPTER_TYPE_BUSLOGIC:
         virtual_controller = client_factory.create(
-                                'ns0:VirtualBusLogicController')
+            'ns0:VirtualBusLogicController')
     elif adapter_type == constants.ADAPTER_TYPE_LSILOGICSAS:
         virtual_controller = client_factory.create(
-                                'ns0:VirtualLsiLogicSASController')
+            'ns0:VirtualLsiLogicSASController')
     elif adapter_type == constants.ADAPTER_TYPE_PARAVIRTUAL:
         virtual_controller = client_factory.create(
-                                'ns0:ParaVirtualSCSIController')
+            'ns0:ParaVirtualSCSIController')
     else:
         virtual_controller = client_factory.create(
-                                'ns0:VirtualLsiLogicController')
+            'ns0:VirtualLsiLogicController')
     virtual_controller.key = key
     virtual_controller.busNumber = bus_number
     virtual_controller.sharedBus = "noSharing"
@@ -405,13 +405,14 @@ def convert_vif_model(name):
     if name == network_model.VIF_MODEL_VMXNET3:
         return 'VirtualVmxnet3'
     if name not in ALL_SUPPORTED_NETWORK_DEVICES:
-        msg = _('%s is not supported.') % name
+        msg = _('%s is not supported.') % name    # noqa
         raise exception.Invalid(msg)
     return name
 
 
 def _create_vif_spec(client_factory, vif_info, vif_limits=None):
     """Builds a config spec for the addition of a new network
+
     adapter to the VM.
     """
     network_spec = client_factory.create('ns0:VirtualDeviceConfigSpec')
@@ -432,7 +433,7 @@ def _create_vif_spec(client_factory, vif_info, vif_limits=None):
     backing = None
     if network_ref and network_ref['type'] == 'OpaqueNetwork':
         backing = client_factory.create(
-                'ns0:VirtualEthernetCardOpaqueNetworkBackingInfo')
+            'ns0:VirtualEthernetCardOpaqueNetworkBackingInfo')
         backing.opaqueNetworkId = network_ref['network-id']
         backing.opaqueNetworkType = network_ref['network-type']
         # Configure externalId
@@ -448,9 +449,9 @@ def _create_vif_spec(client_factory, vif_info, vif_limits=None):
     elif (network_ref and
             network_ref['type'] == "DistributedVirtualPortgroup"):
         backing = client_factory.create(
-                'ns0:VirtualEthernetCardDistributedVirtualPortBackingInfo')
+            'ns0:VirtualEthernetCardDistributedVirtualPortBackingInfo')
         portgroup = client_factory.create(
-                    'ns0:DistributedVirtualSwitchPortConnection')
+            'ns0:DistributedVirtualSwitchPortConnection')
         portgroup.switchUuid = network_ref['dvsw']
         portgroup.portgroupKey = network_ref['dvpg']
         try:
@@ -460,7 +461,7 @@ def _create_vif_spec(client_factory, vif_info, vif_limits=None):
         backing.port = portgroup
     else:
         backing = client_factory.create(
-                  'ns0:VirtualEthernetCardNetworkBackingInfo')
+            'ns0:VirtualEthernetCardNetworkBackingInfo')
         backing.deviceName = network_name
 
     connectable_spec = client_factory.create('ns0:VirtualDeviceConnectInfo')
@@ -486,7 +487,7 @@ def _create_vif_spec(client_factory, vif_info, vif_limits=None):
                 client_factory, vif_limits,
                 'ns0:VirtualEthernetCardResourceAllocation')
         else:
-            msg = _('Limits only supported from vCenter 6.0 and above')
+            msg = _('Limits only supported from vCenter 6.0 and above')    # noqa
             raise exception.Invalid(msg)
 
     network_spec.device = net_device
@@ -509,7 +510,7 @@ def get_network_detach_config_spec(client_factory, device, port_index):
     """Builds the vif detach config spec."""
     config_spec = client_factory.create('ns0:VirtualMachineConfigSpec')
     virtual_device_config = client_factory.create(
-                            'ns0:VirtualDeviceConfigSpec')
+        'ns0:VirtualDeviceConfigSpec')
     virtual_device_config.operation = "remove"
     virtual_device_config.device = device
     config_spec.deviceChange = [virtual_device_config]
@@ -549,10 +550,9 @@ def get_vmdk_attach_config_spec(client_factory,
     config_spec = client_factory.create('ns0:VirtualMachineConfigSpec')
 
     device_config_spec = []
-    virtual_device_config_spec = _create_virtual_disk_spec(client_factory,
-                                controller_key, disk_type, file_path,
-                                disk_size, linked_clone,
-                                unit_number, device_name, disk_io_limits)
+    virtual_device_config_spec = _create_virtual_disk_spec(
+        client_factory, controller_key, disk_type, file_path, disk_size,
+        linked_clone, unit_number, device_name, disk_io_limits)
 
     device_config_spec.append(virtual_device_config_spec)
 
@@ -694,8 +694,8 @@ scsi_controller_classes = {
 
 
 def get_scsi_adapter_type(hardware_devices):
-    """Selects a proper iscsi adapter type from the existing
-       hardware devices
+    """Selects a proper iscsi adapter type from the existing hardware devices
+
     """
     if hardware_devices.__class__.__name__ == "ArrayOfVirtualDevice":
         hardware_devices = hardware_devices.VirtualDevice
@@ -707,7 +707,7 @@ def get_scsi_adapter_type(hardware_devices):
                 # return the first match one
                 return scsi_controller_classes[device.__class__.__name__]
     raise exception.StorageError(
-        reason=_("Unable to find iSCSI Target"))
+        reason=_("Unable to find iSCSI Target"))    # noqa
 
 
 def _find_controller_slot(controller_keys, taken, max_unit_number):
@@ -730,6 +730,7 @@ def _is_scsi_controller(device):
 
 def _find_allocated_slots(devices):
     """Return dictionary which maps controller_key to list of allocated unit
+
     numbers for that controller_key.
     """
     taken = {}
@@ -752,7 +753,7 @@ def _get_bus_number_for_scsi_controller(devices):
     for i in range(constants.SCSI_MAX_CONTROLLER_NUMBER):
         if i not in taken:
             return i
-    msg = _('Only %d SCSI controllers are allowed to be '
+    msg = _('Only %d SCSI controllers are allowed to be '    # noqa
             'created on this instance.') % constants.SCSI_MAX_CONTROLLER_NUMBER
     raise vexc.VMwareDriverException(msg)
 
@@ -760,6 +761,7 @@ def _get_bus_number_for_scsi_controller(devices):
 def allocate_controller_key_and_unit_number(client_factory, devices,
                                             adapter_type):
     """This function inspects the current set of hardware devices and returns
+
     controller_key and unit_number that can be used for attaching a new virtual
     disk to adapter with the given adapter_type.
     """
@@ -798,7 +800,7 @@ def get_rdm_disk(hardware_devices, uuid):
 
     for device in hardware_devices:
         if (device.__class__.__name__ == "VirtualDisk" and
-            device.backing.__class__.__name__ ==
+                device.backing.__class__.__name__ ==
                 "VirtualDiskRawDiskMappingVer1BackingInfo" and
                 device.backing.lunUuid == uuid):
             return device
@@ -857,10 +859,11 @@ def _create_virtual_disk_spec(client_factory, controller_key,
                               device_name=None,
                               disk_io_limits=None):
     """Builds spec for the creation of a new/ attaching of an already existing
+
     Virtual Disk to the VM.
     """
     virtual_device_config = client_factory.create(
-                            'ns0:VirtualDeviceConfigSpec')
+        'ns0:VirtualDeviceConfigSpec')
     virtual_device_config.operation = "add"
     if (file_path is None) or linked_clone:
         virtual_device_config.fileOperation = "create"
@@ -869,14 +872,14 @@ def _create_virtual_disk_spec(client_factory, controller_key,
 
     if disk_type == "rdm" or disk_type == "rdmp":
         disk_file_backing = client_factory.create(
-                            'ns0:VirtualDiskRawDiskMappingVer1BackingInfo')
+            'ns0:VirtualDiskRawDiskMappingVer1BackingInfo')
         disk_file_backing.compatibilityMode = "virtualMode" \
             if disk_type == "rdm" else "physicalMode"
         disk_file_backing.diskMode = "independent_persistent"
         disk_file_backing.deviceName = device_name or ""
     else:
         disk_file_backing = client_factory.create(
-                            'ns0:VirtualDiskFlatVer2BackingInfo')
+            'ns0:VirtualDiskFlatVer2BackingInfo')
         disk_file_backing.diskMode = "persistent"
         if disk_type == constants.DISK_TYPE_THIN:
             disk_file_backing.thinProvisioned = True
@@ -918,9 +921,10 @@ def _create_virtual_disk_spec(client_factory, controller_key,
 
 def detach_virtual_disk_spec(client_factory, device, destroy_disk=False):
     """Builds spec for the detach of an already existing Virtual Disk from VM.
+
     """
     virtual_device_config = client_factory.create(
-                            'ns0:VirtualDeviceConfigSpec')
+        'ns0:VirtualDeviceConfigSpec')
     virtual_device_config.operation = "remove"
     if destroy_disk:
         virtual_device_config.fileOperation = "destroy"
@@ -957,7 +961,7 @@ def relocate_vm_spec(client_factory, datastore=None, host=None,
 def get_machine_id_change_spec(client_factory, machine_id_str):
     """Builds the machine id change config spec."""
     virtual_machine_config_spec = client_factory.create(
-                                  'ns0:VirtualMachineConfigSpec')
+        'ns0:VirtualMachineConfigSpec')
 
     opt = client_factory.create('ns0:OptionValue')
     opt.key = "machine.id"
@@ -988,7 +992,7 @@ def get_add_vswitch_port_group_spec(client_factory, vswitch_name,
 def get_vnc_config_spec(client_factory, port):
     """Builds the vnc config spec."""
     virtual_machine_config_spec = client_factory.create(
-                                    'ns0:VirtualMachineConfigSpec')
+        'ns0:VirtualMachineConfigSpec')
 
     opt_enabled = client_factory.create('ns0:OptionValue')
     opt_enabled.key = "RemoteDisplay.vnc.enabled"
@@ -1034,8 +1038,7 @@ def _get_allocated_vnc_ports(session):
             option_value = dynamic_prop.val
             vnc_port = option_value.value
             vnc_ports.add(int(vnc_port))
-        result = session._call_method(vutil, 'continue_retrieval',
-                                      result)
+        result = session._call_method(vutil, 'continue_retrieval', result)
     return vnc_ports
 
 
@@ -1056,17 +1059,15 @@ def _get_object_from_results(session, results, value, func):
     while results:
         object = func(results, value)
         if object:
-            session._call_method(vutil, 'cancel_retrieval',
-                                 results)
+            session._call_method(vutil, 'cancel_retrieval', results)
             return object
-        results = session._call_method(vutil, 'continue_retrieval',
-                                       results)
+        results = session._call_method(vutil, 'continue_retrieval', results)
 
 
 def _get_vm_ref_from_name(session, vm_name):
     """Get reference to the VM with the name specified."""
     vms = session._call_method(vim_util, "get_objects",
-                "VirtualMachine", ["name"])
+                               "VirtualMachine", ["name"])
     return _get_object_from_results(session, vms, vm_name,
                                     _get_object_for_value)
 
@@ -1086,7 +1087,7 @@ def _get_vm_ref_from_uuid(session, instance_uuid):
     _get_vm_ref_from_vm_uuid.
     """
     vms = session._call_method(vim_util, "get_objects",
-                "VirtualMachine", ["name"])
+                               "VirtualMachine", ["name"])
     return _get_object_from_results(session, vms, instance_uuid,
                                     _get_object_for_value)
 
@@ -1112,10 +1113,10 @@ def _get_vm_ref_from_vm_uuid(session, instance_uuid):
 
 def _get_vm_ref_from_extraconfig(session, instance_uuid):
     """Get reference to the VM with the uuid specified."""
-    vms = session._call_method(vim_util, "get_objects",
-                "VirtualMachine", ['config.extraConfig["nvp.vm-uuid"]'])
+    vms = session._call_method(vim_util, "get_objects", "VirtualMachine",
+                               ['config.extraConfig["nvp.vm-uuid"]'])
     return _get_object_from_results(session, vms, instance_uuid,
-                                     _get_object_for_optionvalue)
+                                    _get_object_for_optionvalue)
 
 
 @vm_ref_cache_from_instance
@@ -1179,15 +1180,17 @@ def get_stats_from_cluster(session, cluster):
         host_ret = prop_dict.get('host')
         if host_ret:
             host_mors = host_ret.ManagedObjectReference
-            result = session._call_method(vim_util,
-                         "get_properties_for_a_collection_of_objects",
-                         "HostSystem", host_mors,
-                         ["summary.hardware", "summary.runtime"])
+            result = session._call_method(
+                vim_util,
+                "get_properties_for_a_collection_of_objects",
+                "HostSystem",
+                host_mors,
+                ["summary.hardware", "summary.runtime"])
             for obj in result.objects:
                 hardware_summary = obj.propSet[0].val
                 runtime_summary = obj.propSet[1].val
                 if (runtime_summary.inMaintenanceMode is False and
-                    runtime_summary.connectionState == "connected"):
+                        runtime_summary.connectionState == "connected"):
                     # Total vcpus is the sum of all pCPUs of individual hosts
                     # The overcommitment ratio is factored in by the scheduler
                     vcpus += hardware_summary.numCpuThreads
@@ -1209,16 +1212,14 @@ def get_stats_from_cluster(session, cluster):
 def get_host_ref(session, cluster=None):
     """Get reference to a host within the cluster specified."""
     if cluster is None:
-        results = session._call_method(vim_util, "get_objects",
-                                       "HostSystem")
-        session._call_method(vutil, 'cancel_retrieval',
-                             results)
+        results = session._call_method(vim_util, "get_objects", "HostSystem")
+        session._call_method(vutil, 'cancel_retrieval', results)
         host_mor = results.objects[0].obj
     else:
         host_ret = session._call_method(vutil, "get_object_property",
                                         cluster, "host")
         if not host_ret or not host_ret.ManagedObjectReference:
-            msg = _('No host available on cluster')
+            msg = _('No host available on cluster')    # noqa
             raise exception.NoValidHost(reason=msg)
         host_mor = host_ret.ManagedObjectReference[0]
 
@@ -1230,12 +1231,10 @@ def propset_dict(propset):
 
     PropSet is an optional attribute on ObjectContent objects
     that are returned by the VMware API.
-
     You can read more about these at:
     | http://pubs.vmware.com/vsphere-51/index.jsp
     |    #com.vmware.wssdk.apiref.doc/
     |        vmodl.query.PropertyCollector.ObjectContent.html
-
     :param propset: a property "set" from ObjectContent
     :return: dictionary representing property set
     """
@@ -1281,9 +1280,8 @@ def get_all_cluster_mors(session):
     """Get all the clusters in the vCenter."""
     try:
         results = session._call_method(vim_util, "get_objects",
-                                        "ClusterComputeResource", ["name"])
-        session._call_method(vutil, 'cancel_retrieval',
-                             results)
+                                       "ClusterComputeResource", ["name"])
+        session._call_method(vutil, 'cancel_retrieval', results)
         return results.objects
 
     except Exception as excep:
@@ -1295,7 +1293,7 @@ def get_cluster_ref_by_name(session, cluster_name):
     all_clusters = get_all_cluster_mors(session)
     for cluster in all_clusters:
         if (hasattr(cluster, 'propSet') and
-                    cluster.propSet[0].val == cluster_name):
+                cluster.propSet[0].val == cluster_name):
             return cluster.obj
 
 
@@ -1337,7 +1335,7 @@ def create_vm(session, instance, vm_folder, config_spec, res_pool_ref):
                 LOG.warning(_LW('vmware_ostype from image is not recognised: '
                                 '\'%(ostype)s\'. An invalid os type may be '
                                 'one cause of this instance creation failure'),
-                         {'ostype': config_spec.guestId})
+                            {'ostype': config_spec.guestId})
     LOG.debug("Created VM on the ESX host", instance=instance)
     return task_info.result
 
@@ -1369,18 +1367,18 @@ def create_virtual_disk(session, dc_ref, adapter_type, disk_type,
                "adapter_type": adapter_type})
 
     vmdk_create_spec = get_vmdk_create_spec(
-            session.vim.client.factory,
-            size_in_kb,
-            adapter_type,
-            disk_type)
+        session.vim.client.factory,
+        size_in_kb,
+        adapter_type,
+        disk_type)
 
     vmdk_create_task = session._call_method(
-            session.vim,
-            "CreateVirtualDisk_Task",
-            session.vim.service_content.virtualDiskManager,
-            name=virtual_disk_path,
-            datacenter=dc_ref,
-            spec=vmdk_create_spec)
+        session.vim,
+        "CreateVirtualDisk_Task",
+        session.vim.service_content.virtualDiskManager,
+        name=virtual_disk_path,
+        datacenter=dc_ref,
+        spec=vmdk_create_spec)
 
     session._wait_for_task(vmdk_create_task)
     LOG.debug("Created Virtual Disk of size %(vmdk_file_size_in_kb)s"
@@ -1406,12 +1404,12 @@ def copy_virtual_disk(session, dc_ref, source, dest):
               {'source': source, 'dest': dest})
     vim = session.vim
     vmdk_copy_task = session._call_method(
-            vim,
-            "CopyVirtualDisk_Task",
-            vim.service_content.virtualDiskManager,
-            sourceName=source,
-            sourceDatacenter=dc_ref,
-            destName=dest)
+        vim,
+        "CopyVirtualDisk_Task",
+        vim.service_content.virtualDiskManager,
+        sourceName=source,
+        sourceDatacenter=dc_ref,
+        destName=dest)
     session._wait_for_task(vmdk_copy_task)
     LOG.debug("Copied Virtual Disk %(source)s to %(dest)s",
               {'source': source, 'dest': dest})
@@ -1434,8 +1432,7 @@ def power_on_instance(session, instance, vm_ref=None):
     LOG.debug("Powering on the VM", instance=instance)
     try:
         poweron_task = session._call_method(
-                                    session.vim,
-                                    "PowerOnVM_Task", vm_ref)
+            session.vim, "PowerOnVM_Task", vm_ref)
         session._wait_for_task(poweron_task)
         LOG.debug("Powered on the VM", instance=instance)
     except vexc.InvalidPowerStateException:
@@ -1481,7 +1478,7 @@ def get_vm_detach_port_index(session, vm_ref, iface_id):
         options = extra_config.OptionValue
         for option in options:
             if (option.key.startswith('nvp.iface-id.') and
-                option.value == iface_id):
+                    option.value == iface_id):
                 return int(option.key.split('.')[2])
 
 
@@ -1493,8 +1490,8 @@ def power_off_instance(session, instance, vm_ref=None):
 
     LOG.debug("Powering off the VM", instance=instance)
     try:
-        poweroff_task = session._call_method(session.vim,
-                                         "PowerOffVM_Task", vm_ref)
+        poweroff_task = session._call_method(session.vim, "PowerOffVM_Task",
+                                             vm_ref)
         session._wait_for_task(poweroff_task)
         LOG.debug("Powered off the VM", instance=instance)
     except vexc.InvalidPowerStateException:
@@ -1517,7 +1514,7 @@ def find_rescue_device(hardware_devices, instance):
                 device.backing.fileName.endswith('-rescue.vmdk')):
             return device
 
-    msg = _('Rescue device does not exist for instance %s') % instance.uuid
+    msg = _('Rescue device does not exist for instance %s') % instance.uuid    # noqa
     raise exception.NotFound(msg)
 
 
@@ -1530,7 +1527,7 @@ def _detach_and_delete_devices_config_spec(client_factory, devices):
     device_config_spec = []
     for device in devices:
         virtual_device_config = client_factory.create(
-                                'ns0:VirtualDeviceConfigSpec')
+            'ns0:VirtualDeviceConfigSpec')
         virtual_device_config.operation = "remove"
         virtual_device_config.device = device
         virtual_device_config.fileOperation = "destroy"
@@ -1576,7 +1573,7 @@ def get_swap(session, vm_ref):
     for device in hardware_devices:
         if (device.__class__.__name__ == "VirtualDisk" and
                 device.backing.__class__.__name__ ==
-                    "VirtualDiskFlatVer2BackingInfo" and
+                "VirtualDiskFlatVer2BackingInfo" and
                 'swap' in device.backing.fileName):
             return device
 
@@ -1584,8 +1581,7 @@ def get_swap(session, vm_ref):
 def _get_folder(session, parent_folder_ref, name):
     # Get list of child entities for the parent folder
     prop_val = session._call_method(vutil, 'get_object_property',
-                                    parent_folder_ref,
-                                    'childEntity')
+                                    parent_folder_ref, 'childEntity')
     if prop_val:
         child_entities = prop_val.ManagedObjectReference
 
