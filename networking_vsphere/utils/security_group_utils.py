@@ -21,8 +21,9 @@ import six
 from oslo_log import log
 from oslo_vmware import exceptions as vmware_exceptions
 
-from networking_vsphere._i18n import _LI, _LW
+from networking_vsphere._i18n import _LI
 from networking_vsphere.common import constants as dvs_const
+from networking_vsphere.common import exceptions
 from networking_vsphere.utils import dvs_util
 from networking_vsphere.utils import spec_builder
 
@@ -297,11 +298,11 @@ def port_configuration(builder, port_key, sg_rules, hashed_rules):
 def _rule_excepted(rule):
     if rule.direction == 'incomingPackets' and rule.protocol == 'udp':
         if (rule.ethertype == 'IPv4' and rule.port_range == (68, 68) and
-            rule.backward_port_range == (67, 67)):
-                return True
+                rule.backward_port_range == (67, 67)):
+            return True
         if (rule.ethertype == 'IPv6' and rule.port_range == (546, 546) and
-            rule.backward_port_range == (547, 547)):
-                return True
+                rule.backward_port_range == (547, 547)):
+            return True
     return False
 
 

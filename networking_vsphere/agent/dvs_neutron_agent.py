@@ -13,30 +13,32 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import itertools
 import signal
+import six
 import sys
 import time
-import itertools
 
-from neutron import context
-from neutron.agent import rpc as agent_rpc
-from neutron.agent import securitygroups_rpc as sg_rpc
-from neutron.agent.common import polling
-from neutron.common import config as common_config
-from neutron.common import constants as n_const
-from neutron.common import utils
-from neutron.common import topics
 from oslo_config import cfg
 from oslo_log import log as logging
-from oslo_service import loopingcall
 import oslo_messaging
+from oslo_service import loopingcall
 
-from networking_vsphere._i18n import _, _LE, _LI
+from neutron.agent.common import polling
+from neutron.agent import rpc as agent_rpc
+from neutron.agent import securitygroups_rpc as sg_rpc
+from neutron.common import config as common_config
+from neutron.common import constants as n_const
+from neutron.common import topics
+from neutron.common import utils
+from neutron import context
+
 from networking_vsphere.agent.firewalls import dvs_securitygroup_rpc as dvs_rpc
 from networking_vsphere.common import constants as dvs_const
 from networking_vsphere.common import dvs_agent_rpc_api
 from networking_vsphere.common import exceptions
 from networking_vsphere.utils import dvs_util
+from networking_vsphere._i18n import _, _LE, _LI
 
 LOG = logging.getLogger(__name__)
 cfg.CONF.import_group('AGENT',
@@ -71,8 +73,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         # Security group agent support
         self.context = context.get_admin_context_without_session()
         self.sg_plugin_rpc = sg_rpc.SecurityGroupServerRpcApi(topics.PLUGIN)
-        self.sg_agent = dvs_rpc.DVSSecurityGroupRpc(self.context,
-                self.sg_plugin_rpc, defer_refresh_firewall=True)
+        self.sg_agent = dvs_rpc.DVSSecurityGroupRpc(
+            self.context, self.sg_plugin_rpc, defer_refresh_firewall=True)
 
         self.setup_rpc()
         self.run_daemon_loop = True
@@ -82,7 +84,7 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             cfg.CONF.ML2_VMWARE, pg_cache=True)
         uplink_map = dvs_util.create_uplink_map_from_config(
             cfg.CONF.ML2_VMWARE, self.network_map)
-        for phys, dvs in self.network_map.iteritems():
+        for phys, dvs in six.iteritems(self.network_map):
             if phys in uplink_map:
                 dvs.load_uplinks(phys, uplink_map[phys])
         self.updated_ports = set()
@@ -109,9 +111,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         try:
             dvs = self._lookup_dvs_for_context(segment)
         except exceptions.NoDVSForPhysicalNetwork as e:
-            LOG.info(_LI('Network %(id)s not created. Reason: %(reason)s') % {
-                'id': current['id'],
-                'reason': e.message})
+            LOG.info(_LI('Network %(id)s not created. Reason: %(reason)s'),
+                     {'id': current['id'], 'reason': e.message})
         else:
             dvs.create_network(current, segment)
 
@@ -120,9 +121,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         try:
             dvs = self._lookup_dvs_for_context(segment)
         except exceptions.NoDVSForPhysicalNetwork as e:
-            LOG.info(_LI('Network %(id)s not deleted. Reason: %(reason)s') % {
-                'id': current['id'],
-                'reason': e.message})
+            LOG.info(_LI('Network %(id)s not deleted. Reason: %(reason)s'),
+                     {'id': current['id'], 'reason': e.message})
         else:
             dvs.delete_network(current)
 
@@ -131,9 +131,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         try:
             dvs = self._lookup_dvs_for_context(segment)
         except exceptions.NoDVSForPhysicalNetwork as e:
-            LOG.info(_LI('Network %(id)s not updated. Reason: %(reason)s') % {
-                'id': current['id'],
-                'reason': e.message})
+            LOG.info(_LI('Network %(id)s not updated. Reason: %(reason)s'),
+                     {'id': current['id'], 'reason': e.message})
         else:
             dvs.update_network(current, original)
 
@@ -190,8 +189,8 @@ class DVSAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         try:
             return self.network_map[physical_network]
         except KeyError:
-            LOG.debug('No dvs mapped for physical '
-                      'network: %s' % physical_network)
+            LOG.debug('No dvs mapped for physical network: %s',
+                      physical_network)
             raise exceptions.NoDVSForPhysicalNetwork(
                 physical_network=physical_network)
 

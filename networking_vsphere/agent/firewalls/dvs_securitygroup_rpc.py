@@ -12,8 +12,9 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-from threading import Timer
+
 from oslo_log import log as logging
+from threading import Timer
 
 from networking_vsphere._i18n import _LI
 from networking_vsphere.utils.rpc_translator import update_rules

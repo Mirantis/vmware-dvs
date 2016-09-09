@@ -1,0 +1,8 @@
+language: python
+python:
+- '2.7'
+install:
+- pip install tox
+script: tox
+notifications:
+  slack: miracloud:Q2i9wFLve5Fmzz4rQSfxPGFU

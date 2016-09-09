@@ -35,6 +35,7 @@ from neutron.plugins.common import constants as p_const
 from neutron.plugins.common import utils as p_utils
 from neutron.plugins.ml2.drivers.openvswitch.agent.common import constants as ovs_const  # noqa
 from neutron.plugins.ml2.drivers.openvswitch.agent import ovs_neutron_agent as ovs_agent  # noqa
+from neutron.plugins.ml2.drivers.openvswitch.agent import vlanmanager
 
 from networking_vsphere._i18n import _, _LE, _LI, _LW
 from networking_vsphere.agent import agent
@@ -92,7 +93,7 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
         self.cluster_dvs_info = (CONF.VMWARE.cluster_dvs_mapping)[0].split(":")
         self.cluster_id = self.cluster_dvs_info[0]  # Datacenter/host/cluster.
         self.ports_dict = {}
-        self.local_vlan_map = {}
+        self.vlan_manager = vlanmanager.LocalVlanManager()
         self.vnic_info = {}
         self.phys_brs = {}
         self.devices_to_filter = set()
@@ -102,6 +103,7 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
         self.devices_up_list = list()
         self.devices_down_list = list()
         self.run_update_devices_loop = True
+        self.ovsvapp_mitigation_required = False
         self.refresh_firewall_required = False
         self._pool = None
         self.run_check_for_updates = True
@@ -192,7 +194,21 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
         if not self.int_br.bridge_exists(CONF.OVSVAPP.integration_bridge):
             return False
         canary_flow = self.int_br.dump_flows_for_table(ovs_const.CANARY_TABLE)
-        return canary_flow
+        retval = False
+        if canary_flow:
+            canary_flow = '\n'.join(item for item in canary_flow.splitlines()
+                                    if 'OFPST_FLOW' not in item)
+        if canary_flow != '':
+            retval = True
+        return retval
+
+    def check_flows_for_mac(self, mac):
+        if self.sec_br is not None:
+            flows = self.sec_br.dump_flows_for(
+                table=0, dl_dst=mac, tp_src=67, tp_dst=68)
+            if flows:
+                return True
+        return False
 
     def check_integration_br(self):
         """Check if the integration bridge is still existing."""
@@ -411,6 +427,13 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
     def _ofport_set_to_str(self, ofport_set):
         return ",".join(map(str, ofport_set))
 
+    def _get_port_vlan_mapping(self, network_id):
+        try:
+            obj = self.vlan_manager.get(network_id)
+            return obj
+        except vlanmanager.MappingNotFound:
+            return None
+
     def _provision_local_vlan(self, port):
         if port['network_type'] == p_const.TYPE_VLAN:
             phys_net = port['physical_network']
@@ -460,10 +483,14 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
                                            lvm.vlan)
 
     def _populate_lvm(self, port):
-        self.local_vlan_map[port['network_id']] = ovs_agent.LocalVLANMapping(
-            port['lvid'], port['network_type'],
-            port['physical_network'],
-            port['segmentation_id'])
+        try:
+            self.vlan_manager.add(port['network_id'], port['lvid'],
+                                  port['network_type'],
+                                  port['physical_network'],
+                                  port['segmentation_id'])
+        except vlanmanager.MappingAlreadyExists:
+            LOG.error(_LE("Mapping already exists for network: %s"),
+                      port['network_id'])
 
     def _process_port(self, port):
         ovsvapplock.acquire()
@@ -478,7 +505,7 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
                                                    port['physical_network'],
                                                    port['network_type'])
             self.sg_agent.add_devices_to_filter([port])
-            if port['network_id'] not in self.local_vlan_map:
+            if not self._get_port_vlan_mapping(port['network_id']):
                 self._populate_lvm(port)
                 self._provision_local_vlan(port)
             if (port['id'] in self.cluster_host_ports and
@@ -726,7 +753,13 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
         OpenvSwitch process restart is also handled through this thread.
         """
         ovs_restarted = self.check_ovs_status()
-        if ovs_restarted == ovs_const.OVS_RESTARTED:
+        if ovs_restarted == ovs_const.OVS_DEAD:
+            self.ovsvapp_mitigation_required = True
+        if ovs_restarted == ovs_const.OVS_RESTARTED or  \
+           (self.ovsvapp_mitigation_required and
+                ovs_restarted == ovs_const.OVS_NORMAL):
+            self.vlan_manager.mapping = {}
+            self.ovsvapp_mitigation_required = False
             self.mitigate_ovs_restart()
         # Case where devices_to_filter is having some entries.
         if self.refresh_firewall_required:
@@ -983,7 +1016,7 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
                           "provisioning for %(name)s %(uuid)s."),
                       {'name': event.src_obj.__class__.__name__,
                        'uuid': event.src_obj.uuid})
-            LOG.exception(_LE("Cause of failure: %s.") % str(e))
+            LOG.exception(_LE("Cause of failure: %s."), str(e))
 
     def _add_ports_to_host_ports(self, ports, hosting=True):
         for port_id in ports:
@@ -996,6 +1029,31 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
                     self.cluster_host_ports.remove(port_id)
                 self.cluster_other_ports.add(port_id)
 
+    def invoke_get_ports_for_device_rpc(self, device):
+        retry = True
+        iteration = 1
+        LOG.info(_LI("Invoking get_ports_for_device RPC for device: "
+                     "%s."), device['id'])
+        while retry:
+            try:
+                # Make RPC call to plugin to get port details.
+                status = self.ovsvapp_rpc.get_ports_for_device(
+                    self.context, device, self.agent_id, self.hostname)
+                if status:
+                    LOG.info(_LI("Successfully obtained ports details "
+                                 "for device %s."), device['id'])
+                    retry = False
+                else:
+                    time.sleep(2)
+                    iteration += 1
+                    # Stop if we reached 3 iterations.
+                    if iteration > 3:
+                        retry = False
+            except Exception as e:
+                LOG.exception(_LE("RPC get_ports_for_device failed "
+                                  "for device: %s."), device['id'])
+                raise error.OVSvAppNeutronAgentError(e)
+
     @utils.require_state([ovsvapp_const.AGENT_RUNNING])
     def _notify_device_added(self, vm, host):
         """Handle VM created event."""
@@ -1003,16 +1061,24 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
             LOG.debug("Processing for an existing VM %s.", vm.uuid)
             ovsvapplock.acquire()
             for vnic in vm.vnics:
-                self.devices_to_filter.add(vnic.port_uuid)
-                self._add_ports_to_host_ports([vnic.port_uuid],
-                                              host == self.esx_hostname)
-                if host == self.esx_hostname:
-                    self.ports_to_bind.add(vnic.port_uuid)
-                vnic_info = {'mac_addr': vnic.mac_address,
-                             'pg_id': vnic.pg_id,
-                             'vm_id': vm.uuid}
-                self.vnic_info[vnic.port_uuid] = vnic_info
-            self.refresh_firewall_required = True
+                if not self.check_flows_for_mac(vnic.mac_address):
+                    if host == self.esx_hostname:
+                        device = {'id': vm.uuid,
+                                  'host': host,
+                                  'cluster_id': self.cluster_id,
+                                  'vcenter': self.vcenter_id}
+                        self.invoke_get_ports_for_device_rpc(device)
+                else:
+                    self.devices_to_filter.add(vnic.port_uuid)
+                    self._add_ports_to_host_ports([vnic.port_uuid],
+                                                  host == self.esx_hostname)
+                    if host == self.esx_hostname:
+                        self.ports_to_bind.add(vnic.port_uuid)
+                    vnic_info = {'mac_addr': vnic.mac_address,
+                                 'pg_id': vnic.pg_id,
+                                 'vm_id': vm.uuid}
+                    self.vnic_info[vnic.port_uuid] = vnic_info
+                    self.refresh_firewall_required = True
             ovsvapplock.release()
         else:
             if host == self.esx_hostname:
@@ -1020,29 +1086,7 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
                           'host': host,
                           'cluster_id': self.cluster_id,
                           'vcenter': self.vcenter_id}
-                retry = True
-                iteration = 1
-                LOG.info(_LI("Invoking get_ports_for_device RPC for device: "
-                             "%s."), device['id'])
-                while retry:
-                    try:
-                        # Make RPC call to plugin to get port details.
-                        status = self.ovsvapp_rpc.get_ports_for_device(
-                            self.context, device, self.agent_id, self.hostname)
-                        if status:
-                            LOG.info(_LI("Successfully obtained ports details "
-                                         "for device %s."), device['id'])
-                            retry = False
-                        else:
-                            time.sleep(2)
-                            iteration += 1
-                            # Stop if we reached 3 iterations.
-                            if iteration > 3:
-                                retry = False
-                    except Exception as e:
-                        LOG.exception(_LE("RPC get_ports_for_device failed "
-                                          "for device: %s."), device['id'])
-                        raise error.OVSvAppNeutronAgentError(e)
+                self.invoke_get_ports_for_device_rpc(device)
 
     @utils.require_state([ovsvapp_const.AGENT_RUNNING])
     def _notify_device_updated(self, vm, host, host_changed):
@@ -1064,7 +1108,7 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
                     ovsvapp_l2pop_lock.acquire()
                     try:
                         LOG.info(_LI("Invoking update_device_binding RPC for "
-                                     "device %s.") % vm.uuid)
+                                     "device %s."), vm.uuid)
                         self.ovsvapp_rpc.update_device_binding(
                             self.context,
                             agent_id=self.agent_id,
@@ -1072,17 +1116,17 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
                             host=self.hostname)
                     except Exception as e:
                         LOG.exception(_LE("Failed to handle VM migration "
-                                          "for device: %s.") % vm.uuid)
+                                          "for device: %s."), vm.uuid)
                         raise error.OVSvAppNeutronAgentError(e)
                     finally:
                         ovsvapp_l2pop_lock.release()
                     for vnic in vm.vnics:
-                        updated_port = self.ports_dict[vnic.port_uuid]
+                        updated_port = self.ports_dict.get(vnic.port_uuid)
                         if (updated_port and
                            updated_port.network_type == p_const.TYPE_VLAN):
                             # Update the physical bridge drop flows.
                             network_id = updated_port.network_id
-                            lvm = self.local_vlan_map[network_id]
+                            lvm = self._get_port_vlan_mapping(network_id)
                             segmentation_id = lvm.segmentation_id
                             phys_net = updated_port.phys_net
                             br = self.phys_brs[phys_net]['br']
@@ -1093,19 +1137,20 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
             else:
                 for vnic in vm.vnics:
                     if host_changed:
-                        updated_port = self.ports_dict[vnic.port_uuid]
-                        net_type = updated_port.network_type
-                        if (updated_port and
-                                net_type == p_const.TYPE_VLAN):
-                            if vnic.port_uuid in self.cluster_host_ports:
-                                # Delete the physical bridge flows.
-                                network_id = updated_port.network_id
-                                lvm = self.local_vlan_map[network_id]
-                                seg_id = lvm.segmentation_id
-                                phys_net = updated_port.phys_net
-                                br = self.phys_brs[phys_net]['br']
-                                br.delete_drop_flows(updated_port.mac_addr,
-                                                     seg_id)
+                        updated_port = self.ports_dict.get(vnic.port_uuid)
+                        if updated_port:
+                            net_type = updated_port.network_type
+                            if net_type == p_const.TYPE_VLAN:
+                                if vnic.port_uuid in self.cluster_host_ports:
+                                    # Delete the physical bridge flows.
+                                    network_id = updated_port.network_id
+                                    lvm = self._get_port_vlan_mapping(
+                                        network_id)
+                                    seg_id = lvm.segmentation_id
+                                    phys_net = updated_port.phys_net
+                                    br = self.phys_brs[phys_net]['br']
+                                    br.delete_drop_flows(updated_port.mac_addr,
+                                                         seg_id)
                     self._add_ports_to_host_ports([vnic.port_uuid], False)
                     if vnic.port_uuid in self.ports_to_bind:
                         ovsvapplock.acquire()
@@ -1162,7 +1207,10 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
                     if del_port.network_type == p_const.TYPE_VLAN:
                         phys_net = del_port.phys_net
                         net_id = del_port.network_id
-                        seg_id = self.local_vlan_map[net_id].segmentation_id
+                        vmap = self._get_port_vlan_mapping(net_id)
+                        seg_id = None
+                        if vmap:
+                            seg_id = vmap.segmentation_id
                         br = self.phys_brs[phys_net]['br']
                         br.delete_drop_flows(del_port.mac_addr,
                                              seg_id)
@@ -1307,7 +1355,7 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
                 local_vlan_id = port['lvid']
                 net_id = port['network_id']
                 self.ports_dict[port['id']] = self._build_port_info(port)
-                if net_id not in self.local_vlan_map:
+                if not self._get_port_vlan_mapping(net_id):
                     self._populate_lvm(port)
                     # Add to missed provider rule ports list
                     # if sg provider rule is missing in ports_sg_rules.
@@ -1498,7 +1546,7 @@ class OVSvAppAgent(agent.Agent, ovs_agent.OVSNeutronAgent):
             # network_id - local_vlan_id - segmentation_id.
             LOG.debug("Reclaiming local vlan associated with the network: %s.",
                       network_id)
-            lvm = self.local_vlan_map.pop(network_id, None)
+            lvm = self.vlan_manager.pop(network_id)
             if lvm:
                 self._reclaim_local_vlan(lvm)
             else:
