@@ -236,6 +236,9 @@ class DVSFirewallDriver(firewall.FirewallDriver):
     def _apply_sg_rules_for_port(self, ports):
         for port in ports:
             queue = self._get_free_queue()
+            port['security_group_rules'].append(
+                {u'ethertype': u'IPv6', u'direction': u'ingress',
+                 u'source_ip_prefix': u'::/0', u'protocol': u'ipv6-icmp'})
             port = sg_util.filter_port_sg_rules_by_ethertype(port)
             queue.put([{'id': port['id'], 'network_id': port['network_id'],
                         'security_group_rules': port['security_group_rules'],
