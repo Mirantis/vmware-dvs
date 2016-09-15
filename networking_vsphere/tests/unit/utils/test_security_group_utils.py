@@ -115,9 +115,8 @@ class TrafficRuleBuilderTestCase(TrafficRuleBuilderBaseTestCase):
     def test__cidr_spec_for_single_ip(self):
         builder = self._create_builder()
         cidr_spec = builder._cidr_spec('192.168.0.2')
-        self.assertEqual('ns0:IpRange', cidr_spec._mock_name)
-        self.assertEqual('192.168.0.2', cidr_spec.addressPrefix)
-        self.assertEqual('32', cidr_spec.prefixLength)
+        self.assertEqual('ns0:SingleIp', cidr_spec._mock_name)
+        self.assertEqual('192.168.0.2', cidr_spec.address)
 
     def test__port_spec_for_single_port(self):
         builder = self._create_builder()
@@ -189,8 +188,7 @@ class SpecBuilderSecurityGroupsTestCase(base.BaseTestCase):
                                  ip='10.20.0.2')
         qualifier = rule.qualifier[0]
         self.assertEqual('10.20.0.2',
-                         qualifier.destinationAddress.addressPrefix)
-        self.assertEqual('32', qualifier.destinationAddress.prefixLength)
+                         qualifier.destinationAddress.address)
         self.assertEqual('0.0.0.0', qualifier.sourceAddress.addressPrefix)
 
     def test__create_rule_ingress_ip(self):
@@ -200,8 +198,7 @@ class SpecBuilderSecurityGroupsTestCase(base.BaseTestCase):
         qualifier = rule.qualifier[0]
         self.assertEqual('0.0.0.0',
                          qualifier.destinationAddress.addressPrefix)
-        self.assertEqual('10.20.0.2', qualifier.sourceAddress.addressPrefix)
-        self.assertEqual('32', qualifier.sourceAddress.prefixLength)
+        self.assertEqual('10.20.0.2', qualifier.sourceAddress.address)
 
     def _create_rule(self, ip=None, **kwargs):
         def side_effect(name):
