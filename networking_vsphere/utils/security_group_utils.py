@@ -95,12 +95,11 @@ class TrafficRuleBuilder(object):
         if cidr_bool:
             if (self.ethertype == 'IPv6' and self.protocol == 'ipv6-icmp' and
                     self.type == 134):
-                LOG.error(str(self.type))
                 rule.cidr = 'FF02::2/128'
             else:
                 rule.cidr = self.cidr
         else:
-            rule.cidr = '0.0.0.0/0'
+            rule.cidr = '0.0.0.0/0' if self.ethertype == 'IPv4' else '::/0'
         rule.port_range = self.backward_port_range
         rule.backward_port_range = self.port_range
         return rule
@@ -138,9 +137,14 @@ class TrafficRuleBuilder(object):
 
     def _cidr_spec(self, cidr):
         cidr = netaddr.IPNetwork(cidr)
-        result = self.spec_builder.create_spec('ns0:IpRange')
-        result.addressPrefix = str(cidr.ip)
-        result.prefixLength = str(cidr.prefixlen)
+        if ((cidr.version == 6 and cidr.prefixlen == 128) or (
+                cidr.version == 4 and cidr.prefixlen == 32)):
+            result = self.spec_builder.create_spec('ns0:SingleIp')
+            result.address = str(cidr.ip)
+        else:
+            result = self.spec_builder.create_spec('ns0:IpRange')
+            result.prefixLength = str(cidr.prefixlen)
+            result.addressPrefix = str(cidr.ip)
         return result
 
     def _has_port(self, min_port):
